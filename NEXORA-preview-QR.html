@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#071426">
+<title>NEXORA — Share Without Limits</title>
+<style>
+:root{--bg:#071426;--panel:#0d2038;--panel2:#102945;--text:#f4f8ff;--muted:#9bb0c9;--line:#1c3a59;--blue:#398bff;--cyan:#32d6e8;--good:#43d6a2;--shadow:0 18px 50px #0005}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% -10%,#123e68 0,transparent 35%),var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}
+body.light{--bg:#eef4fb;--panel:#fff;--panel2:#e8f1fc;--text:#10233b;--muted:#61758d;--line:#d5e1ef;--shadow:0 15px 40px #1a35551a;background:radial-gradient(circle at 80% -10%,#d6eaff 0,transparent 35%),var(--bg)}
+button{font:inherit;cursor:pointer;border:0}.app{max-width:1050px;margin:auto;padding:22px 18px 40px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:28px}.brand{display:flex;align-items:center;gap:11px}.logo{width:43px;height:43px;border-radius:14px;background:linear-gradient(135deg,var(--blue),var(--cyan));display:grid;place-items:center;color:white;font-weight:900;font-size:22px;box-shadow:0 8px 24px #268dff55}.brand h1{font-size:19px;letter-spacing:2px;margin:0}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:1.5px;margin-top:3px}.top-actions{display:flex;gap:9px}.icon-btn{width:42px;height:42px;border-radius:13px;background:var(--panel);border:1px solid var(--line);color:var(--text);font-size:18px}.welcome{margin:0 0 7px;font-size:clamp(25px,5vw,37px);letter-spacing:-1px}.sub{color:var(--muted);margin:0 0 24px}.connection{display:flex;align-items:center;gap:10px;padding:13px 15px;background:var(--panel);border:1px solid var(--line);border-radius:16px;margin-bottom:20px;color:var(--muted);font-size:13px}.dot{width:9px;height:9px;border-radius:50%;background:var(--good);box-shadow:0 0 12px var(--good)}.hero{background:linear-gradient(120deg,#123b67,#0c2847 65%,#123c56);border:1px solid #28618d;border-radius:23px;padding:22px;margin-bottom:18px;box-shadow:var(--shadow);position:relative;overflow:hidden}.hero:after{content:"";position:absolute;width:190px;height:190px;border:1px solid #ffffff20;border-radius:50%;right:-55px;top:-80px;box-shadow:0 0 0 24px #ffffff08,0 0 0 48px #ffffff06}.hero h2{margin:0 0 8px;font-size:22px}.hero p{margin:0;color:#c2d8ee;font-size:13px;max-width:440px;line-height:1.55}.hero-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}.primary,.secondary{padding:12px 18px;border-radius:12px;font-weight:700}.primary{background:linear-gradient(100deg,var(--blue),var(--cyan));color:white}.secondary{background:#ffffff12;border:1px solid #ffffff35;color:white}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.action-card,.section{background:var(--panel);border:1px solid var(--line);border-radius:19px;padding:18px;box-shadow:var(--shadow)}.action-card{min-height:142px;text-align:left;color:var(--text);transition:.2s}.action-card:hover{transform:translateY(-2px);border-color:var(--blue)}.action-icon{width:43px;height:43px;border-radius:14px;display:grid;place-items:center;background:var(--panel2);font-size:21px;margin-bottom:14px}.action-card strong{display:block;font-size:16px}.action-card span{display:block;color:var(--muted);font-size:12px;margin-top:5px}.section{margin-top:17px}.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.section h3{font-size:15px;margin:0}.muted{color:var(--muted);font-size:12px}.empty{padding:18px 5px;text-align:center;color:var(--muted);font-size:13px}.bottom{display:flex;justify-content:space-around;gap:8px;margin-top:18px;padding:11px;background:var(--panel);border:1px solid var(--line);border-radius:16px}.nav{background:none;color:var(--muted);font-size:11px;padding:7px 12px;border-radius:10px}.nav.active{background:var(--panel2);color:var(--text)}.screen{display:none}.screen.active{display:block}.back{background:none;color:var(--muted);padding:5px 0 18px}.screen-title{font-size:25px;margin:0 0 7px}.screen-desc{color:var(--muted);font-size:13px;margin:0 0 20px}.drop{border:1.5px dashed #47749e;border-radius:18px;padding:28px 15px;text-align:center;background:var(--panel2)}.drop .big{font-size:35px}.drop h3{margin:10px 0 5px}.drop p{color:var(--muted);font-size:12px;margin:0 0 15px}.file-list{margin-top:14px}.file{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px;border-bottom:1px solid var(--line);font-size:13px}.file:last-child{border:0}.file small{color:var(--muted)}.qr{width:190px;min-height:190px;margin:20px auto;border:8px solid white;border-radius:12px;background:white;display:grid;place-items:center;padding:5px}.qr canvas,.qr img{max-width:100%;height:auto!important}.pair-code{font-size:18px;letter-spacing:3px;font-weight:800;color:var(--cyan);margin:10px 0}.scan-box{width:100%;max-width:340px;margin:14px auto;border-radius:14px;overflow:hidden;background:#000;display:none}.scan-box video{width:100%;display:block}.scan-status{font-size:12px;color:var(--muted);line-height:1.5;margin-top:10px}.scan-actions{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;margin-top:12px}.center{text-align:center}.device{padding:14px;border:1px solid var(--line);border-radius:14px;margin:10px 0;display:flex;justify-content:space-between;align-items:center}.pill{font-size:10px;color:var(--good);background:#43d6a21a;padding:5px 8px;border-radius:20px}.history-row{display:flex;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}.history-row:last-child{border:0}.history-icon{width:38px;height:38px;background:var(--panel2);border-radius:12px;display:grid;place-items:center}.history-row strong{font-size:13px}.history-row small{display:block;color:var(--muted);margin-top:4px}.notice{font-size:11px;color:var(--muted);line-height:1.5;margin-top:16px}
+@media(min-width:700px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}.hero{padding:30px}.action-card{min-height:155px}}@media(max-width:430px){.app{padding:16px 13px}.hero{padding:19px}.grid{gap:10px}.action-card{padding:14px;min-height:135px}.bottom{position:sticky;bottom:8px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top">
+  <div class="brand"><div class="logo">N</div><div><h1>NEXORA</h1><small>SHARE WITHOUT LIMITS</small></div></div>
+  <div class="top-actions"><button class="icon-btn" id="themeBtn" aria-label="Toggle theme">☼</button><button class="icon-btn" aria-label="Settings" onclick="showScreen('settings')">⚙</button></div>
+</header>
+
+<main id="home" class="screen active">
+  <h2 class="welcome">Move files. Freely.</h2><p class="sub">A simpler way to share across your devices.</p>
+  <div class="connection"><span class="dot"></span><span>Ready to connect</span><span style="margin-left:auto">Local sharing preview</span></div>
+  <section class="hero"><h2>Your files, your way.</h2><p>Connect nearby devices and move photos, videos and documents with a smooth, secure sharing experience.</p><div class="hero-actions"><button class="primary" onclick="showScreen('send')">Send files&nbsp; →</button><button class="secondary" onclick="showScreen('receive')">Receive files</button></div></section>
+  <div class="grid">
+    <button class="action-card" onclick="showScreen('send')"><div class="action-icon">↗</div><strong>Send</strong><span>Choose files to share</span></button>
+    <button class="action-card" onclick="showScreen('receive')"><div class="action-icon">↙</div><strong>Receive</strong><span>Get files from a device</span></button>
+    <button class="action-card" onclick="showScreen('connect')"><div class="action-icon">⌗</div><strong>Connect</strong><span>Pair with a nearby device</span></button>
+    <button class="action-card" onclick="showScreen('history')"><div class="action-icon">◷</div><strong>History</strong><span>View recent transfers</span></button>
+  </div>
+  <section class="section"><div class="section-head"><h3>Recent activity</h3><button class="nav" onclick="showScreen('history')">View all</button></div><div class="empty">No transfers yet. Your activity will appear here.</div></section>
+</main>
+
+<section id="send" class="screen">
+  <button class="back" onclick="showScreen('home')">← Back</button><h2 class="screen-title">Send files</h2><p class="screen-desc">Choose what you want to share with another device.</p>
+  <div class="drop"><div class="big">＋</div><h3>Select files</h3><p>Photos, videos, documents and other files</p><button class="primary" onclick="document.getElementById('fileInput').click()">Browse files</button><input id="fileInput" type="file" multiple hidden></div>
+  <div id="selectedFiles" class="file-list"></div><p class="notice">Prototype note: file selection works in this preview. Nearby-device discovery and actual transfer will be implemented in the native Android app milestone.</p>
+  <button class="primary" style="width:100%;margin-top:14px" onclick="showScreen('connect')">Continue to connect →</button>
+</section>
+
+<section id="receive" class="screen">
+  <button class="back" onclick="showScreen('home')">← Back</button><h2 class="screen-title">Receive files</h2><p class="screen-desc">Show this QR code to prepare a pairing session.</p>
+  <div class="section center"><div class="action-icon" style="margin:0 auto">⇩</div><h3>Pairing code ready</h3><p class="muted">Ask the other device to scan this code.</p><div id="receiveQr" class="qr" aria-label="NEXORA pairing QR code"></div><div id="receivePairCode" class="pair-code">------</div><button class="secondary" onclick="refreshPairingCode()">Generate new code</button><p id="receiveQrStatus" class="scan-status">Preparing your temporary preview code…</p><button class="primary" onclick="showScreen('connect')">Connect a device</button></div>
+  <p class="notice">Preview only: this QR contains a temporary NEXORA demo pairing token. It does not create a live connection or receive files yet.</p>
+</section>
+
+<section id="connect" class="screen">
+  <button class="back" onclick="stopQrScanner();showScreen('home')">← Back</button><h2 class="screen-title">Connect devices</h2><p class="screen-desc">Scan another NEXORA preview pairing code.</p>
+  <div class="section center"><div class="action-icon" style="margin:0 auto">▦</div><h3>QR code scanner</h3><p class="muted">Allow camera access, then point it at a NEXORA pairing QR code.</p><div id="scanBox" class="scan-box"><video id="scanVideo" playsinline></video></div><div class="scan-actions"><button class="primary" id="startScanBtn" onclick="startQrScanner()">Open camera scanner</button><button class="secondary" onclick="stopQrScanner()">Stop scanner</button></div><p id="scanStatus" class="scan-status">Camera scanning works on supported browsers when this page is served securely (HTTPS) or opened on localhost.</p><div id="scanResult" class="muted"></div></div>
+  <div class="section center"><div class="action-icon" style="margin:0 auto">⌁</div><h3>Nearby devices</h3><p class="muted">Discover devices on your local connection.</p><button class="secondary" onclick="alert('Real nearby discovery requires the native Android networking milestone.')">Search nearby</button></div>
+  <p class="notice">Scanning can read a demo pairing token, but the web preview cannot establish a real device connection yet.</p>
+</section>
+
+<section id="history" class="screen">
+  <button class="back" onclick="showScreen('home')">← Back</button><h2 class="screen-title">Transfer history</h2><p class="screen-desc">Keep track of files shared from this device.</p>
+  <div class="section"><div class="empty">Your transfer history is empty.</div></div>
+</section>
+
+<section id="settings" class="screen">
+  <button class="back" onclick="showScreen('home')">← Back</button><h2 class="screen-title">Settings</h2><p class="screen-desc">Personalise your NEXORA experience.</p>
+  <div class="section"><div class="file"><span>Appearance</span><button class="secondary" onclick="toggleTheme()">Toggle theme</button></div><div class="file"><span>App name</span><strong>NEXORA</strong></div><div class="file"><span>Version</span><strong>Preview 0.1</strong></div></div>
+  <p class="notice">More settings, security controls and transfer preferences will be added as the real app is built.</p>
+</section>
+
+<nav class="bottom">
+  <button class="nav active" data-nav="home" onclick="showScreen('home')">⌂ &nbsp;Home</button>
+  <button class="nav" data-nav="send" onclick="showScreen('send')">↗ &nbsp;Send</button>
+  <button class="nav" data-nav="receive" onclick="showScreen('receive')">↙ &nbsp;Receive</button>
+  <button class="nav" data-nav="history" onclick="showScreen('history')">◷ &nbsp;History</button>
+</nav>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+let pairingToken = "";
+let qrScannerStream = null;
+let qrScannerActive = false;
+
+function makePairingToken(){
+ const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+ let code = "";
+ for(let i=0;i<6;i++) code += alphabet[Math.floor(Math.random()*alphabet.length)];
+ return code;
+}
+function refreshPairingCode(){
+ pairingToken = makePairingToken();
+ const payload = JSON.stringify({app:"NEXORA",type:"preview-pairing",version:1,code:pairingToken});
+ const target = document.getElementById("receiveQr");
+ const codeLabel = document.getElementById("receivePairCode");
+ const status = document.getElementById("receiveQrStatus");
+ target.innerHTML = "";
+ codeLabel.textContent = pairingToken;
+ if(window.QRCode){
+  new QRCode(target,{text:payload,width:174,height:174,colorDark:"#10233b",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});
+  status.textContent = "Temporary demo pairing QR generated. Scan it from another device.";
+ }else{
+  status.textContent = "QR generator could not load. Check your internet connection and reload this page.";
+ }
+}
+async function startQrScanner(){
+ const status = document.getElementById("scanStatus");
+ const box = document.getElementById("scanBox");
+ const video = document.getElementById("scanVideo");
+ if(!("BarcodeDetector" in window)){
+  status.textContent = "This browser does not support built-in QR scanning. Try an updated Chrome browser or use the Android app when available.";
+  return;
+ }
+ try{
+  const detector = new BarcodeDetector({formats:["qr_code"]});
+  qrScannerStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+  video.srcObject = qrScannerStream;
+  await video.play();
+  box.style.display = "block";
+  qrScannerActive = true;
+  status.textContent = "Camera active. Point it at a NEXORA QR code.";
+  const scan = async ()=>{
+   if(!qrScannerActive) return;
+   try{
+    const codes = await detector.detect(video);
+    if(codes.length){
+     let data = codes[0].rawValue;
+     try{
+      const parsed = JSON.parse(data);
+      if(parsed.app === "NEXORA" && parsed.type === "preview-pairing" && parsed.code){
+       document.getElementById("scanResult").textContent = "NEXORA preview code detected: " + parsed.code + ". Live pairing is not enabled yet.";
+       status.textContent = "QR code recognised successfully.";
+      }else{
+       document.getElementById("scanResult").textContent = "QR code detected, but it is not a NEXORA preview pairing code.";
+      }
+     }catch(e){
+      document.getElementById("scanResult").textContent = "QR code detected, but its contents are not a NEXORA pairing token.";
+     }
+     stopQrScanner(false);
+     return;
+    }
+   }catch(e){}
+   if(qrScannerActive) requestAnimationFrame(scan);
+  };
+  requestAnimationFrame(scan);
+ }catch(err){
+  status.textContent = "Could not open the camera. Check browser camera permission and make sure this page is opened over HTTPS.";
+ }
+}
+function stopQrScanner(updateStatus=true){
+ qrScannerActive = false;
+ if(qrScannerStream){qrScannerStream.getTracks().forEach(track=>track.stop());qrScannerStream=null;}
+ const video = document.getElementById("scanVideo");
+ const box = document.getElementById("scanBox");
+ if(video) video.srcObject = null;
+ if(box) box.style.display = "none";
+ if(updateStatus){
+  const status = document.getElementById("scanStatus");
+  if(status) status.textContent = "Scanner stopped.";
+ }
+}
+function showScreen(id){
+ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+ const target=document.getElementById(id); if(target) target.classList.add('active');
+ document.querySelectorAll('[data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===id));
+ window.scrollTo({top:0,behavior:'smooth'});
+}
+function toggleTheme(){document.body.classList.toggle('light');}
+document.getElementById('themeBtn').addEventListener('click',toggleTheme);
+refreshPairingCode();
+document.getElementById('fileInput').addEventListener('change',e=>{
+ const box=document.getElementById('selectedFiles'); box.innerHTML='';
+ [...e.target.files].forEach(file=>{
+  const row=document.createElement('div'); row.className='file';
+  const name=document.createElement('span'); name.textContent=file.name;
+  const size=document.createElement('small'); size.textContent=(file.size/1024/1024).toFixed(2)+' MB';
+  row.append(name,size); box.append(row);
+ });
+});
+</script>
+</body>
+</html>
