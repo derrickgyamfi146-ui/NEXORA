@@ -399,58 +399,6 @@ async function nxStartScanner() {
     nxStatus("QR scanning is not supported. Try an updated Chrome browser.");
     return;
   }
-
-  if (!navigator.mediaDevices?.getUserMedia) {
-    nxStatus("Camera access is unavailable. Open NEXORA using HTTPS.");
-    return;
-  }
-
-  try {
-    nxStatus("Starting high-quality rear camera...");
-
-    const detector = new BarcodeDetector({
-      formats: ["qr_code"]
-    });
-
-    nxStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        frameRate: { ideal: 30 }
-      },
-      audio: false
-    });
-
-    const video = nxEl("nxVideo");
-    video.srcObject = nxStream;
-    video.setAttribute("playsinline", "");
-    video.muted = true;
-
-    nxEl("nxCamera").style.display = "block";
-
-    const track = nxStream.getVideoTracks()[0];
-
-    // Request continuous autofocus if the camera supports it.
-    try {
-      await track.applyConstraints({
-        advanced: [{ focusMode: "continuous" }]
-      });
-    } catch (error) {
-      // Some phone cameras do not expose this setting.
-    }
-
-    await video.play();
-
-    nxScanning = true;
-    nxStatus("Camera ready. Hold the QR code steady and keep it well lit.");
-
-    const scan = async () => {
-      if (!nxScanning) return;
-
-      try {
-        if (video.readyState >= 2) {
-
 // NEXORA ONE-SCAN PEERJS CONNECTION
 let nxPeer = null;
 let nxChannel = null;
