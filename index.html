@@ -220,7 +220,7 @@ function nexoraRender() {
     remove.onclick = () => {
       nexoraFiles.splice(index, 1);
       nexoraRender();
-    };old.name === file.name &&
+    };
 
     row.append(details, remove);
     fileList.append(row);
@@ -230,6 +230,8 @@ function nexoraRender() {
 fileInput.addEventListener("change", event => {
   [...event.target.files].forEach(file => {
     const exists = nexoraFiles.some(old =>
+  old.name === file.name &&
+  old.size === file.size &&
       
       old.size === file.size &&
       old.lastModified === file.lastModified
