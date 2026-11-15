@@ -536,47 +536,88 @@ async function nxHandleScanned(value) {
 
 async function nxStartScanner() {
   if (!("BarcodeDetector" in window)) {
-    nxStatus("QR scanning is not supported by this browser. Try updated Chrome.");
+    nxStatus("QR scanning is not supported. Try an updated Chrome browser.");
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    nxStatus("Camera access is unavailable. Open NEXORA using HTTPS.");
     return;
   }
 
   try {
-    const detector = new BarcodeDetector({ formats: ["qr_code"] });
+    nxStatus("Starting high-quality rear camera...");
+
+    const detector = new BarcodeDetector({
+      formats: ["qr_code"]
+    });
+
     nxStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } },
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 }
+      },
       audio: false
     });
 
     const video = nxEl("nxVideo");
     video.srcObject = nxStream;
+    video.setAttribute("playsinline", "");
+    video.muted = true;
+
     nxEl("nxCamera").style.display = "block";
+
+    const track = nxStream.getVideoTracks()[0];
+
+    // Request continuous autofocus if the camera supports it.
+    try {
+      await track.applyConstraints({
+        advanced: [{ focusMode: "continuous" }]
+      });
+    } catch (error) {
+      // Some phone cameras do not expose this setting.
+    }
+
     await video.play();
 
     nxScanning = true;
-    nxStatus("Camera ready. Point it at the other device's QR code.");
+    nxStatus("Camera ready. Hold the QR code steady and keep it well lit.");
 
     const scan = async () => {
       if (!nxScanning) return;
 
       try {
-        const codes = await detector.detect(video);
-        if (codes.length) {
-          nxScanning = false;
-          nxStopScanner();
-          await nxHandleScanned(codes[0].rawValue);
-          return;
-        }
-      } catch (error) {}
+        if (video.readyState >= 2) {
+          const codes = await detector.detect(video);
 
-      if (nxScanning) requestAnimationFrame(scan);
+          if (codes.length && codes[0].rawValue) {
+            const value = codes[0].rawValue;
+
+            nxScanning = false;
+            nxStopScanner();
+
+            await nxHandleScanned(value);
+            return;
+          }
+        }
+      } catch (error) {
+        // Continue scanning if one detection attempt fails.
+      }
+
+      if (nxScanning) {
+        setTimeout(() => requestAnimationFrame(scan), 100);
+      }
     };
 
     requestAnimationFrame(scan);
-  } catch (error) {
-    nxStatus("Camera could not start. Check camera permission and HTTPS.");
-  }
-}
 
+  } catch (error) {
+    nxStatus("Camera error: " + error.message +
+      ". Check camera permission and close other camera apps.");
+  }
+                } 
 function nxStopScanner() {
   nxScanning = false;
   if (nxStream) {
