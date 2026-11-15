@@ -361,96 +361,6 @@ function nxWaitIce(peer) {
     const timer = setTimeout(done, 20000);
 
     function done() {
-      clearTimeout(timer);
-      peer.removeEventListener("icegatheringstatechange", check);
-      resolve();
-    }
-
-    function check() {
-      if (peer.iceGatheringState === "complete") done();
-    }
-
-    peer.addEventListener("icegatheringstatechange", check);
-  });
-}
-
-function nxSetupChannel(channel) {
-  nxChannel = channel;
-  channel.binaryType = "arraybuffer";
-  channel.bufferedAmountLowThreshold = 262144;
-
-  channel.onopen = () => {
-    nxStatus("Connected! Ready to share files.");
-    nxEl("nxSend").disabled = false;
-  };
-
-  channel.onclose = () => {
-    nxStatus("Connection closed.");
-    nxEl("nxSend").disabled = true;
-  };
-
-  channel.onerror = () => nxStatus("Connection error.");
-
-  channel.onmessage = event => {
-    if (typeof event.data === "string") {
-      let message;
-      try {
-        message = JSON.parse(event.data);
-      } catch (error) {
-        return;
-      }
-
-      if (message.type === "file-start") {
-        nxIncoming = {
-          name: message.name,
-          size: message.size,
-          mime: message.mime || "application/octet-stream",
-          chunks: [],
-          received: 0
-        };
-
-        nxEl("nxProgress").textContent =
-          "Receiving " + nxIncoming.name + "…";
-      }
-
-      if (message.type === "file-end" && nxIncoming) {
-        const blob = new Blob(nxIncoming.chunks, {
-          type: nxIncoming.mime
-        });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-
-        link.href = url;
-        link.download = nxIncoming.name;
-        link.textContent = "Download: " + nxIncoming.name;
-        link.style.display = "block";
-        link.style.padding = "12px 0";
-
-        nxEl("nxReceived").appendChild(link);
-        nxEl("nxProgress").textContent =
-          "Received " + nxIncoming.name + " successfully.";
-        nxIncoming = null;
-      }
-    } else if (nxIncoming) {
-      nxIncoming.chunks.push(event.data);
-      nxIncoming.received += event.data.byteLength;
-
-      nxEl("nxProgress").textContent =
-        "Receiving… " +
-        Math.round(nxIncoming.received / nxIncoming.size * 100) + "%";
-    }
-  };
-}
-
-function nxMakePeer() {
-  nxPeer = new RTCPeerConnection({
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" }
-    ]
-  });
-
-  nxPeer.onconnectionstatechange = () => {
-    if (nxPeer.connectionState === "connected") {
       nxStatus("Connected securely. Ready to share.");
     } else if (nxPeer.connectionState === "failed") {
       nxStatus("Connection failed. Try both devices on the same Wi-Fi.");
@@ -476,58 +386,7 @@ nxEl("nxCreate").onclick = async () => {
       app: "NEXORA",
       type: "offer",
       description: nxPeer.localDescription
-    });
-
-    nxShowQR(signal, "Let the other device scan this QR code.");
-    nxStatus("Connection QR ready. Ask the other device to scan it.");
-  } catch (error) {
-    nxStatus("Could not create QR: " + error.message);
-  }
-};
-
-async function nxHandleScanned(value) {
-  try {
-    const data = await nxDecodeSignal(value);
-
-    if (data.app !== "NEXORA" || !data.description) {
-      throw new Error("Invalid NEXORA connection information.");
-    }
-
-    if (data.type === "offer") {
-      nxStatus("Offer scanned. Preparing your response QR…");
-
-      nxMakePeer();
-      nxPeer.ondatachannel = event => nxSetupChannel(event.channel);
-
-      await nxPeer.setRemoteDescription(data.description);
-
-      const answer = await nxPeer.createAnswer();
-      await nxPeer.setLocalDescription(answer);
-      await nxWaitIce(nxPeer);
-
-      const signal = await nxEncodeSignal({
-        app: "NEXORA",
-        type: "answer",
-        description: nxPeer.localDescription
-      });
-
-      nxShowQR(signal, "Show this response QR to the first device.");
-      nxStatus("Response QR ready. Let the first device scan it.");
-      return;
-    }
-
-    if (data.type === "answer") {
-      if (!nxPeer) {
-        throw new Error("Create the first connection QR on this device first.");
-      }
-
-      await nxPeer.setRemoteDescription(data.description);
-      nxStatus("Response accepted. Connecting the devices…");
-      nxEl("nxQrInfo").textContent =
-        "Connection response accepted.";
-      nxEl("nxQr").innerHTML = "";
-      return;
-    }
+h
 
     throw new Error("Unknown NEXORA QR type.");
   } catch (error) {
@@ -591,21 +450,232 @@ async function nxStartScanner() {
 
       try {
         if (video.readyState >= 2) {
+
+// NEXORA ONE-SCAN PEERJS CONNECTION
+let nxPeer = null;
+let nxChannel = null;
+let nxIncoming = null;
+let nxStream = null;
+let nxScanning = false;
+let nxFacing = "environment";
+
+const nxPanel = document.createElement("section");
+nxPanel.className = "section";
+nxPanel.innerHTML = `
+  <h3>NEXORA One-Scan Connection</h3>
+  <p class="muted">Create one QR code to receive, or scan another device's QR to send.</p>
+  <p id="nxStatus" class="scan-status">Not connected.</p>
+
+  <button class="primary" id="nxCreate" style="width:100%;margin:10px 0">
+    Create QR to receive files
+  </button>
+
+  <div id="nxQr" class="qr"></div>
+  <p id="nxQrInfo" class="muted center">Your connection QR will appear here.</p>
+
+  <button class="primary" id="nxScan" style="width:100%;margin:10px 0">
+    Scan QR to send files
+  </button>
+
+  <div id="nxCamera" style="display:none;margin-top:12px">
+    <video id="nxVideo" playsinline muted style="width:100%;border-radius:12px"></video>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="secondary" id="nxBackCamera" style="flex:1">Back camera</button>
+      <button class="secondary" id="nxFrontCamera" style="flex:1">Front camera</button>
+    </div>
+    <button class="secondary" id="nxStop" style="width:100%;margin-top:8px">Stop camera</button>
+  </div>
+
+  <button class="primary" id="nxSend" style="width:100%;margin-top:15px" disabled>
+    Send selected files
+  </button>
+
+  <p id="nxProgress" class="muted">No transfer started.</p>
+  <div id="nxReceived"></div>
+`;
+
+document.getElementById("connect").appendChild(nxPanel);
+
+const nxEl = id => document.getElementById(id);
+
+function nxStatus(message) {
+  nxEl("nxStatus").textContent = message;
+}
+
+function nxClosePeer() {
+  if (nxChannel) {
+    nxChannel.close();
+    nxChannel = null;
+  }
+  if (nxPeer) {
+    nxPeer.destroy();
+    nxPeer = null;
+  }
+  nxEl("nxSend").disabled = true;
+}
+
+function nxSetupChannel(channel) {
+  nxChannel = channel;
+
+  channel.on("open", () => {
+    nxStatus("Connected! Ready to share files.");
+    nxEl("nxSend").disabled = false;
+  });
+
+  channel.on("close", () => {
+    nxStatus("Connection closed.");
+    nxEl("nxSend").disabled = true;
+  });
+
+  channel.on("error", error => {
+    nxStatus("Connection error: " + error.message);
+  });
+
+  channel.on("data", data => {
+    if (typeof data === "string") {
+      let message;
+      try {
+        message = JSON.parse(data);
+      } catch (error) {
+        return;
+      }
+
+      if (message.type === "file-start") {
+        nxIncoming = {
+          name: message.name,
+          size: message.size,
+          mime: message.mime || "application/octet-stream",
+          chunks: [],
+          received: 0
+        };
+
+        nxEl("nxProgress").textContent =
+          "Receiving " + nxIncoming.name + "...";
+      }
+
+      if (message.type === "file-end" && nxIncoming) {
+        const blob = new Blob(nxIncoming.chunks, {
+          type: nxIncoming.mime
+        });
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+
+        link.href = url;
+        link.download = nxIncoming.name;
+        link.textContent = "Download: " + nxIncoming.name;
+        link.style.display = "block";
+        link.style.padding = "12px";
+
+        nxEl("nxReceived").appendChild(link);
+        nxEl("nxProgress").textContent =
+          "Received " + nxIncoming.name + " successfully.";
+
+        nxIncoming = null;
+      }
+    } else if (nxIncoming) {
+      nxIncoming.chunks.push(data);
+      nxIncoming.received += data.byteLength || data.size || 0;
+
+      const percent = nxIncoming.size
+        ? Math.round(nxIncoming.received / nxIncoming.size * 100)
+        : 100;
+
+      nxEl("nxProgress").textContent =
+        "Receiving... " + percent + "%";
+    }
+  });
+}
+
+// RECEIVER: create one QR code
+nxEl("nxCreate").onclick = () => {
+  if (!window.Peer || !window.QRCode) {
+    nxStatus("Connection library could not load. Check your internet.");
+    return;
+  }
+
+  nxClosePeer();
+  nxEl("nxQr").innerHTML = "";
+  nxEl("nxQrInfo").textContent = "Preparing your connection QR...";
+
+  nxStatus("Creating your receiving connection...");
+
+  nxPeer = new Peer();
+
+  nxPeer.on("open", id => {
+    const payload = JSON.stringify({
+      app: "NEXORA",
+      type: "peer-connect",
+      id: id
+    });
+
+    new QRCode(nxEl("nxQr"), {
+      text: payload,
+      width: 230,
+      height: 230,
+      correctLevel: QRCode.CorrectLevel.M
+    });
+
+    nxEl("nxQrInfo").textContent =
+      "Let the sending device scan this QR once.";
+
+    nxStatus("Ready to receive. Waiting for the other device.");
+  });
+
+  nxPeer.on("connection", channel => {
+    nxSetupChannel(channel);
+    nxStatus("Device found. Connecting...");
+  });
+
+  nxPeer.on("error", error => {
+    nxStatus("Connection problem: " + error.type);
+  });
+};
+
+// SENDER: scan the receiver's QR
+async function nxStartScanner() {
+  if (!window.Peer || !("BarcodeDetector" in window)) {
+    nxStatus("PeerJS or QR scanning is unavailable in this browser.");
+    return;
+  }
+
+  try {
+    const detector = new BarcodeDetector({
+      formats: ["qr_code"]
+    });
+
+    nxStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: nxFacing },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    });
+
+    const video = nxEl("nxVideo");
+    video.srcObject = nxStream;
+    nxEl("nxCamera").style.display = "block";
+    await video.play();
+
+    nxScanning = true;
+    nxStatus("Camera ready. Scan the other device's QR code.");
+
+    const scan = async () => {
+      if (!nxScanning) return;
+
+      try {
+        if (video.readyState >= 2) {
           const codes = await detector.detect(video);
 
           if (codes.length && codes[0].rawValue) {
-            const value = codes[0].rawValue;
-
             nxScanning = false;
             nxStopScanner();
-
-            await nxHandleScanned(value);
+            await nxHandleScanned(codes[0].rawValue);
             return;
           }
         }
-      } catch (error) {
-        // Continue scanning if one detection attempt fails.
-      }
+      } catch (error) {}
 
       if (nxScanning) {
         setTimeout(() => requestAnimationFrame(scan), 100);
@@ -615,38 +685,96 @@ async function nxStartScanner() {
     requestAnimationFrame(scan);
 
   } catch (error) {
-    nxStatus("Camera error: " + error.message +
-      ". Check camera permission and close other camera apps.");
+    nxStatus("Camera error: " + error.message);
   }
-                } 
+}
+
 function nxStopScanner() {
   nxScanning = false;
+
   if (nxStream) {
     nxStream.getTracks().forEach(track => track.stop());
     nxStream = null;
   }
+
   nxEl("nxVideo").srcObject = null;
   nxEl("nxCamera").style.display = "none";
+}
+
+async function nxSwitchCamera(facing) {
+  nxFacing = facing;
+
+  if (nxScanning) {
+    nxStopScanner();
+    await nxStartScanner();
+  }
+}
+
+async function nxHandleScanned(value) {
+  try {
+    const data = JSON.parse(value);
+
+    if (
+      data.app !== "NEXORA" ||
+      data.type !== "peer-connect" ||
+      !data.id
+    ) {
+      throw new Error("This is not a valid NEXORA connection QR.");
+    }
+
+    nxClosePeer();
+    nxStatus("QR recognised. Connecting to the other device...");
+
+    nxPeer = new Peer();
+
+    nxPeer.on("open", () => {
+      nxChannel = nxPeer.connect(data.id, {
+        reliable: true
+      });
+
+      nxSetupChannel(nxChannel);
+    });
+
+    nxPeer.on("error", error => {
+      nxStatus("Connection problem: " + error.type);
+    });
+
+  } catch (error) {
+    nxStatus("Could not connect: " + error.message);
+  }
 }
 
 nxEl("nxScan").onclick = nxStartScanner;
 nxEl("nxStop").onclick = nxStopScanner;
 
-function nxWaitBuffer() {
-  if (!nxChannel || nxChannel.bufferedAmount < 1048576) {
-    return Promise.resolve();
-  }
+nxEl("nxBackCamera").onclick = () =>
+  nxSwitchCamera("environment");
 
+nxEl("nxFrontCamera").onclick = () =>
+  nxSwitchCamera("user");
+
+// Wait for the sending channel to have space
+function nxWaitBuffer() {
   return new Promise(resolve => {
-    nxChannel.addEventListener("bufferedamountlow", resolve, {
-      once: true
-    });
+    const check = () => {
+      if (
+        !nxChannel ||
+        !nxChannel.dataChannel ||
+        nxChannel.dataChannel.bufferedAmount < 1048576
+      ) {
+        resolve();
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
   });
 }
 
+// SEND SELECTED FILES
 nxEl("nxSend").onclick = async () => {
-  if (!nxChannel || nxChannel.readyState !== "open") {
-    nxStatus("Connect to the other device first.");
+  if (!nxChannel || !nxChannel.open) {
+    nxStatus("Connect to the receiving device first.");
     return;
   }
 
@@ -673,27 +801,33 @@ nxEl("nxSend").onclick = async () => {
         await nxWaitBuffer();
 
         const chunk = await file.slice(
-          offset, offset + chunkSize
+          offset,
+          offset + chunkSize
         ).arrayBuffer();
 
         nxChannel.send(chunk);
 
         nxEl("nxProgress").textContent =
-          "Sending " + file.name + "… " +
+          "Sending " + file.name + "... " +
           Math.round((offset + chunk.byteLength) / file.size * 100) + "%";
       }
 
       await nxWaitBuffer();
-      nxChannel.send(JSON.stringify({ type: "file-end" }));
+
+      nxChannel.send(JSON.stringify({
+        type: "file-end"
+      }));
     }
 
-    nxEl("nxProgress").textContent = "All selected files sent.";
+    nxEl("nxProgress").textContent =
+      "All selected files sent.";
+
   } catch (error) {
     nxEl("nxProgress").textContent =
-      "Transfer stopped: " + error.message;
-  } finally {
-    nxEl("nxSend").disabled = nxChannel.readyState !== "open";
+      "Transfer problem: " + error.message;
   }
+
+  nxEl("nxSend").disabled = !nxChannel || !nxChannel.open;
 };
   
 </script>
