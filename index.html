@@ -214,7 +214,7 @@ function nexoraRender() {
     size.textContent = nexoraSize(file.size);
     details.append(name, size);
 
-    cooknst remove = document.createElement("button");
+    const remove = document.createElement("button");
     remove.className = "secondary";
     remove.textContent = "Remove";
     remove.onclick = () => {
