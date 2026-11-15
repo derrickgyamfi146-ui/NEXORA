@@ -214,7 +214,7 @@ function nexoraRender() {
     size.textContent = nexoraSize(file.size);
     details.append(name, size);
 
-    const remove = document.createElement("button");
+    cooknst remove = document.createElement("button");
     remove.className = "secondary";
     remove.textContent = "Remove";
     remove.onclick = () => {
@@ -246,60 +246,118 @@ document.getElementById("nexoraClear").onclick = () => {
 };
 
 nexoraRender();
-// NEXORA DIRECT DEVICE-TO-DEVICE TRANSFER
+// NEXORA QR-BASED DIRECT CONNECTION
 let nxPeer = null;
 let nxChannel = null;
 let nxIncoming = null;
+let nxStream = null;
+let nxScanning = false;
 
 const nxPanel = document.createElement("section");
 nxPanel.className = "section";
 nxPanel.innerHTML = `
-  <h3>Direct device connection</h3>
-  <p class="muted">Connect two devices to share real files.</p>
-  <p id="nxStatus" class="scan-status">Not connected yet.</p>
+  <h3>NEXORA QR Connection</h3>
+  <p class="muted">Connect devices by scanning QR codes. No long codes to type.</p>
+  <p id="nxStatus" class="scan-status">Not connected.</p>
 
-  <button class="primary" id="nxOfferBtn" style="width:100%;margin:8px 0">
-    1. Create connection offer
+  <button class="primary" id="nxCreate" style="width:100%;margin:10px 0">
+    1. Create connection QR
   </button>
 
-  <label class="muted">Your offer — copy to the other device</label>
-  <textarea id="nxOffer" rows="4" style="width:100%;margin:6px 0 10px;padding:10px"></textarea>
-  <button class="secondary" id="nxCopyOffer">Copy offer</button>
+  <div id="nxQr" class="qr"></div>
+  <p id="nxQrInfo" class="muted center">Your connection QR will appear here.</p>
 
-  <hr>
+  <button class="primary" id="nxScan" style="width:100%;margin:10px 0">
+    2. Scan the other device's QR
+  </button>
 
-  <label class="muted">Paste the other device's offer here</label>
-  <textarea id="nxRemoteOffer" rows="4" style="width:100%;margin:6px 0 10px;padding:10px"></textarea>
-  <button class="primary" id="nxAnswerBtn" style="width:100%">2. Create answer</button>
+  <div id="nxCamera" style="display:none;margin-top:12px">
+    <video id="nxVideo" playsinline style="width:100%;border-radius:12px"></video>
+    <button class="secondary" id="nxStop" style="width:100%;margin-top:8px">Stop camera</button>
+  </div>
 
-  <label class="muted">Your answer — copy back to the first device</label>
-  <textarea id="nxAnswer" rows="4" style="width:100%;margin:6px 0 10px;padding:10px"></textarea>
-  <button class="secondary" id="nxCopyAnswer">Copy answer</button>
-
-  <hr>
-
-  <label class="muted">First device: paste the answer here</label>
-  <textarea id="nxRemoteAnswer" rows="4" style="width:100%;margin:6px 0 10px;padding:10px"></textarea>
-  <button class="primary" id="nxApplyAnswer" style="width:100%">3. Complete connection</button>
-
-  <button class="primary" id="nxSendBtn" style="width:100%;margin-top:18px" disabled>
+  <button class="primary" id="nxSend" style="width:100%;margin-top:15px" disabled>
     Send selected files
   </button>
+
   <p id="nxProgress" class="muted">No transfer started.</p>
-  <div id="nxReceived" style="margin-top:10px"></div>
+  <div id="nxReceived"></div>
 `;
 
 document.getElementById("connect").appendChild(nxPanel);
 
+const nxEl = id => document.getElementById(id);
+
 function nxStatus(message) {
-  document.getElementById("nxStatus").textContent = message;
+  nxEl("nxStatus").textContent = message;
 }
 
-function nxWaitForIce(peer) {
-  if (peer.iceGatheringState === "complete") return Promise.resolve();
+async function nxEncodeSignal(data) {
+  const bytes = new TextEncoder().encode(JSON.stringify(data));
+
+  if ("CompressionStream" in window) {
+    const stream = new Blob([bytes]).stream()
+      .pipeThrough(new CompressionStream("deflate"));
+    const compressed = new Uint8Array(
+      await new Response(stream).arrayBuffer()
+    );
+    let binary = "";
+    compressed.forEach(byte => binary += String.fromCharCode(byte));
+    return "NX1:" + btoa(binary);
+  }
+
+  return "NX0:" + btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+}
+
+async function nxDecodeSignal(value) {
+  if (value.startsWith("NX1:")) {
+    if (!("DecompressionStream" in window)) {
+      throw new Error("This browser cannot read compressed QR codes.");
+    }
+
+    const binary = atob(value.slice(4));
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+    const stream = new Blob([bytes]).stream()
+      .pipeThrough(new DecompressionStream("deflate"));
+
+    return JSON.parse(
+      await new Response(stream).text()
+    );
+  }
+
+  if (value.startsWith("NX0:")) {
+    return JSON.parse(
+      decodeURIComponent(escape(atob(value.slice(4))))
+    );
+  }
+
+  throw new Error("This is not a NEXORA connection QR.");
+}
+
+function nxShowQR(value, message) {
+  const target = nxEl("nxQr");
+  target.innerHTML = "";
+
+  try {
+    new QRCode(target, {
+      text: value,
+      width: 230,
+      height: 230,
+      correctLevel: QRCode.CorrectLevel.L
+    });
+    nxEl("nxQrInfo").textContent = message;
+  } catch (error) {
+    nxStatus("QR could not be created. " + error.message);
+  }
+}
+
+function nxWaitIce(peer) {
+  if (peer.iceGatheringState === "complete") {
+    return Promise.resolve();
+  }
 
   return new Promise(resolve => {
-    const timer = setTimeout(done, 15000);
+    const timer = setTimeout(done, 20000);
 
     function done() {
       clearTimeout(timer);
@@ -317,22 +375,22 @@ function nxWaitForIce(peer) {
 
 function nxSetupChannel(channel) {
   nxChannel = channel;
-  nxChannel.binaryType = "arraybuffer";
-  nxChannel.bufferedAmountLowThreshold = 262144;
+  channel.binaryType = "arraybuffer";
+  channel.bufferedAmountLowThreshold = 262144;
 
-  nxChannel.onopen = () => {
-    nxStatus("Connected! You can now send files.");
-    document.getElementById("nxSendBtn").disabled = false;
+  channel.onopen = () => {
+    nxStatus("Connected! Ready to share files.");
+    nxEl("nxSend").disabled = false;
   };
 
-  nxChannel.onclose = () => {
+  channel.onclose = () => {
     nxStatus("Connection closed.");
-    document.getElementById("nxSendBtn").disabled = true;
+    nxEl("nxSend").disabled = true;
   };
 
-  nxChannel.onerror = () => nxStatus("Connection error. Please reconnect.");
+  channel.onerror = () => nxStatus("Connection error.");
 
-  nxChannel.onmessage = event => {
+  channel.onmessage = event => {
     if (typeof event.data === "string") {
       let message;
       try {
@@ -350,42 +408,35 @@ function nxSetupChannel(channel) {
           received: 0
         };
 
-        document.getElementById("nxProgress").textContent =
+        nxEl("nxProgress").textContent =
           "Receiving " + nxIncoming.name + "…";
+      }
 
-      } else if (message.type === "file-end" && nxIncoming) {
+      if (message.type === "file-end" && nxIncoming) {
         const blob = new Blob(nxIncoming.chunks, {
           type: nxIncoming.mime
         });
-
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
 
         link.href = url;
         link.download = nxIncoming.name;
-        link.textContent =
-          "Download received file: " + nxIncoming.name;
-
+        link.textContent = "Download: " + nxIncoming.name;
         link.style.display = "block";
-        link.style.padding = "10px 0";
+        link.style.padding = "12px 0";
 
-        document.getElementById("nxReceived").appendChild(link);
-
-        document.getElementById("nxProgress").textContent =
+        nxEl("nxReceived").appendChild(link);
+        nxEl("nxProgress").textContent =
           "Received " + nxIncoming.name + " successfully.";
-
         nxIncoming = null;
       }
-
     } else if (nxIncoming) {
       nxIncoming.chunks.push(event.data);
       nxIncoming.received += event.data.byteLength;
 
-      document.getElementById("nxProgress").textContent =
+      nxEl("nxProgress").textContent =
         "Receiving… " +
-        Math.min(100, Math.round(
-          nxIncoming.received / nxIncoming.size * 100
-        )) + "%";
+        Math.round(nxIncoming.received / nxIncoming.size * 100) + "%";
     }
   };
 }
@@ -400,154 +451,170 @@ function nxMakePeer() {
   nxPeer.onconnectionstatechange = () => {
     if (nxPeer.connectionState === "connected") {
       nxStatus("Connected securely. Ready to share.");
-    }
-
-    if (nxPeer.connectionState === "failed") {
+    } else if (nxPeer.connectionState === "failed") {
       nxStatus("Connection failed. Try both devices on the same Wi-Fi.");
-    }
-
-    if (nxPeer.connectionState === "disconnected") {
-      nxStatus("Connection interrupted.");
+    } else if (nxPeer.connectionState === "disconnected") {
+      nxStatus("Connection interrupted. Waiting for recovery…");
     }
   };
 
   return nxPeer;
 }
 
-async function nxCopy(id) {
-  const field = document.getElementById(id);
+nxEl("nxCreate").onclick = async () => {
+  try {
+    nxStatus("Creating connection QR…");
+    nxMakePeer();
+    nxSetupChannel(nxPeer.createDataChannel("nexora-files"));
 
-  if (!field.value) {
-    nxStatus("Create the connection information first.");
+    const offer = await nxPeer.createOffer();
+    await nxPeer.setLocalDescription(offer);
+    await nxWaitIce(nxPeer);
+
+    const signal = await nxEncodeSignal({
+      app: "NEXORA",
+      type: "offer",
+      description: nxPeer.localDescription
+    });
+
+    nxShowQR(signal, "Let the other device scan this QR code.");
+    nxStatus("Connection QR ready. Ask the other device to scan it.");
+  } catch (error) {
+    nxStatus("Could not create QR: " + error.message);
+  }
+};
+
+async function nxHandleScanned(value) {
+  try {
+    const data = await nxDecodeSignal(value);
+
+    if (data.app !== "NEXORA" || !data.description) {
+      throw new Error("Invalid NEXORA connection information.");
+    }
+
+    if (data.type === "offer") {
+      nxStatus("Offer scanned. Preparing your response QR…");
+
+      nxMakePeer();
+      nxPeer.ondatachannel = event => nxSetupChannel(event.channel);
+
+      await nxPeer.setRemoteDescription(data.description);
+
+      const answer = await nxPeer.createAnswer();
+      await nxPeer.setLocalDescription(answer);
+      await nxWaitIce(nxPeer);
+
+      const signal = await nxEncodeSignal({
+        app: "NEXORA",
+        type: "answer",
+        description: nxPeer.localDescription
+      });
+
+      nxShowQR(signal, "Show this response QR to the first device.");
+      nxStatus("Response QR ready. Let the first device scan it.");
+      return;
+    }
+
+    if (data.type === "answer") {
+      if (!nxPeer) {
+        throw new Error("Create the first connection QR on this device first.");
+      }
+
+      await nxPeer.setRemoteDescription(data.description);
+      nxStatus("Response accepted. Connecting the devices…");
+      nxEl("nxQrInfo").textContent =
+        "Connection response accepted.";
+      nxEl("nxQr").innerHTML = "";
+      return;
+    }
+
+    throw new Error("Unknown NEXORA QR type.");
+  } catch (error) {
+    nxStatus("QR connection problem: " + error.message);
+  }
+}
+
+async function nxStartScanner() {
+  if (!("BarcodeDetector" in window)) {
+    nxStatus("QR scanning is not supported by this browser. Try updated Chrome.");
     return;
   }
 
   try {
-    await navigator.clipboard.writeText(field.value);
-    nxStatus("Copied. Paste it into the other device.");
+    const detector = new BarcodeDetector({ formats: ["qr_code"] });
+    nxStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false
+    });
+
+    const video = nxEl("nxVideo");
+    video.srcObject = nxStream;
+    nxEl("nxCamera").style.display = "block";
+    await video.play();
+
+    nxScanning = true;
+    nxStatus("Camera ready. Point it at the other device's QR code.");
+
+    const scan = async () => {
+      if (!nxScanning) return;
+
+      try {
+        const codes = await detector.detect(video);
+        if (codes.length) {
+          nxScanning = false;
+          nxStopScanner();
+          await nxHandleScanned(codes[0].rawValue);
+          return;
+        }
+      } catch (error) {}
+
+      if (nxScanning) requestAnimationFrame(scan);
+    };
+
+    requestAnimationFrame(scan);
   } catch (error) {
-    field.focus();
-    field.select();
-    nxStatus("Text selected. Use Copy from your device's menu.");
+    nxStatus("Camera could not start. Check camera permission and HTTPS.");
   }
 }
 
-document.getElementById("nxOfferBtn").onclick = async () => {
-  try {
-    nxMakePeer();
-
-    nxSetupChannel(
-      nxPeer.createDataChannel("nexora-files")
-    );
-
-    const offer = await nxPeer.createOffer();
-    await nxPeer.setLocalDescription(offer);
-    await nxWaitForIce(nxPeer);
-
-    document.getElementById("nxOffer").value =
-      JSON.stringify(nxPeer.localDescription);
-
-    nxStatus("Offer ready. Copy it to the receiving device.");
-
-  } catch (error) {
-    nxStatus("Could not create offer: " + error.message);
+function nxStopScanner() {
+  nxScanning = false;
+  if (nxStream) {
+    nxStream.getTracks().forEach(track => track.stop());
+    nxStream = null;
   }
-};
+  nxEl("nxVideo").srcObject = null;
+  nxEl("nxCamera").style.display = "none";
+}
 
-document.getElementById("nxAnswerBtn").onclick = async () => {
-  try {
-    const offerText =
-      document.getElementById("nxRemoteOffer").value.trim();
+nxEl("nxScan").onclick = nxStartScanner;
+nxEl("nxStop").onclick = nxStopScanner;
 
-    if (!offerText) {
-      nxStatus("Paste the first device's offer first.");
-      return;
-    }
-
-    const offer = JSON.parse(offerText);
-
-    nxMakePeer();
-
-    nxPeer.ondatachannel = event => {
-      nxSetupChannel(event.channel);
-    };
-
-    await nxPeer.setRemoteDescription(offer);
-
-    const answer = await nxPeer.createAnswer();
-    await nxPeer.setLocalDescription(answer);
-    await nxWaitForIce(nxPeer);
-
-    document.getElementById("nxAnswer").value =
-      JSON.stringify(nxPeer.localDescription);
-
-    nxStatus("Answer ready. Copy it back to the first device.");
-
-  } catch (error) {
-    nxStatus("Could not create answer. Check the copied offer.");
-  }
-};
-
-document.getElementById("nxApplyAnswer").onclick = async () => {
-  try {
-    if (!nxPeer) {
-      nxStatus("First create an offer on this device.");
-      return;
-    }
-
-    const answerText =
-      document.getElementById("nxRemoteAnswer").value.trim();
-
-    if (!answerText) {
-      nxStatus("Paste the other device's answer first.");
-      return;
-    }
-
-    await nxPeer.setRemoteDescription(
-      JSON.parse(answerText)
-    );
-
-    nxStatus("Waiting for the devices to connect…");
-
-  } catch (error) {
-    nxStatus("Could not apply answer. Check the copied text.");
-  }
-};
-
-document.getElementById("nxCopyOffer").onclick =
-  () => nxCopy("nxOffer");
-
-document.getElementById("nxCopyAnswer").onclick =
-  () => nxCopy("nxAnswer");
-
-function nxWaitForBuffer() {
+function nxWaitBuffer() {
   if (!nxChannel || nxChannel.bufferedAmount < 1048576) {
     return Promise.resolve();
   }
 
   return new Promise(resolve => {
-    nxChannel.addEventListener(
-      "bufferedamountlow",
-      resolve,
-      { once: true }
-    );
+    nxChannel.addEventListener("bufferedamountlow", resolve, {
+      once: true
+    });
   });
 }
 
-document.getElementById("nxSendBtn").onclick = async () => {
+nxEl("nxSend").onclick = async () => {
   if (!nxChannel || nxChannel.readyState !== "open") {
     nxStatus("Connect to the other device first.");
     return;
   }
 
   if (!nexoraFiles.length) {
-    document.getElementById("nxProgress").textContent =
+    nxEl("nxProgress").textContent =
       "Choose files on the Send screen first.";
     return;
   }
 
-  const button = document.getElementById("nxSendBtn");
-  button.disabled = true;
+  nxEl("nxSend").disabled = true;
 
   try {
     for (const file of nexoraFiles) {
@@ -561,38 +628,29 @@ document.getElementById("nxSendBtn").onclick = async () => {
       const chunkSize = 16384;
 
       for (let offset = 0; offset < file.size; offset += chunkSize) {
-        await nxWaitForBuffer();
+        await nxWaitBuffer();
 
         const chunk = await file.slice(
-          offset,
-          offset + chunkSize
+          offset, offset + chunkSize
         ).arrayBuffer();
 
         nxChannel.send(chunk);
 
-        document.getElementById("nxProgress").textContent =
+        nxEl("nxProgress").textContent =
           "Sending " + file.name + "… " +
-          Math.min(100, Math.round(
-            (offset + chunk.byteLength) / file.size * 100
-          )) + "%";
+          Math.round((offset + chunk.byteLength) / file.size * 100) + "%";
       }
 
-      await nxWaitForBuffer();
-
-      nxChannel.send(JSON.stringify({
-        type: "file-end"
-      }));
+      await nxWaitBuffer();
+      nxChannel.send(JSON.stringify({ type: "file-end" }));
     }
 
-    document.getElementById("nxProgress").textContent =
-      "All selected files sent.";
-
+    nxEl("nxProgress").textContent = "All selected files sent.";
   } catch (error) {
-    document.getElementById("nxProgress").textContent =
+    nxEl("nxProgress").textContent =
       "Transfer stopped: " + error.message;
-
   } finally {
-    button.disabled = false;
+    nxEl("nxSend").disabled = nxChannel.readyState !== "open";
   }
 };
   
