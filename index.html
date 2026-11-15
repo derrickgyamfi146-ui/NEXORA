@@ -248,42 +248,7 @@ document.getElementById("nexoraClear").onclick = () => {
 
 nexoraRender();
 // NEXORA QR-BASED DIRECT CONNECTION
-let nxPeer = null;
-let nxChannel = null;
-let nxIncoming = null;
-let nxStream = null;
-let nxScanning = false;
 
-const nxPanel = document.createElement("section");
-nxPanel.className = "section";
-nxPanel.innerHTML = `
-  <h3>NEXORA QR Connection</h3>
-  <p class="muted">Connect devices by scanning QR codes. No long codes to type.</p>
-  <p id="nxStatus" class="scan-status">Not connected.</p>
-
-  <button class="primary" id="nxCreate" style="width:100%;margin:10px 0">
-    1. Create connection QR
-  </button>
-
-  <div id="nxQr" class="qr"></div>
-  <p id="nxQrInfo" class="muted center">Your connection QR will appear here.</p>
-
-  <button class="primary" id="nxScan" style="width:100%;margin:10px 0">
-    2. Scan the other device's QR
-  </button>
-
-  <div id="nxCamera" style="display:none;margin-top:12px">
-    <video id="nxVideo" playsinline style="width:100%;border-radius:12px"></video>
-    <button class="secondary" id="nxStop" style="width:100%;margin-top:8px">Stop camera</button>
-  </div>
-
-  <button class="primary" id="nxSend" style="width:100%;margin-top:15px" disabled>
-    Send selected files
-  </button>
-
-  <p id="nxProgress" class="muted">No transfer started.</p>
-  <div id="nxReceived"></div>
-`;
 
 document.getElementById("connect").appendChild(nxPanel);
 
@@ -342,63 +307,6 @@ function nxShowQR(value, message) {
   try {
     new QRCode(target, {
       text: value,
-      width: 230,
-      height: 230,
-      correctLevel: QRCode.CorrectLevel.L
-    });
-    nxEl("nxQrInfo").textContent = message;
-  } catch (error) {
-    nxStatus("QR could not be created. " + error.message);
-  }
-}
-
-function nxWaitIce(peer) {
-  if (peer.iceGatheringState === "complete") {
-    return Promise.resolve();
-  }
-
-  return new Promise(resolve => {
-    const timer = setTimeout(done, 20000);
-
-    function done() {
-      nxStatus("Connected securely. Ready to share.");
-    } else if (nxPeer.connectionState === "failed") {
-      nxStatus("Connection failed. Try both devices on the same Wi-Fi.");
-    } else if (nxPeer.connectionState === "disconnected") {
-      nxStatus("Connection interrupted. Waiting for recovery…");
-    }
-  };
-
-  return nxPeer;
-}
-
-nxEl("nxCreate").onclick = async () => {
-  try {
-    nxStatus("Creating connection QR…");
-    nxMakePeer();
-    nxSetupChannel(nxPeer.createDataChannel("nexora-files"));
-
-    const offer = await nxPeer.createOffer();
-    await nxPeer.setLocalDescription(offer);
-    await nxWaitIce(nxPeer);
-
-    const signal = await nxEncodeSignal({
-      app: "NEXORA",
-      type: "offer",
-      description: nxPeer.localDescription
-h
-
-    throw new Error("Unknown NEXORA QR type.");
-  } catch (error) {
-    nxStatus("QR connection problem: " + error.message);
-  }
-}
-
-async function nxStartScanner() {
-  if (!("BarcodeDetector" in window)) {
-    nxStatus("QR scanning is not supported. Try an updated Chrome browser.");
-    return;
-  }
 // NEXORA ONE-SCAN PEERJS CONNECTION
 let nxPeer = null;
 let nxChannel = null;
