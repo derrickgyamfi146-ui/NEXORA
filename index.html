@@ -247,66 +247,6 @@ document.getElementById("nexoraClear").onclick = () => {
 };
 
 nexoraRender();
-// NEXORA QR-BASED DIRECT CONNECTION
-
-
-document.getElementById("connect").appendChild(nxPanel);
-
-const nxEl = id => document.getElementById(id);
-
-function nxStatus(message) {
-  nxEl("nxStatus").textContent = message;
-}
-
-async function nxEncodeSignal(data) {
-  const bytes = new TextEncoder().encode(JSON.stringify(data));
-
-  if ("CompressionStream" in window) {
-    const stream = new Blob([bytes]).stream()
-      .pipeThrough(new CompressionStream("deflate"));
-    const compressed = new Uint8Array(
-      await new Response(stream).arrayBuffer()
-    );
-    let binary = "";
-    compressed.forEach(byte => binary += String.fromCharCode(byte));
-    return "NX1:" + btoa(binary);
-  }
-
-  return "NX0:" + btoa(unescape(encodeURIComponent(JSON.stringify(data))));
-}
-
-async function nxDecodeSignal(value) {
-  if (value.startsWith("NX1:")) {
-    if (!("DecompressionStream" in window)) {
-      throw new Error("This browser cannot read compressed QR codes.");
-    }
-
-    const binary = atob(value.slice(4));
-    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
-    const stream = new Blob([bytes]).stream()
-      .pipeThrough(new DecompressionStream("deflate"));
-
-    return JSON.parse(
-      await new Response(stream).text()
-    );
-  }
-
-  if (value.startsWith("NX0:")) {
-    return JSON.parse(
-      decodeURIComponent(escape(atob(value.slice(4))))
-    );
-  }
-
-  throw new Error("This is not a NEXORA connection QR.");
-}
-
-function nxShowQR(value, message) {
-  const target = nxEl("nxQr");
-  target.innerHTML = "";
-
-  try {
-    new QRCode(target, {
-      text: value,
 // NEXORA ONE-SCAN PEERJS CONNECTION
 let nxPeer = null;
 let nxChannel = null;
