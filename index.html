@@ -172,7 +172,7 @@ document.getElementById('fileInput').addEventListener('change',e=>{
   row.append(name,size); box.append(row);
  });
 });
-/ NEXORA improved file queue
+// NEXORA improved file queue
 let nexoraFiles = [];
 
 const fileInput = document.getElementById("fileInput");
@@ -220,7 +220,7 @@ function nexoraRender() {
     remove.onclick = () => {
       nexoraFiles.splice(index, 1);
       nexoraRender();
-    };
+    };old.name === file.name &&
 
     row.append(details, remove);
     fileList.append(row);
@@ -230,7 +230,7 @@ function nexoraRender() {
 fileInput.addEventListener("change", event => {
   [...event.target.files].forEach(file => {
     const exists = nexoraFiles.some(old =>
-      old.name &&
+      
       old.size === file.size &&
       old.lastModified === file.lastModified
     );
