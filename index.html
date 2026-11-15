@@ -246,6 +246,356 @@ document.getElementById("nexoraClear").onclick = () => {
 };
 
 nexoraRender();
+// NEXORA DIRECT DEVICE-TO-DEVICE TRANSFER
+let nxPeer = null;
+let nxChannel = null;
+let nxIncoming = null;
+
+const nxPanel = document.createElement("section");
+nxPanel.className = "section";
+nxPanel.innerHTML = `
+  <h3>Direct device connection</h3>
+  <p class="muted">Connect two devices to share real files.</p>
+  <p id="nxStatus" class="scan-status">Not connected yet.</p>
+
+  <button class="primary" id="nxOfferBtn" style="width:100%;margin:8px 0">
+    1. Create connection offer
+  </button>
+
+  <label class="muted">Your offer — copy to the other device</label>
+  <textarea id="nxOffer" rows="4" style="width:100%;margin:6px 0 10px;padding:10px"></textarea>
+  <button class="secondary" id="nxCopyOffer">Copy offer</button>
+
+  <hr>
+
+  <label class="muted">Paste the other device's offer here</label>
+  <textarea id="nxRemoteOffer" rows="4" style="width:100%;margin:6px 0 10px;padding:10px"></textarea>
+  <button class="primary" id="nxAnswerBtn" style="width:100%">2. Create answer</button>
+
+  <label class="muted">Your answer — copy back to the first device</label>
+  <textarea id="nxAnswer" rows="4" style="width:100%;margin:6px 0 10px;padding:10px"></textarea>
+  <button class="secondary" id="nxCopyAnswer">Copy answer</button>
+
+  <hr>
+
+  <label class="muted">First device: paste the answer here</label>
+  <textarea id="nxRemoteAnswer" rows="4" style="width:100%;margin:6px 0 10px;padding:10px"></textarea>
+  <button class="primary" id="nxApplyAnswer" style="width:100%">3. Complete connection</button>
+
+  <button class="primary" id="nxSendBtn" style="width:100%;margin-top:18px" disabled>
+    Send selected files
+  </button>
+  <p id="nxProgress" class="muted">No transfer started.</p>
+  <div id="nxReceived" style="margin-top:10px"></div>
+`;
+
+document.getElementById("connect").appendChild(nxPanel);
+
+function nxStatus(message) {
+  document.getElementById("nxStatus").textContent = message;
+}
+
+function nxWaitForIce(peer) {
+  if (peer.iceGatheringState === "complete") return Promise.resolve();
+
+  return new Promise(resolve => {
+    const timer = setTimeout(done, 15000);
+
+    function done() {
+      clearTimeout(timer);
+      peer.removeEventListener("icegatheringstatechange", check);
+      resolve();
+    }
+
+    function check() {
+      if (peer.iceGatheringState === "complete") done();
+    }
+
+    peer.addEventListener("icegatheringstatechange", check);
+  });
+}
+
+function nxSetupChannel(channel) {
+  nxChannel = channel;
+  nxChannel.binaryType = "arraybuffer";
+  nxChannel.bufferedAmountLowThreshold = 262144;
+
+  nxChannel.onopen = () => {
+    nxStatus("Connected! You can now send files.");
+    document.getElementById("nxSendBtn").disabled = false;
+  };
+
+  nxChannel.onclose = () => {
+    nxStatus("Connection closed.");
+    document.getElementById("nxSendBtn").disabled = true;
+  };
+
+  nxChannel.onerror = () => nxStatus("Connection error. Please reconnect.");
+
+  nxChannel.onmessage = event => {
+    if (typeof event.data === "string") {
+      let message;
+      try {
+        message = JSON.parse(event.data);
+      } catch (error) {
+        return;
+      }
+
+      if (message.type === "file-start") {
+        nxIncoming = {
+          name: message.name,
+          size: message.size,
+          mime: message.mime || "application/octet-stream",
+          chunks: [],
+          received: 0
+        };
+
+        document.getElementById("nxProgress").textContent =
+          "Receiving " + nxIncoming.name + "…";
+
+      } else if (message.type === "file-end" && nxIncoming) {
+        const blob = new Blob(nxIncoming.chunks, {
+          type: nxIncoming.mime
+        });
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+
+        link.href = url;
+        link.download = nxIncoming.name;
+        link.textContent =
+          "Download received file: " + nxIncoming.name;
+
+        link.style.display = "block";
+        link.style.padding = "10px 0";
+
+        document.getElementById("nxReceived").appendChild(link);
+
+        document.getElementById("nxProgress").textContent =
+          "Received " + nxIncoming.name + " successfully.";
+
+        nxIncoming = null;
+      }
+
+    } else if (nxIncoming) {
+      nxIncoming.chunks.push(event.data);
+      nxIncoming.received += event.data.byteLength;
+
+      document.getElementById("nxProgress").textContent =
+        "Receiving… " +
+        Math.min(100, Math.round(
+          nxIncoming.received / nxIncoming.size * 100
+        )) + "%";
+    }
+  };
+}
+
+function nxMakePeer() {
+  nxPeer = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" }
+    ]
+  });
+
+  nxPeer.onconnectionstatechange = () => {
+    if (nxPeer.connectionState === "connected") {
+      nxStatus("Connected securely. Ready to share.");
+    }
+
+    if (nxPeer.connectionState === "failed") {
+      nxStatus("Connection failed. Try both devices on the same Wi-Fi.");
+    }
+
+    if (nxPeer.connectionState === "disconnected") {
+      nxStatus("Connection interrupted.");
+    }
+  };
+
+  return nxPeer;
+}
+
+async function nxCopy(id) {
+  const field = document.getElementById(id);
+
+  if (!field.value) {
+    nxStatus("Create the connection information first.");
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(field.value);
+    nxStatus("Copied. Paste it into the other device.");
+  } catch (error) {
+    field.focus();
+    field.select();
+    nxStatus("Text selected. Use Copy from your device's menu.");
+  }
+}
+
+document.getElementById("nxOfferBtn").onclick = async () => {
+  try {
+    nxMakePeer();
+
+    nxSetupChannel(
+      nxPeer.createDataChannel("nexora-files")
+    );
+
+    const offer = await nxPeer.createOffer();
+    await nxPeer.setLocalDescription(offer);
+    await nxWaitForIce(nxPeer);
+
+    document.getElementById("nxOffer").value =
+      JSON.stringify(nxPeer.localDescription);
+
+    nxStatus("Offer ready. Copy it to the receiving device.");
+
+  } catch (error) {
+    nxStatus("Could not create offer: " + error.message);
+  }
+};
+
+document.getElementById("nxAnswerBtn").onclick = async () => {
+  try {
+    const offerText =
+      document.getElementById("nxRemoteOffer").value.trim();
+
+    if (!offerText) {
+      nxStatus("Paste the first device's offer first.");
+      return;
+    }
+
+    const offer = JSON.parse(offerText);
+
+    nxMakePeer();
+
+    nxPeer.ondatachannel = event => {
+      nxSetupChannel(event.channel);
+    };
+
+    await nxPeer.setRemoteDescription(offer);
+
+    const answer = await nxPeer.createAnswer();
+    await nxPeer.setLocalDescription(answer);
+    await nxWaitForIce(nxPeer);
+
+    document.getElementById("nxAnswer").value =
+      JSON.stringify(nxPeer.localDescription);
+
+    nxStatus("Answer ready. Copy it back to the first device.");
+
+  } catch (error) {
+    nxStatus("Could not create answer. Check the copied offer.");
+  }
+};
+
+document.getElementById("nxApplyAnswer").onclick = async () => {
+  try {
+    if (!nxPeer) {
+      nxStatus("First create an offer on this device.");
+      return;
+    }
+
+    const answerText =
+      document.getElementById("nxRemoteAnswer").value.trim();
+
+    if (!answerText) {
+      nxStatus("Paste the other device's answer first.");
+      return;
+    }
+
+    await nxPeer.setRemoteDescription(
+      JSON.parse(answerText)
+    );
+
+    nxStatus("Waiting for the devices to connect…");
+
+  } catch (error) {
+    nxStatus("Could not apply answer. Check the copied text.");
+  }
+};
+
+document.getElementById("nxCopyOffer").onclick =
+  () => nxCopy("nxOffer");
+
+document.getElementById("nxCopyAnswer").onclick =
+  () => nxCopy("nxAnswer");
+
+function nxWaitForBuffer() {
+  if (!nxChannel || nxChannel.bufferedAmount < 1048576) {
+    return Promise.resolve();
+  }
+
+  return new Promise(resolve => {
+    nxChannel.addEventListener(
+      "bufferedamountlow",
+      resolve,
+      { once: true }
+    );
+  });
+}
+
+document.getElementById("nxSendBtn").onclick = async () => {
+  if (!nxChannel || nxChannel.readyState !== "open") {
+    nxStatus("Connect to the other device first.");
+    return;
+  }
+
+  if (!nexoraFiles.length) {
+    document.getElementById("nxProgress").textContent =
+      "Choose files on the Send screen first.";
+    return;
+  }
+
+  const button = document.getElementById("nxSendBtn");
+  button.disabled = true;
+
+  try {
+    for (const file of nexoraFiles) {
+      nxChannel.send(JSON.stringify({
+        type: "file-start",
+        name: file.name,
+        size: file.size,
+        mime: file.type
+      }));
+
+      const chunkSize = 16384;
+
+      for (let offset = 0; offset < file.size; offset += chunkSize) {
+        await nxWaitForBuffer();
+
+        const chunk = await file.slice(
+          offset,
+          offset + chunkSize
+        ).arrayBuffer();
+
+        nxChannel.send(chunk);
+
+        document.getElementById("nxProgress").textContent =
+          "Sending " + file.name + "… " +
+          Math.min(100, Math.round(
+            (offset + chunk.byteLength) / file.size * 100
+          )) + "%";
+      }
+
+      await nxWaitForBuffer();
+
+      nxChannel.send(JSON.stringify({
+        type: "file-end"
+      }));
+    }
+
+    document.getElementById("nxProgress").textContent =
+      "All selected files sent.";
+
+  } catch (error) {
+    document.getElementById("nxProgress").textContent =
+      "Transfer stopped: " + error.message;
+
+  } finally {
+    button.disabled = false;
+  }
+};
+  
 </script>
 </body>
 </html>
