@@ -230,7 +230,22 @@ function nexoraRender() {
 fileInput.addEventListener("change", event => {
   [...event.target.files].forEach(file => {
     const exists = nexoraFiles.some(old =>
-      old.nam
+      old.name.name &&
+      old.size === file.size &&
+      old.lastModified === file.lastModified
+    );
+    if (!exists) nexoraFiles.push(file);
+  });
+  event.target.value = "";
+  nexoraRender();
+});
+
+document.getElementById("nexoraClear").onclick = () => {
+  nexoraFiles = [];
+  nexoraRender();
+};
+
+nexoraRender();
 </script>
 </body>
 </html>
