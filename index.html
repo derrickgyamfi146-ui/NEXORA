@@ -172,6 +172,79 @@ document.getElementById('fileInput').addEventListener('change',e=>{
   row.append(name,size); box.append(row);
  });
 });
-</script>
+</script>// NEXORA improved file queue
+let nexoraFiles = [];
+
+const fileInput = document.getElementById("fileInput");
+const fileList = document.getElementById("selectedFiles");
+
+const fileTools = document.createElement("div");
+fileTools.className = "section";
+fileTools.style.marginTop = "16px";
+fileTools.innerHTML = `
+  <div class="section-head">
+    <h3>File selection</h3>
+    <button class="secondary" id="nexoraClear">Clear all</button>
+  </div>
+  <p id="nexoraSummary" class="muted">No files selected</p>
+`;
+fileList.parentNode.insertBefore(fileTools, fileList);
+
+function nexoraSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(2) + " MB";
+  return (bytes / 1073741824).toFixed(2) + " GB";
+}
+
+function nexoraRender() {
+  fileList.innerHTML = "";
+  const total = nexoraFiles.reduce((sum, file) => sum + file.size, 0);
+  document.getElementById("nexoraSummary").textContent =
+    nexoraFiles.length + " file(s) selected · " + nexoraSize(total) + " total";
+
+  nexoraFiles.forEach((file, index) => {
+    const row = document.createElement("div");
+    row.className = "file";
+
+    const details = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = file.name;
+    const size = document.createElement("small");
+    size.textContent = nexoraSize(file.size);
+    details.append(name, size);
+
+    const remove = document.createElement("button");
+    remove.className = "secondary";
+    remove.textContent = "Remove";
+    remove.onclick = () => {
+      nexoraFiles.splice(index, 1);
+      nexoraRender();
+    };
+
+    row.append(details, remove);
+    fileList.append(row);
+  });
+}
+
+fileInput.addEventListener("change", event => {
+  [...event.target.files].forEach(file => {
+    const exists = nexoraFiles.some(old =>
+      old.name === file.name &&
+      old.size === file.size &&
+      old.lastModified === file.lastModified
+    );
+    if (!exists) nexoraFiles.push(file);
+  });
+  event.target.value = "";
+  nexoraRender();
+});
+
+document.getElementById("nexoraClear").onclick = () => {
+  nexoraFiles = [];
+  nexoraRender();
+};
+
+nexoraRender();
 </body>
 </html>
