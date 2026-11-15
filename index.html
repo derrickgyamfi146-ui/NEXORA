@@ -230,7 +230,7 @@ function nexoraRender() {
 fileInput.addEventListener("change", event => {
   [...event.target.files].forEach(file => {
     const exists = nexoraFiles.some(old =>
-      old.name.name &&
+      old.name &&
       old.size === file.size &&
       old.lastModified === file.lastModified
     );
