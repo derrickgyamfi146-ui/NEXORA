@@ -60,7 +60,107 @@ button{font:inherit;cursor:pointer;border:0}.app{max-width:1050px;margin:auto;pa
   border-color:var(--cyan);
   transform:scale(.97);
   }
-                                                                                                                                                           </style>
+  /* NEXORA floating transfer drawer */
+.nx-drawer-button{
+  position:fixed;
+  right:18px;
+  bottom:82px;
+  z-index:1000;
+  width:58px;
+  height:58px;
+  border-radius:20px;
+  background:linear-gradient(135deg,var(--blue),var(--cyan));
+  color:white;
+  font-size:25px;
+  box-shadow:0 8px 28px #0006;
+}
+.nx-drawer-overlay{
+  position:fixed;
+  inset:0;
+  z-index:1001;
+  background:#0008;
+  opacity:0;
+  visibility:hidden;
+  transition:.25s;
+}
+.nx-drawer-overlay.open{
+  opacity:1;
+  visibility:visible;
+}
+.nx-drawer{
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  max-height:75vh;
+  overflow:auto;
+  padding:12px 18px 28px;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:25px 25px 0 0;
+  transform:translateY(100%);
+  transition:transform .3s ease;
+}
+.nx-drawer-overlay.open .nx-drawer{
+  transform:translateY(0);
+}
+.nx-drawer-handle{
+  width:42px;
+  height:5px;
+  border-radius:9px;
+  background:var(--muted);
+  opacity:.5;
+  margin:0 auto 18px;
+}
+.nx-drawer-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:16px;
+}
+.nx-drawer-head h3{
+  margin:0;
+  font-size:19px;
+}
+.nx-drawer-close{
+  background:var(--panel2);
+  color:var(--text);
+  border-radius:11px;
+  width:38px;
+  height:38px;
+  font-size:20px;
+}
+.nx-drawer-tabs{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:7px;
+  padding:5px;
+  background:var(--panel2);
+  border-radius:13px;
+}
+.nx-drawer-tabs button{
+  padding:11px 4px;
+  border-radius:10px;
+  background:transparent;
+  color:var(--muted);
+  font-size:12px;
+}
+.nx-drawer-tabs button.active{
+  background:var(--blue);
+  color:white;
+}
+.nx-drawer-content{
+  min-height:150px;
+  padding:18px 4px;
+}
+.nx-drawer-empty{
+  text-align:center;
+  color:var(--muted);
+  padding:35px 10px;
+  font-size:13px;
+  line-height:1.6;
+  }
+ </style>                                                                                                                                                          </style>
 </head>
 <body>
 <div class="app">
