@@ -254,22 +254,39 @@ let nxScanning = false;
 let nxFacing = "environment";
 
 const nxPanel = document.createElement("section");
-nxPanel.className = "section";
+nxPanel.className = "section nx-panel";
 nxPanel.innerHTML = `
-  <h3>NEXORA One-Scan Connection</h3>
-  <p class="muted">Create one QR code to receive, or scan another device's QR to send.</p>
-  <p id="nxStatus" class="scan-status">Not connected.</p>
+   <div class="nx-heading">
+    <div class="nx-mark">N</div>
+    <div>
+      <h3>NEXORA connection</h3>
+      <p class="muted" style="margin:4px 0 0">Fast, simple file sharing</p>
+    </div>
+  </div>
 
-  <button class="primary" id="nxCreate" style="width:100%;margin:10px 0">
-    Create QR to receive files
-  </button>
+  <p class="nx-lead">Choose what this device should do. Keep both devices on this screen until they connect.</p>
+
+  <div class="nx-steps">
+    <div class="nx-step"><b>1 · RECEIVE</b><span>Show a QR code</span></div>
+    <div class="nx-step"><b>2 · SCAN</b><span>Use the other device</span></div>
+    <div class="nx-step"><b>3 · SEND</b><span>Share your files</span></div>
+  </div>
+
+  <div class="nx-status-card">
+    <strong>Connection status</strong>
+    <span id="nxStatus" class="scan-status">Not connected yet. Choose an action below.</span>
+  </div>
+
+  <button class="primary" id="nxCreate" style="width:100%;margin:8px 0">Receive files · Create my QR</button>
+  <p class="muted center">Use this on the device that will receive the files.</p>
 
   <div id="nxQr" class="qr"></div>
   <p id="nxQrInfo" class="muted center">Your connection QR will appear here.</p>
 
-  <button class="primary" id="nxScan" style="width:100%;margin:10px 0">
-    Scan QR to send files
-  </button>
+  <div style="height:1px;background:var(--line);margin:20px 0"></div>
+
+  <button class="primary" id="nxScan" style="width:100%;margin:8px 0">Send files · Scan the QR</button>
+  <p class="muted center">Use this on the device that has the files.</p>
 
   <div id="nxCamera" style="display:none;margin-top:12px">
     <video id="nxVideo" playsinline muted style="width:100%;border-radius:12px"></video>
@@ -280,12 +297,10 @@ nxPanel.innerHTML = `
     <button class="secondary" id="nxStop" style="width:100%;margin-top:8px">Stop camera</button>
   </div>
 
-  <button class="primary" id="nxSend" style="width:100%;margin-top:15px" disabled>
-    Send selected files
-  </button>
+  <button class="primary" id="nxSend" style="width:100%;margin-top:15px" disabled>Send selected files</button>
 
-  <p id="nxProgress" class="muted">No transfer started.</p>
-  <div id="nxReceived"></div>
+  <p id="nxProgress" class="muted">Your transfer progress will appear here.</p>
+  <div id="nxReceived"></div> 
 `;
 
 document.getElementById("connect").appendChild(nxPanel);
