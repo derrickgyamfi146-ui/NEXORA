@@ -37,8 +37,81 @@ button{font:inherit;cursor:pointer;border:0}.app{max-width:1050px;margin:auto;pa
   <div class="brand"><div class="logo">N</div><div><h1>NEXORA</h1><small>SHARE WITHOUT LIMITS</small></div></div>
   <div class="top-actions"><button class="icon-btn" id="themeBtn" aria-label="Toggle theme">☼</button><button class="icon-btn" aria-label="Settings" onclick="showScreen('settings')">⚙</button></div>
 </header>
-
 <main id="home" class="screen active">
+  <h2 class="welcome">Share anything. Anywhere.</h2>
+  <p class="sub">Your personal space for sharing files.</p>
+
+  <div class="connection">
+    <span class="dot"></span>
+    <span>Ready to connect</span>
+    <span style="margin-left:auto">NEXORA</span>
+  </div>
+
+  <section class="hero">
+    <h2>Send files in seconds.</h2>
+    <p>Connect your devices and share photos, videos, music and documents.</p>
+    <div class="hero-actions">
+      <button class="primary" onclick="showScreen('send')">Send files →</button>
+      <button class="secondary" onclick="showScreen('connect')">Connect device</button>
+    </div>
+  </section>
+
+  <section class="section nx-categories">
+    <div class="section-head">
+      <h3>Browse files</h3>
+      <span class="muted">Choose a category</span>
+    </div>
+
+    <div class="nx-category-grid">
+      <button class="nx-category" onclick="nexoraBrowse('image/*')">
+        <span>▧</span><strong>Photos</strong>
+      </button>
+      <button class="nx-category" onclick="nexoraBrowse('video/*')">
+        <span>▷</span><strong>Videos</strong>
+      </button>
+      <button class="nx-category" onclick="nexoraBrowse('audio/*')">
+        <span>♫</span><strong>Music</strong>
+      </button>
+      <button class="nx-category" onclick="nexoraBrowse('.pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx')">
+        <span>▤</span><strong>Documents</strong>
+      </button>
+      <button class="nx-category" onclick="nexoraBrowse('*/*')">
+        <span>▦</span><strong>All files</strong>
+      </button>
+    </div>
+  </section>
+
+  <div class="grid">
+    <button class="action-card" onclick="showScreen('send')">
+      <div class="action-icon">↗</div>
+      <strong>Send</strong>
+      <span>Choose files to share</span>
+    </button>
+    <button class="action-card" onclick="showScreen('receive')">
+      <div class="action-icon">↙</div>
+      <strong>Receive</strong>
+      <span>Get files from a device</span>
+    </button>
+    <button class="action-card" onclick="showScreen('connect')">
+      <div class="action-icon">⌗</div>
+      <strong>Connect</strong>
+      <span>Pair with another device</span>
+    </button>
+    <button class="action-card" onclick="showScreen('history')">
+      <div class="action-icon">◷</div>
+      <strong>History</strong>
+      <span>View recent transfers</span>
+    </button>
+  </div>
+
+  <section class="section">
+    <div class="section-head">
+      <h3>Recent activity</h3>
+      <button class="nav" onclick="showScreen('history')">View all</button>
+    </div>
+    <div class="empty">Your recent transfers will appear here.</div>
+  </section>
+</main>
   <h2 class="welcome">Move files. Freely.</h2><p class="sub">A simpler way to share across your devices.</p>
   <div class="connection"><span class="dot"></span><span>Ready to connect</span><span style="margin-left:auto">Local sharing preview</span></div>
   <section class="hero"><h2>Your files, your way.</h2><p>Connect nearby devices and move photos, videos and documents with a smooth, secure sharing experience.</p><div class="hero-actions"><button class="primary" onclick="showScreen('send')">Send files&nbsp; →</button><button class="secondary" onclick="showScreen('receive')">Receive files</button></div></section>
