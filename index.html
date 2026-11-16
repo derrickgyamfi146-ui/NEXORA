@@ -584,21 +584,26 @@ function nxSetupChannel(channel) {
       }
 
       if (message.type === "file-start") {
-          const nxReceiveRecord = {
+        const nxReceiveRecord = {
           name: message.name,
+          size: message.size,
           direction: "received",
-          status: "active"
+          status: "active",
+          progress: 0
         };
 
         nxTransferRecords.push(nxReceiveRecord);
-        nxRenderTransferDrawer();      
+
         nxIncoming = {
           name: message.name,
           size: message.size,
           mime: message.mime || "application/octet-stream",
           chunks: [],
-          received: 0
+          received: 0,
+          record: nxReceiveRecord
         };
+
+        nxRenderTransferDrawer();
 
         nxEl("nxProgress").textContent =
           "Receiving " + nxIncoming.name + "...";
@@ -619,9 +624,13 @@ function nxSetupChannel(channel) {
         link.style.padding = "12px";
 
         nxEl("nxReceived").appendChild(link);
+
         nxEl("nxProgress").textContent =
           "Received " + nxIncoming.name + " successfully.";
-        nxReceiveRecord.status = "completed";
+
+        nxIncoming.record.status = "completed";
+        nxIncoming.record.progress = 100;
+
         nxRenderTransferDrawer();
         nxIncoming = null;
       }
@@ -630,12 +639,19 @@ function nxSetupChannel(channel) {
       nxIncoming.received += data.byteLength || data.size || 0;
 
       const percent = nxIncoming.size
-        ? Math.round(nxIncoming.received / nxIncoming.size * 100)
+        ? Math.min(100, Math.round(
+            nxIncoming.received / nxIncoming.size * 100
+          ))
         : 100;
+
+      nxIncoming.record.progress = percent;
 
       nxEl("nxProgress").textContent =
         "Receiving... " + percent + "%";
-    }
+
+      nxRenderTransferDrawer();
+          }
+     
   });
 }
 
@@ -907,40 +923,93 @@ nxEl("nxSend").onclick = async () => {
 };   
 const nxTransferRecords = [];
 let nxTransferTab = "sending";
-
-function nxToggleDrawer(open) {
-  const drawer = document.getElementById("nxDrawerOverlay");
-  drawer.classList.toggle("open", open);
-}
-
-function nxShowTransferTab(tab) {
-  nxTransferTab = tab;
-
-  document.querySelectorAll("[data-transfer-tab]").forEach(button => {
-    button.classList.toggle("active", button.dataset.transferTab === tab);
-  });
-
-  nxRenderTransferDrawer();
-}
-
 function nxRenderTransferDrawer() {
   const content = document.getElementById("nxDrawerContent");
 
-  const records = nxTransferRecords.filter(item => {
-    if (nxTransferTab === "sending") return item.direction === "sent" && item.status === "active";
-    if (nxTransferTab === "receiving") return item.direction === "received" && item.status === "active";
-    return item.status === "completed";
-  });
+  const activeSent = nxTransferRecords.filter(
+    item => item.direction === "sent" && item.status === "active"
+  ).length;
 
-  if (!records.length) {
-    content.innerHTML = '<div class="nx-drawer-empty">No transfers here yet.</div>';
-    return;
-  }
+  const activeReceived = nxTransferRecords.filter(
+    item => item.direction === "received" && item.status === "active"
+  ).length;
+
+  const completed = nxTransferRecords.filter(
+    item => item.status === "completed"
+  ).length;
+
+  document.querySelector('[data-transfer-tab="sending"]').textContent =
+    "Sending (" + activeSent + ")";
+
+  document.querySelector('[data-transfer-tab="receiving"]').textContent =
+    "Receiving (" + activeReceived + ")";
+
+  document.querySelector('[data-transfer-tab="completed"]').textContent =
+    "Completed (" + completed + ")";
+
+  const records = nxTransferRecords.filter(item => {
+    if (nxTransferTab === "sending") {
+      return item.direction === "sent" && item.status === "active";
+    }
+
+    if (nxTransferTab === "receiving") {
+      return item.direction === "received" && item.status === "active";
+    }
+
+    return item.status === "completed";
+  }).slice().reverse();
 
   content.innerHTML = "";
 
+  if (!records.length) {
+    content.innerHTML =
+      '<div class="nx-drawer-empty">No transfers here yet.</div>';
+    return;
+  }
+
   records.forEach(item => {
     const row = document.createElement("div");
+    row.style.padding = "14px 8px";
+    row.style.borderBottom = "1px solid var(--line)";
+
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    name.style.display = "block";
+    name.style.overflowWrap = "anywhere";
+
+    const size = item.size || 0;
+    const sizeText = size < 1024
+      ? size + " B"
+      : size < 1048576
+        ? (size / 1024).toFixed(1) + " KB"
+        : (size / 1048576).toFixed(2) + " MB";
+
+    const detail = document.createElement("div");
+    detail.style.color = "var(--muted)";
+    detail.style.fontSize = "12px";
+    detail.style.marginTop = "6px";
+    detail.textContent =
+      item.direction + " • " + item.status + " • " + sizeText;
+
+    const track = document.createElement("div");
+    track.style.height = "6px";
+    track.style.background = "var(--panel2)";
+    track.style.borderRadius = "10px";
+    track.style.overflow = "hidden";
+    track.style.marginTop = "10px";
+
+    const fill = document.createElement("div");
+    fill.style.height = "100%";
+    fill.style.width = (item.progress || 0) + "%";
+    fill.style.background = "var(--blue)";
+    fill.style.borderRadius = "10px";
+
+    track.appendChild(fill);
+    row.append(name, detail, track);
+    content.appendChild(row);
+  });
+  }
+
     row.style.padding = "13px 8px";
     row.style.borderBottom = "1px solid var(--line)";
 
