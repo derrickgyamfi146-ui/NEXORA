@@ -872,7 +872,62 @@ nxEl("nxSend").onclick = async () => {
 
   nxEl("nxSend").disabled = !nxChannel || !nxChannel.open;
 };
-  
+const nxTransferRecords = [];
+let nxTransferTab = "sending";
+
+function nxToggleDrawer(open) {
+  const drawer = document.getElementById("nxDrawerOverlay");
+  drawer.classList.toggle("open", open);
+}
+
+function nxShowTransferTab(tab) {
+  nxTransferTab = tab;
+
+  document.querySelectorAll("[data-transfer-tab]").forEach(button => {
+    button.classList.toggle("active", button.dataset.transferTab === tab);
+  });
+
+  nxRenderTransferDrawer();
+}
+
+function nxRenderTransferDrawer() {
+  const content = document.getElementById("nxDrawerContent");
+
+  const records = nxTransferRecords.filter(item => {
+    if (nxTransferTab === "sending") return item.direction === "sent" && item.status === "active";
+    if (nxTransferTab === "receiving") return item.direction === "received" && item.status === "active";
+    return item.status === "completed";
+  });
+
+  if (!records.length) {
+    content.innerHTML = '<div class="nx-drawer-empty">No transfers here yet.</div>';
+    return;
+  }
+
+  content.innerHTML = "";
+
+  records.forEach(item => {
+    const row = document.createElement("div");
+    row.style.padding = "13px 8px";
+    row.style.borderBottom = "1px solid var(--line)";
+
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+
+    const detail = document.createElement("div");
+    detail.style.color = "var(--muted)";
+    detail.style.fontSize = "12px";
+    detail.style.marginTop = "5px";
+    detail.textContent = item.direction + " • " + item.status;
+
+    row.append(name, detail);
+    content.appendChild(row);
+  });
+}
+
+document.getElementById("nxDrawerOverlay").addEventListener("click", event => {
+  if (event.target.id === "nxDrawerOverlay") nxToggleDrawer(false);
+});  
 </script>
 </body>
 </html>
