@@ -923,6 +923,23 @@ nxEl("nxSend").onclick = async () => {
 };   
 const nxTransferRecords = [];
 let nxTransferTab = "sending";
+  function nxToggleDrawer(open) {
+  const drawer = document.getElementById("nxDrawerOverlay");
+  drawer.classList.toggle("open", open);
+}
+
+function nxShowTransferTab(tab) {
+  nxTransferTab = tab;
+
+  document.querySelectorAll("[data-transfer-tab]").forEach(button => {
+    button.classList.toggle(
+      "active",
+      button.dataset.transferTab === tab
+    );
+  });
+
+  nxRenderTransferDrawer();
+  }
 function nxRenderTransferDrawer() {
   const content = document.getElementById("nxDrawerContent");
 
