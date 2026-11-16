@@ -831,23 +831,26 @@ nxEl("nxSend").onclick = async () => {
   }
 
   if (!nexoraFiles.length) {
-    nxEl("nxProgress").textContent =
-      "Choose files on the Send screen first.";
+    nxEl("nxProgress").textContent = "Choose files on the Send screen first.";
     return;
   }
 
   nxEl("nxSend").disabled = true;
+  let nxRecord = null;
 
   try {
     for (const file of nexoraFiles) {
-            const nxRecord = {
+      nxRecord = {
         name: file.name,
+        size: file.size,
         direction: "sent",
-        status: "active"
+        status: "active",
+        progress: 0
       };
 
       nxTransferRecords.push(nxRecord);
       nxRenderTransferDrawer();
+
       nxChannel.send(JSON.stringify({
         type: "file-start",
         name: file.name,
@@ -867,32 +870,41 @@ nxEl("nxSend").onclick = async () => {
 
         nxChannel.send(chunk);
 
+        nxRecord.progress = Math.round(
+          (offset + chunk.byteLength) / file.size * 100
+        );
+
         nxEl("nxProgress").textContent =
-          "Sending " + file.name + "... " +
-          Math.round((offset + chunk.byteLength) / file.size * 100) + "%";
-      }      nxRecord.status = "completed";
-      nxRenderTransferDrawer();
+          "Sending " + file.name + "... " + nxRecord.progress + "%";
+
+        nxRenderTransferDrawer();
+      }
 
       await nxWaitBuffer();
 
       nxChannel.send(JSON.stringify({
         type: "file-end"
-      }));   
-      
+      }));
+
+      nxRecord.progress = 100;
       nxRecord.status = "completed";
       nxRenderTransferDrawer();
     }
 
-    nxEl("nxProgress").textContent =
-      "All selected files sent.";
+    nxEl("nxProgress").textContent = "All selected files sent.";
 
   } catch (error) {
+    if (nxRecord) {
+      nxRecord.status = "failed";
+      nxRenderTransferDrawer();
+    }
+
     nxEl("nxProgress").textContent =
       "Transfer problem: " + error.message;
   }
 
   nxEl("nxSend").disabled = !nxChannel || !nxChannel.open;
-};
+};   
 const nxTransferRecords = [];
 let nxTransferTab = "sending";
 
