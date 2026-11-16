@@ -277,6 +277,25 @@ button{font:inherit;cursor:pointer;border:0}.app{max-width:1050px;margin:auto;pa
   <button class="nav" data-nav="receive" onclick="showScreen('receive')">↙ &nbsp;Receive</button>
   <button class="nav" data-nav="history" onclick="showScreen('history')">◷ &nbsp;History</button>
 </nav>
+  <button class="nx-drawer-button" id="nxDrawerOpen" onclick="nxToggleDrawer(true)">⇅</button>
+
+<div class="nx-drawer-overlay" id="nxDrawerOverlay">
+  <section class="nx-drawer">
+    <div class="nx-drawer-handle"></div>
+    <div class="nx-drawer-head">
+      <h3>Your transfers</h3>
+      <button class="nx-drawer-close" onclick="nxToggleDrawer(false)">×</button>
+    </div>
+    <div class="nx-drawer-tabs">
+      <button class="active" data-transfer-tab="sending" onclick="nxShowTransferTab('sending')">Sending</button>
+      <button data-transfer-tab="receiving" onclick="nxShowTransferTab('receiving')">Receiving</button>
+      <button data-transfer-tab="completed" onclick="nxShowTransferTab('completed')">Completed</button>
+    </div>
+    <div class="nx-drawer-content" id="nxDrawerContent">
+      <div class="nx-drawer-empty">Your transfers will appear here.</div>
+    </div>
+  </section>
+</div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
