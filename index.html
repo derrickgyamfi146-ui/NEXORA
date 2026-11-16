@@ -621,7 +621,8 @@ function nxSetupChannel(channel) {
         nxEl("nxReceived").appendChild(link);
         nxEl("nxProgress").textContent =
           "Received " + nxIncoming.name + " successfully.";
-
+        nxReceiveRecord.status = "completed";
+        nxRenderTransferDrawer();
         nxIncoming = null;
       }
     } else if (nxIncoming) {
