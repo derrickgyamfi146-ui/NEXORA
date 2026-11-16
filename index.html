@@ -584,6 +584,14 @@ function nxSetupChannel(channel) {
       }
 
       if (message.type === "file-start") {
+          const nxReceiveRecord = {
+          name: message.name,
+          direction: "received",
+          status: "active"
+        };
+
+        nxTransferRecords.push(nxReceiveRecord);
+        nxRenderTransferDrawer();      
         nxIncoming = {
           name: message.name,
           size: message.size,
