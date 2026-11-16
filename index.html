@@ -831,6 +831,14 @@ nxEl("nxSend").onclick = async () => {
 
   try {
     for (const file of nexoraFiles) {
+            const nxRecord = {
+        name: file.name,
+        direction: "sent",
+        status: "active"
+      };
+
+      nxTransferRecords.push(nxRecord);
+      nxRenderTransferDrawer();
       nxChannel.send(JSON.stringify({
         type: "file-start",
         name: file.name,
