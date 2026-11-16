@@ -260,7 +260,7 @@ function stopQrScanner(updateStatus=true){
  if(box) box.style.display = "none";
  if(updateStatus){
   const status = document.getElementById("scanStatus");
-  if(status) status.textContent = "Scanner stopped.";
+  if(status) status.textContent = "Scanner stopped."
  }
 }
 function showScreen(id){
@@ -270,6 +270,12 @@ function showScreen(id){
  window.scrollTo({top:0,behavior:'smooth'});
 }
 function toggleTheme(){document.body.classList.toggle('light');}
+  function nexoraBrowse(category){
+  const picker = document.getElementById('fileInput');
+  picker.accept = category;
+  showScreen('send');
+  picker.click();
+  }
 document.getElementById('themeBtn').addEventListener('click',toggleTheme);
 refreshPairingCode();
 document.getElementById('fileInput').addEventListener('change',e=>{
