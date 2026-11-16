@@ -868,7 +868,10 @@ nxEl("nxSend").onclick = async () => {
 
       nxChannel.send(JSON.stringify({
         type: "file-end"
-      }));
+      }));   
+      
+      nxRecord.status = "completed";
+      nxRenderTransferDrawer();
     }
 
     nxEl("nxProgress").textContent =
