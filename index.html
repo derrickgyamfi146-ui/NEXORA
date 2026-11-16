@@ -29,7 +29,38 @@ button{font:inherit;cursor:pointer;border:0}.app{max-width:1050px;margin:auto;pa
 .nx-panel #nxCamera{padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
 .nx-panel #nxVideo{max-height:300px;object-fit:cover}
 .nx-panel #nxProgress{padding:12px;border-radius:12px;background:var(--panel);line-height:1.5}
-@media(max-width:380px){.nx-steps{gap:5px}.nx-step{padding:9px 5px}.nx-step span{font-size:9px}}</style>
+@media(max-width:380px){.nx-steps{gap:5px}.nx-step{padding:9px 5px}.nx-step span{font-size:9px}}
+/* NEXORA file categories */
+.nx-category-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  margin-top:14px;
+}
+.nx-category{
+  min-height:100px;
+  padding:13px 7px;
+  border:1px solid var(--line);
+  border-radius:15px;
+  background:var(--panel2);
+  color:var(--text);
+  text-align:center;
+}
+.nx-category span{
+  display:block;
+  font-size:27px;
+  color:var(--cyan);
+  margin-bottom:9px;
+}
+.nx-category strong{
+  display:block;
+  font-size:12px;
+}
+.nx-category:active{
+  border-color:var(--cyan);
+  transform:scale(.97);
+  }
+                                                                                                                                                           </style>
 </head>
 <body>
 <div class="app">
@@ -112,18 +143,6 @@ button{font:inherit;cursor:pointer;border:0}.app{max-width:1050px;margin:auto;pa
     <div class="empty">Your recent transfers will appear here.</div>
   </section>
 </main>
-  <h2 class="welcome">Move files. Freely.</h2><p class="sub">A simpler way to share across your devices.</p>
-  <div class="connection"><span class="dot"></span><span>Ready to connect</span><span style="margin-left:auto">Local sharing preview</span></div>
-  <section class="hero"><h2>Your files, your way.</h2><p>Connect nearby devices and move photos, videos and documents with a smooth, secure sharing experience.</p><div class="hero-actions"><button class="primary" onclick="showScreen('send')">Send files&nbsp; →</button><button class="secondary" onclick="showScreen('receive')">Receive files</button></div></section>
-  <div class="grid">
-    <button class="action-card" onclick="showScreen('send')"><div class="action-icon">↗</div><strong>Send</strong><span>Choose files to share</span></button>
-    <button class="action-card" onclick="showScreen('receive')"><div class="action-icon">↙</div><strong>Receive</strong><span>Get files from a device</span></button>
-    <button class="action-card" onclick="showScreen('connect')"><div class="action-icon">⌗</div><strong>Connect</strong><span>Pair with a nearby device</span></button>
-    <button class="action-card" onclick="showScreen('history')"><div class="action-icon">◷</div><strong>History</strong><span>View recent transfers</span></button>
-  </div>
-  <section class="section"><div class="section-head"><h3>Recent activity</h3><button class="nav" onclick="showScreen('history')">View all</button></div><div class="empty">No transfers yet. Your activity will appear here.</div></section>
-</main>
-
 <section id="send" class="screen">
   <button class="back" onclick="showScreen('home')">← Back</button><h2 class="screen-title">Send files</h2><p class="screen-desc">Choose what you want to share with another device.</p>
   <div class="drop"><div class="big">＋</div><h3>Select files</h3><p>Photos, videos, documents and other files</p><button class="primary" onclick="document.getElementById('fileInput').click()">Browse files</button><input id="fileInput" type="file" multiple hidden></div>
