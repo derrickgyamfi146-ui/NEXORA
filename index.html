@@ -1009,24 +1009,6 @@ function nxRenderTransferDrawer() {
     content.appendChild(row);
   });
   }
-
-    row.style.padding = "13px 8px";
-    row.style.borderBottom = "1px solid var(--line)";
-
-    const name = document.createElement("strong");
-    name.textContent = item.name;
-
-    const detail = document.createElement("div");
-    detail.style.color = "var(--muted)";
-    detail.style.fontSize = "12px";
-    detail.style.marginTop = "5px";
-    detail.textContent = item.direction + " • " + item.status;
-
-    row.append(name, detail);
-    content.appendChild(row);
-  });
-}
-
 document.getElementById("nxDrawerOverlay").addEventListener("click", event => {
   if (event.target.id === "nxDrawerOverlay") nxToggleDrawer(false);
 });  
