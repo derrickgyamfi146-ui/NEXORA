@@ -45,14 +45,12 @@ button{font:inherit;cursor:pointer;border:0}.app{max-width:1050px;margin:auto;pa
   <div class="section center"><div class="action-icon" style="margin:0 auto">⇩</div><h3>Pairing code ready</h3><p class="muted">Ask the other device to scan this code.</p><div id="receiveQr" class="qr" aria-label="NEXORA pairing QR code"></div><div id="receivePairCode" class="pair-code">------</div><button class="secondary" onclick="refreshPairingCode()">Generate new code</button><p id="receiveQrStatus" class="scan-status">Preparing your temporary preview code…</p><button class="primary" onclick="showScreen('connect')">Connect a device</button></div>
   <p class="notice">Preview only: this QR contains a temporary NEXORA demo pairing token. It does not create a live connection or receive files yet.</p>
 </section>
-
 <section id="connect" class="screen">
-  <button class="back" onclick="stopQrScanner();showScreen('home')">← Back</button><h2 class="screen-title">Connect devices</h2><p class="screen-desc">Scan another NEXORA preview pairing code.</p>
-  <div class="section center"><div class="action-icon" style="margin:0 auto">▦</div><h3>QR code scanner</h3><p class="muted">Allow camera access, then point it at a NEXORA pairing QR code.</p><div id="scanBox" class="scan-box"><video id="scanVideo" playsinline></video></div><div class="scan-actions"><button class="primary" id="startScanBtn" onclick="startQrScanner()">Open camera scanner</button><button class="secondary" onclick="stopQrScanner()">Stop scanner</button></div><p id="scanStatus" class="scan-status">Camera scanning works on supported browsers when this page is served securely (HTTPS) or opened on localhost.</p><div id="scanResult" class="muted"></div></div>
-  <div class="section center"><div class="action-icon" style="margin:0 auto">⌁</div><h3>Nearby devices</h3><p class="muted">Discover devices on your local connection.</p><button class="secondary" onclick="alert('Real nearby discovery requires the native Android networking milestone.')">Search nearby</button></div>
-  <p class="notice">Scanning can read a demo pairing token, but the web preview cannot establish a real device connection yet.</p>
+  <button class="back" onclick="showScreen('home')">← Back</button>
+  <h2 class="screen-title">Connect devices</h2>
+  <p class="screen-desc">Connect your devices and share files easily.</p>
 </section>
-
+  
 <section id="history" class="screen">
   <button class="back" onclick="showScreen('home')">← Back</button><h2 class="screen-title">Transfer history</h2><p class="screen-desc">Keep track of files shared from this device.</p>
   <div class="section"><div class="empty">Your transfer history is empty.</div></div>
