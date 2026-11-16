@@ -861,7 +861,8 @@ nxEl("nxSend").onclick = async () => {
         nxEl("nxProgress").textContent =
           "Sending " + file.name + "... " +
           Math.round((offset + chunk.byteLength) / file.size * 100) + "%";
-      }
+      }      nxRecord.status = "completed";
+      nxRenderTransferDrawer();
 
       await nxWaitBuffer();
 
