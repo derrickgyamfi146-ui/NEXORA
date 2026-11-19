@@ -34,7 +34,7 @@ class MainActivity : Activity() {
     private var darkMode = false
     private var mediaCategory: String? = null
     private lateinit var mediaList: LinearLayout
-    private val mediaRows = ArrayList<Pair<Uri, String>>()
+    private val mediaRows = ArrayList<Triple<Uri, String, Long>>()
     private var mediaSearch = ""
     private var mediaSort = "Newest"
     private val mediaErrors = HashMap<String, String>()
@@ -741,7 +741,7 @@ class MainActivity : Activity() {
         content.addView(button("CONTINUE TO SEND  ·  " + selectedUris.size + " SELECTED", blue) { activeTab = "Send"; render() }, bottom(10))
     }
 
-    private val mediaCache = HashMap<String, ArrayList<Pair<Uri, String>>>()
+    private val mediaCache = HashMap<String, ArrayList<Triple<Uri, String, Long>>>()
     private val mediaLoading = HashSet<String>()
     // Render media in small batches to avoid creating hundreds of views on the UI thread.
     private var mediaDisplayLimit = 20
@@ -760,23 +760,24 @@ class MainActivity : Activity() {
             if (mediaLoading.add(kind)) {
                 mediaList.addView(TextView(this).apply { text = "Loading your " + kind.lowercase() + "…"; textSize = 13f; setTextColor(muted); setPadding(0, dp(16), 0, dp(16)) })
                 Thread {
-                    val loaded = ArrayList<Pair<Uri, String>>()
+                    val loaded = ArrayList<Triple<Uri, String, Long>>()
                     val collection = when (kind) {
                         "Photos" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
                         "Videos" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
                         else -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
                     }
                     try {
-                        val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
+                        val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_ADDED)
                         contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC LIMIT 1500")?.use { cursor ->
                             val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                             val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                             val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                            val dateCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
                             while (cursor.moveToNext()) {
                                 val id = cursor.getLong(idCol)
                                 val name = cursor.getString(nameCol) ?: "Media file"
                                 val size = cursor.getLong(sizeCol)
-                                loaded.add(Pair(android.content.ContentUris.withAppendedId(collection, id), name + " · " + readableSize(size)))
+                                loaded.add(Triple(android.content.ContentUris.withAppendedId(collection, id), name + " · " + readableSize(size), cursor.getLong(dateCol)))
                             }
                         }
                     } catch (e: Exception) {
@@ -796,8 +797,22 @@ class MainActivity : Activity() {
         val filtered = if (mediaSort == "Name A-Z") matching.sortedBy { it.second.lowercase() } else matching
         if (filtered.isEmpty()) mediaList.addView(TextView(this).apply { text = if (cached.isEmpty()) "No " + kind.lowercase() + " found." else "No matching files."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
         val useGrid = kind == "Photos" || kind == "Videos"
-        val mediaGrid = if (useGrid) android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }.also { mediaList.addView(it) } else null
+        var mediaGrid: android.widget.GridLayout? = null
+        var currentMediaDay = ""
         filtered.take(mediaDisplayLimit).forEach { item ->
+            if (useGrid) {
+                val day = java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(item.third * 1000L))
+                if (day != currentMediaDay) {
+                    currentMediaDay = day
+                    mediaList.addView(TextView(this).apply {
+                        text = day; textSize = 12f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(if (darkMode) 0xFF8FE0C3.toInt() else 0xFF16856A.toInt())
+                        setPadding(dp(3), dp(12), dp(3), dp(6))
+                    })
+                    mediaGrid = android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }
+                    mediaList.addView(mediaGrid)
+                }
+            }
             val isSelected = selectedUris.contains(item.first)
             val row = LinearLayout(this).apply {
                 orientation = if (useGrid) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
