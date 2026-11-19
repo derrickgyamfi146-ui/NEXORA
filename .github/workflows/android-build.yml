@@ -56,8 +56,15 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+      - name: Verify persistent signing key
+        run: |
+          keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep -E "SHA256:|SHA1:"
+
       - name: Build debug APK
         run: gradle -p android :app:assembleDebug
+
+      - name: Verify APK signing certificate
+        run: "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Save persistent Android debug signing key
         if: steps.signing-key-cache.outputs.cache-hit != 'true'
