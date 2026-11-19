@@ -978,11 +978,11 @@ class MainActivity : Activity() {
         categoryPanel.addView(label("BROWSE BY CATEGORY", muted))
         val categoryGrid = android.widget.GridLayout(this).apply { columnCount = 2 }
         listOf(
-            Triple("Documents", "application/pdf", 0xFF168FE5.toInt()),
-            Triple("E-books", "application/epub+zip", 0xFF7357E8.toInt()),
-            Triple("APKs", "application/vnd.android.package-archive", 0xFFE69A35.toInt()),
-            Triple("Archives", "application/zip", 0xFF16A58A.toInt()),
-            Triple("Big Files", "*/*", 0xFFE05C8A.toInt())
+            Triple("Documents", "documents", 0xFF168FE5.toInt()),
+            Triple("E-books", "ebooks", 0xFF7357E8.toInt()),
+            Triple("APKs", "apks", 0xFFE69A35.toInt()),
+            Triple("Archives", "archives", 0xFF16A58A.toInt()),
+            Triple("Big Files", "big", 0xFFE05C8A.toInt())
         ).forEach { item ->
             val tile = TextView(this).apply {
                 text = "▤  " + item.first
@@ -990,7 +990,15 @@ class MainActivity : Activity() {
                 setTextColor(item.third); gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(13), dp(15), dp(8), dp(15))
                 background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 13)
-                setOnClickListener { if (item.first == "Big Files") openPicker("*/*") else openPicker(item.second) }
+                setOnClickListener {
+                    when (item.second) {
+                        "documents" -> openPickerTypes(arrayOf("application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/plain"))
+                        "ebooks" -> openPickerTypes(arrayOf("application/epub+zip", "application/x-mobipocket-ebook", "application/pdf"))
+                        "apks" -> openPicker("application/vnd.android.package-archive")
+                        "archives" -> openPickerTypes(arrayOf("application/zip", "application/x-rar-compressed", "application/x-7z-compressed", "application/x-tar", "application/gzip"))
+                        else -> openPicker("*/*")
+                    }
+                }
             }
             categoryGrid.addView(tile, android.widget.GridLayout.LayoutParams().apply {
                 width = 0; height = dp(58)
@@ -1430,6 +1438,19 @@ class MainActivity : Activity() {
                 pendingNearbyAction = null
                 updateStatus("Nearby permissions are needed to connect to phones.")
             }
+        }
+    }
+
+    private fun openPickerTypes(types: Array<String>) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, types)
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        try { startActivityForResult(intent, REQUEST_FILE) } catch (_: Exception) {
+            updateStatus("No file picker is available on this phone.")
         }
     }
 
