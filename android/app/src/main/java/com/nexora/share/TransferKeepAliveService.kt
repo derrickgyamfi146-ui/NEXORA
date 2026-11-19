@@ -35,6 +35,7 @@ class TransferKeepAliveService : Service() {
     }
 
     private val binder = LocalBinder()
+    private var transferWakeLock: android.os.PowerManager.WakeLock? = null
     private val client by lazy { Nearby.getConnectionsClient(this) }
     private var listener: Listener? = null
     private var lastStatusMessage = "NEXORA is ready."
@@ -205,6 +206,7 @@ class TransferKeepAliveService : Service() {
         sending = false
         currentOutgoingPayloadId = null
         incomingFiles.clear()
+        releaseTransferWakeLock()
         stopForegroundCompat()
         stopSelf()
         status("Stopped. You can start again.")
@@ -432,7 +434,21 @@ class TransferKeepAliveService : Service() {
 
     private fun status(message: String) { lastStatusMessage = message; listener?.onStatus(message) }
 
+    private fun acquireTransferWakeLock() {
+        val lock = transferWakeLock ?: (getSystemService(POWER_SERVICE) as android.os.PowerManager)
+            .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "$packageName:NEXORA-transfer").also {
+                it.setReferenceCounted(false)
+                transferWakeLock = it
+            }
+        if (!lock.isHeld) lock.acquire()
+    }
+
+    private fun releaseTransferWakeLock() {
+        transferWakeLock?.let { if (it.isHeld) it.release() }
+    }
+
     private fun promoteToForeground() {
+        acquireTransferWakeLock()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL_ID, "NEXORA transfers", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
@@ -468,6 +484,7 @@ class TransferKeepAliveService : Service() {
     }
 
     override fun onDestroy() {
+        releaseTransferWakeLock()
         openFiles.values.forEach { runCatching { it.close() } }
         super.onDestroy()
     }
