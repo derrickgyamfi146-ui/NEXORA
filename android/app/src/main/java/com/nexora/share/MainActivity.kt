@@ -69,12 +69,9 @@ class MainActivity : Activity() {
                 val wanted = pendingQrDeviceName
                 if (wanted != null && name.equals(wanted, ignoreCase = true)) {
                     pendingQrDeviceName = null
-                    android.app.AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Connect to $name?")
-                        .setMessage("This phone matches the NEXORA QR code. Continue with a secure connection?")
-                        .setPositiveButton("Connect") { _, _ -> sharing?.connect(endpointId, name) }
-                        .setNegativeButton("Cancel", null)
-                        .show()
+                    showRocketConnectAnimation {
+                        sharing?.connect(endpointId, name)
+                    }
                 }
             }
         }
@@ -233,7 +230,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                if (darkMode) intArrayOf(0xFF061522.toInt(), 0xFF0B2637.toInt(), 0xFF0A1D2C.toInt()) else intArrayOf(0xFFF5FAFB.toInt(), 0xFFE8F3F2.toInt())
+                if (darkMode) intArrayOf(0xFF061522.toInt(), 0xFF103C45.toInt(), 0xFF3D3218.toInt()) else intArrayOf(0xFFFFF8DF.toInt(), 0xFFE8F7EF.toInt(), 0xFFE5F2FF.toInt())
             )
         }
         val libraryMode = activeTab in setOf("Home", "Media", "Files", "Sent", "Received", "Contacts")
@@ -241,7 +238,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xFF071B2D.toInt(), 0xFF0C3046.toInt(), 0xFF075B52.toInt())).apply { setStroke(dp(1), 0x3349E7D1) }
+            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xFF102D48.toInt(), 0xFF0B6555.toInt(), 0xFF80601B.toInt())).apply { setStroke(dp(1), 0x3349E7D1) }
         }
         val menuButton = TextView(this).apply {
             text = "☰"; textSize = 23f; gravity = Gravity.CENTER; setTextColor(-1)
@@ -309,62 +306,66 @@ class MainActivity : Activity() {
             isFillViewport = true; clipToPadding = false; addView(content)
         }, android.widget.FrameLayout.LayoutParams(-1, -1))
         if (libraryMode) {
+            val quickActions = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                alpha = 0f
+                visibility = View.GONE
+                setPadding(dp(10), dp(7), dp(10), dp(7))
+                background = rounded(0xEE102B3D.toInt(), 25)
+                elevation = dp(14).toFloat()
+            }
             val sendFab = TextView(this).apply {
                 text = "➤  SEND"; textSize = 12f; gravity = Gravity.CENTER
                 typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
-                background = rounded(0xFF009D70.toInt(), 24); elevation = dp(10).toFloat()
-                setPadding(dp(12), 0, dp(12), 0)
-                setOnClickListener { animatePress(this); openSendQr() }
+                background = rounded(0xFF168FE5.toInt(), 22); elevation = dp(5).toFloat()
+                setPadding(dp(18), 0, dp(18), 0)
+                isHapticFeedbackEnabled = true
+                setOnClickListener { animatePress(this); hideQuickActions(); openSendQr() }
             }
             val receiveFab = TextView(this).apply {
                 text = "⇩  RECEIVE"; textSize = 12f; gravity = Gravity.CENTER
                 typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
-                background = rounded(0xFF009D70.toInt(), 24); elevation = dp(10).toFloat()
-                setPadding(dp(12), 0, dp(12), 0)
-                setOnClickListener { animatePress(this); scanQrCode() }
+                background = rounded(0xFF16A58A.toInt(), 22); elevation = dp(5).toFloat()
+                setPadding(dp(18), 0, dp(18), 0)
+                isHapticFeedbackEnabled = true
+                setOnClickListener { animatePress(this); hideQuickActions(); scanQrCode() }
             }
-            contentFrame.addView(sendFab, android.widget.FrameLayout.LayoutParams(dp(132), dp(43), Gravity.BOTTOM or Gravity.START).apply {
-                leftMargin = dp(16); bottomMargin = dp(14)
+            quickActions.addView(sendFab, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(6) })
+            quickActions.addView(receiveFab, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(6) })
+            contentFrame.addView(quickActions, android.widget.FrameLayout.LayoutParams(dp(292), dp(60), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+                bottomMargin = dp(10)
             })
-            contentFrame.addView(receiveFab, android.widget.FrameLayout.LayoutParams(dp(132), dp(43), Gravity.BOTTOM or Gravity.END).apply {
-                rightMargin = dp(16); bottomMargin = dp(14)
-            })
-            content.setPadding(dp(13), dp(7), dp(13), dp(70))
+            quickActionPanel = quickActions
+            content.setPadding(dp(13), dp(7), dp(13), dp(18))
         }
         root.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
         if (libraryMode) {
             val nav = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
-                setPadding(dp(5), dp(5), dp(5), dp(5))
-                setBackgroundColor(if (darkMode) 0xFF061522.toInt() else -1)
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(6), dp(8), dp(6))
+                background = android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(0xFF071B2D.toInt(), 0xFF123B43.toInt(), 0xFF4B3B17.toInt())
+                )
             }
-            listOf("Music", "Videos", "Connect", "Photos", "Social").forEach { item ->
-                val selected = when (item) {
-                    "Music" -> activeTab == "Media" && mediaCategory == "Music"
-                    "Videos" -> activeTab == "Media" && mediaCategory == "Videos"
-                    "Photos" -> activeTab == "Media" && mediaCategory == "Photos"
-                    "Connect" -> activeTab == "Home" || activeTab == "Transfers"
-                    else -> activeTab == "Settings"
+            val centre = TextView(this).apply {
+                text = "↔"
+                textSize = 25f
+                gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(0xFFFFD66B.toInt())
+                background = rounded(0xFF1C5360.toInt(), 22)
+                elevation = dp(5).toFloat()
+                isHapticFeedbackEnabled = true
+                contentDescription = "Show Send and Receive actions"
+                setOnClickListener {
+                    animatePress(this)
+                    if (quickActionPanel?.visibility == View.VISIBLE) hideQuickActions() else showQuickActions()
                 }
-                nav.addView(TextView(this).apply {
-                    text = when (item) { "Music" -> "♫\\nMusic"; "Videos" -> "▣\\nVideos"; "Connect" -> "↔"; "Photos" -> "▧\\nPhotos"; else -> "☻\\nSocial" }
-                    textSize = if (item == "Connect") 23f else 10f
-                    gravity = Gravity.CENTER
-                    typeface = if (selected) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
-                    setTextColor(if (selected) 0xFF35DCC0.toInt() else muted)
-                    setPadding(dp(2), dp(5), dp(2), dp(5))
-                    setOnClickListener {
-                        animatePress(this)
-                        when (item) {
-                            "Music" -> openMediaLibrary("Music")
-                            "Videos" -> openMediaLibrary("Videos")
-                            "Photos" -> openMediaLibrary("Photos")
-                            "Connect" -> { activeTab = "Home"; render() }
-                            else -> { activeTab = "Settings"; render() }
-                        }
-                    }
-                }, LinearLayout.LayoutParams(0, dp(48), 1f))
             }
+            nav.addView(centre, LinearLayout.LayoutParams(dp(62), dp(48)))
             root.addView(nav, LinearLayout.LayoutParams(-1, -2))
         }
                 setContentView(root)
@@ -387,98 +388,99 @@ class MainActivity : Activity() {
 
     private fun showHome(card: Int, ink: Int, muted: Int, blue: Int) {
         content.addView(TextView(this).apply {
-            text = "Move files.\nFeel the speed."
-            textSize = 29f; typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-            setTextColor(ink); setPadding(dp(2), dp(7), dp(2), dp(5))
+            text = "Move files.\\nFeel the speed."
+            textSize = 29f
+            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+            setTextColor(ink)
+            setPadding(dp(2), dp(13), dp(2), dp(5))
         })
         content.addView(TextView(this).apply {
-            text = "A simpler way to share with people nearby."
-            textSize = 12f; setTextColor(muted); setPadding(dp(3), 0, 0, dp(15))
+            text = "Share quickly with people nearby."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(dp(3), 0, 0, dp(17))
         })
+
         val connection = panel(card).apply {
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF082B3B.toInt(), 0xFF075B59.toInt(), 0xFF103B50.toInt())
-            ).apply { cornerRadius = dp(25).toFloat(); setStroke(dp(1), 0x6658EBD0) }
+                intArrayOf(0xFF123A4C.toInt(), 0xFF0B5A50.toInt(), 0xFF514018.toInt())
+            ).apply { cornerRadius = dp(24).toFloat(); setStroke(dp(1), 0x88E9C65B.toInt()) }
             elevation = dp(8).toFloat()
         }
         connection.addView(TextView(this).apply {
-            text = "NEARBY CONNECTION"; textSize = 10f; letterSpacing = .12f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF9DDDF2.toInt())
+            text = "NEXORA CONNECTION"
+            textSize = 10f
+            letterSpacing = .14f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(0xFFFFD66B.toInt())
         })
-        val radar = RadarView()
-        connection.addView(radar, LinearLayout.LayoutParams(-1, dp(178)))
         connection.addView(TextView(this).apply {
-            text = if (discovered.isEmpty()) "Ready to discover nearby phones" else discovered.size.toString() + " device(s) nearby"
-            textSize = 13f; gravity = Gravity.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(-1); setPadding(0, dp(1), 0, dp(12))
+            text = if (connectedPeers.isEmpty()) "Ready to connect" else connectedPeers.size.toString() + " phone(s) connected"
+            textSize = 21f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1)
+            setPadding(0, dp(12), 0, dp(5))
         })
-        connection.addView(button("⌁   FIND NEARBY PHONES", 0xFF1689D5.toInt()) {
-            withNearbyPermissions {
-                ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
-                discovered.clear(); rebuildPeerList()
-                sharing?.startFinding() ?: updateStatus("Starting service. Tap Find again.")
-                radar.startPulse()
-            }
+        connection.addView(TextView(this).apply {
+            text = latestStatus
+            textSize = 12f
+            setTextColor(0xFFD5E9E8.toInt())
+            setPadding(0, 0, 0, dp(4))
         })
-        content.addView(connection, bottom(14))
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(actionTile("↑", "SEND FILES", 0xFF1689D5.toInt()) { openSendQr() },
-            LinearLayout.LayoutParams(0, dp(112), 1f).apply { rightMargin = dp(6) })
-        actions.addView(actionTile("↓", "RECEIVE", 0xFF18A887.toInt()) { scanQrCode() }, LinearLayout.LayoutParams(0, dp(112), 1f).apply { leftMargin = dp(6) })
-        content.addView(actions, bottom(13))
-        val qrActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        qrActions.addView(button("SCAN QR TO CONNECT", 0xFF7357E8.toInt()) { scanQrCode() },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(5) })
-        qrActions.addView(button("SHOW MY QR", 0xFFE69A35.toInt()) { showQrCode() },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(5) })
-        content.addView(qrActions, bottom(13))
+        content.addView(connection, bottom(15))
+
         val quickAccess = panel(card)
-        quickAccess.addView(label("QUICK ACCESS", muted))
+        quickAccess.addView(label("QUICK ACCESS", 0xFFE6B94D.toInt()))
         val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf(Triple("Apps", "▦", 0xFF7357E8.toInt()), Triple("Images", "▧", 0xFF168FE5.toInt()), Triple("Videos", "▷", 0xFFE05C8A.toInt()), Triple("Music", "♫", 0xFFE69A35.toInt()), Triple("Files", "▤", 0xFF16A58A.toInt())).forEach { item ->
+        listOf(
+            Triple("Apps", "▦", 0xFFB89BFF.toInt()),
+            Triple("Photos", "▧", 0xFF55B9F0.toInt()),
+            Triple("Videos", "▷", 0xFFFF8EAC.toInt()),
+            Triple("Music", "♫", 0xFFFFC45D.toInt()),
+            Triple("Files", "▤", 0xFF52D4B3.toInt())
+        ).forEach { item ->
             val shortcut = TextView(this).apply {
-                text = item.second + "\n" + item.first; gravity = Gravity.CENTER
-                textSize = 10f; typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(item.third); setPadding(dp(5), dp(9), dp(5), dp(9))
+                text = item.second + "\\n" + item.first
+                gravity = Gravity.CENTER
+                textSize = 10f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(item.third)
+                setPadding(dp(4), dp(10), dp(4), dp(10))
                 background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF0F5FB.toInt(), 13)
+                isHapticFeedbackEnabled = true
                 setOnClickListener {
-                    mediaCategory = if (item.first == "Images") "Photos" else item.first
+                    animatePress(this)
+                    mediaCategory = item.first
                     if (item.first == "Files") { activeTab = "Files"; render() }
-                    else if (item.first == "Images" || item.first == "Videos" || item.first == "Music") openMediaLibrary(mediaCategory!!)
+                    else if (item.first == "Photos" || item.first == "Videos" || item.first == "Music") openMediaLibrary(item.first)
                     else { activeTab = "Media"; render() }
                 }
             }
-            quickRow.addView(shortcut, LinearLayout.LayoutParams(0, dp(58), 1f).apply { leftMargin = dp(2); rightMargin = dp(2) })
+            quickRow.addView(shortcut, LinearLayout.LayoutParams(0, dp(64), 1f).apply {
+                leftMargin = dp(2); rightMargin = dp(2)
+            })
         }
         quickAccess.addView(quickRow)
-        content.addView(quickAccess, bottom(13))
+        content.addView(quickAccess, bottom(14))
+
         val devices = panel(card)
-        devices.addView(label("DEVICES AROUND YOU", muted))
-        devices.addView(TextView(this).apply {
-            text = "Nearby phones appear here when discovery finds them."
-            textSize = 11f; setTextColor(muted); setPadding(0, dp(5), 0, dp(8))
-        })
+        devices.addView(label("NEARBY DEVICES", 0xFF5DBCEB.toInt()))
         peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        devices.addView(peerList); rebuildPeerList()
-        content.addView(devices, bottom(12))
+        devices.addView(peerList)
+        rebuildPeerList()
+        content.addView(devices, bottom(14))
+
         val statusCard = panel(card)
-        statusCard.addView(label("TRANSFER ACTIVITY", muted))
-        status = TextView(this).apply { text = latestStatus; textSize = 12f; setTextColor(ink); setPadding(0, dp(7), 0, dp(2)) }
-        statusCard.addView(status)
-        content.addView(statusCard, bottom(12))
-        sendButton = button(if (selectedUris.isEmpty()) "CONTINUE TO FILES" else "SEND " + selectedUris.size + " SELECTED FILE(S)", blue) {
-            if (selectedUris.isEmpty()) { activeTab = "Media"; render() }
-            else if (sharing == null) updateStatus("NEXORA is preparing the sharing service. Try again in a moment.")
-            else {
-                sharing?.sendFiles(ArrayList(selectedUris))
-                selectedUris.clear()
-                sendButton.text = "CONTINUE TO FILES"
-                updateStatus("Files added to the transfer queue. Find and connect to a phone to begin.")
-            }
+        statusCard.addView(label("TRANSFER STATUS", 0xFFFFC45D.toInt()))
+        status = TextView(this).apply {
+            text = latestStatus
+            textSize = 12f
+            setTextColor(ink)
+            setPadding(0, dp(8), 0, dp(2))
         }
-        content.addView(sendButton, bottom(8))
-        content.addView(button("STOP SHARING", 0xFF62778A.toInt()) { sharing?.stopSharing(); discovered.clear(); connectedPeers.clear(); rebuildPeerList(); updateStatus("Sharing stopped.") })
+        statusCard.addView(status)
+        content.addView(statusCard, bottom(14))
     }
 
     private fun showReceive(card: Int, ink: Int, muted: Int) {
@@ -739,13 +741,57 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun showRocketConnectAnimation(onLaunch: () -> Unit) {
+        val dialog = android.app.Dialog(this)
+        val stage = android.widget.FrameLayout(this).apply {
+            setBackground(android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF071A2D.toInt(), 0xFF0B4A4A.toInt(), 0xFF4B3B17.toInt())
+            ))
+        }
+        val rocket = TextView(this).apply {
+            text = "🚀"
+            textSize = 58f
+            gravity = Gravity.CENTER
+            alpha = 0f
+            scaleX = .55f
+            scaleY = .55f
+        }
+        val caption = TextView(this).apply {
+            text = "CONNECTING SECURELY"
+            textSize = 13f
+            letterSpacing = .12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(0xFFFFD66B.toInt())
+            alpha = 0f
+        }
+        stage.addView(rocket, android.widget.FrameLayout.LayoutParams(dp(110), dp(110), Gravity.CENTER))
+        stage.addView(caption, android.widget.FrameLayout.LayoutParams(-1, dp(48), Gravity.CENTER).apply {
+            topMargin = dp(150)
+        })
+        dialog.setContentView(stage)
+        dialog.setCancelable(false)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(-1, -1)
+        caption.animate().alpha(1f).setDuration(180).start()
+        rocket.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(-dp(145).toFloat())
+            .setDuration(760).setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction {
+                dialog.dismiss()
+                onLaunch()
+            }.start()
+    }
+
     private fun scanQrCode() {
         try {
             com.google.zxing.integration.android.IntentIntegrator(this)
                 .setDesiredBarcodeFormats(com.google.zxing.integration.android.IntentIntegrator.QR_CODE)
-                .setPrompt("Scan the other phone's NEXORA QR code")
+                .setPrompt("Align the NEXORA QR code inside the square")
                 .setBeepEnabled(false)
-                .setOrientationLocked(false)
+                .setCaptureActivity(PortraitQrCaptureActivity::class.java)
+                .setOrientationLocked(true)
                 .initiateScan()
         } catch (e: Exception) {
             updateStatus("QR scanner is unavailable: " + (e.localizedMessage ?: "unknown error"))
@@ -1633,24 +1679,89 @@ class MainActivity : Activity() {
 
 
     private fun showXenderMenu() {
-        val items = arrayOf("Language", "Settings", "Rate Us", "Help & Feedback", "About", "Status & Updates")
-        android.app.AlertDialog.Builder(this)
-            .setTitle("NEXORA  ·  " + (Build.MODEL ?: "This phone"))
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> android.app.AlertDialog.Builder(this).setTitle("Language")
-                        .setItems(arrayOf("English")) { _, _ -> Toast.makeText(this, "English is selected.", Toast.LENGTH_SHORT).show() }.show()
-                    1 -> { activeTab = "Settings"; render() }
-                    2 -> Toast.makeText(this, "Thank you for supporting NEXORA.", Toast.LENGTH_SHORT).show()
-                    3 -> android.app.AlertDialog.Builder(this).setTitle("Help & Feedback")
-                        .setMessage("For transfer problems, keep both phones nearby, enable Wi-Fi and Bluetooth, and allow nearby-device permissions.")
-                        .setPositiveButton("OK", null).show()
-                    4 -> android.app.AlertDialog.Builder(this).setTitle("About NEXORA")
-                        .setMessage("NEXORA is a local file-sharing app for Android. Transfers use nearby device connections.")
-                        .setPositiveButton("OK", null).show()
-                    5 -> Toast.makeText(this, "You are using the current installed NEXORA build.", Toast.LENGTH_SHORT).show()
+        val dialog = android.app.Dialog(this)
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(18))
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF102C40.toInt(), 0xFF0C4B48.toInt(), 0xFF4B3A17.toInt())
+            ).apply { cornerRadius = dp(26).toFloat(); setStroke(dp(1), 0x88DDBA55.toInt()) }
+        }
+        sheet.addView(TextView(this).apply {
+            text = "NEXORA"
+            textSize = 21f
+            letterSpacing = .08f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(0xFFFFD66B.toInt())
+        })
+        sheet.addView(TextView(this).apply {
+            text = Build.MODEL ?: "This phone"
+            textSize = 12f
+            setTextColor(0xFFB9D4DE.toInt())
+            setPadding(0, dp(3), 0, dp(14))
+        })
+        val options = listOf(
+            "⚙" to "Settings",
+            "?" to "Help & Feedback",
+            "ⓘ" to "About NEXORA",
+            "↻" to "Status & Updates",
+            "文" to "Language",
+            "★" to "Rate NEXORA"
+        )
+        options.forEach { (symbol, title) ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(13), dp(12), dp(13), dp(12))
+                background = rounded(0x332A6170, 15)
+                isHapticFeedbackEnabled = true
+                setOnClickListener {
+                    animatePress(this)
+                    dialog.dismiss()
+                    when (title) {
+                        "Settings" -> { activeTab = "Settings"; render() }
+                        "Help & Feedback" -> android.app.AlertDialog.Builder(this@MainActivity)
+                            .setTitle(title)
+                            .setMessage("Keep both phones nearby, enable Wi-Fi and Bluetooth, and allow nearby-device permissions.")
+                            .setPositiveButton("Got it", null).show()
+                        "About NEXORA" -> android.app.AlertDialog.Builder(this@MainActivity)
+                            .setTitle(title)
+                            .setMessage("NEXORA is a local file-sharing app. Transfers use nearby device connections.")
+                            .setPositiveButton("Close", null).show()
+                        "Status & Updates" -> Toast.makeText(this@MainActivity, "You are using the current installed NEXORA build.", Toast.LENGTH_SHORT).show()
+                        "Language" -> Toast.makeText(this@MainActivity, "English is selected.", Toast.LENGTH_SHORT).show()
+                        else -> Toast.makeText(this@MainActivity, "Thank you for supporting NEXORA.", Toast.LENGTH_SHORT).show()
+                    }
                 }
-            }.show()
+            }
+            row.addView(TextView(this).apply {
+                text = symbol
+                textSize = 19f
+                gravity = Gravity.CENTER
+                setTextColor(0xFFFFD66B.toInt())
+            }, LinearLayout.LayoutParams(dp(38), dp(30)))
+            row.addView(TextView(this).apply {
+                text = title
+                textSize = 14f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(-1)
+                setPadding(dp(10), 0, 0, 0)
+            })
+            sheet.addView(row, LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(7) })
+        }
+        val close = button("CLOSE", 0xFF168A83.toInt()) { dialog.dismiss() }
+        sheet.addView(close, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(5) })
+        dialog.setContentView(sheet)
+        dialog.setCancelable(true)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels - dp(34)), -2)
+        sheet.alpha = 0f
+        sheet.translationY = dp(28).toFloat()
+        sheet.animate().alpha(1f).translationY(0f).setDuration(230)
+            .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
     }
 
     private fun showContacts(card: Int, ink: Int, muted: Int) {
@@ -1757,11 +1868,49 @@ class MainActivity : Activity() {
     }
 
     private fun animatePress(view: View) {
+        view.isHapticFeedbackEnabled = true
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+        if (Build.VERSION.SDK_INT >= 23 && view.foreground !is android.graphics.drawable.RippleDrawable) {
+            view.foreground = android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x557FEFD5),
+                null,
+                null
+            )
+        }
         view.animate().cancel()
-        view.scaleX = 1f; view.scaleY = 1f
-        view.animate().scaleX(.97f).scaleY(.97f).setDuration(75).withEndAction {
-            view.animate().scaleX(1f).scaleY(1f).setDuration(135).setInterpolator(android.view.animation.OvershootInterpolator()).start()
+        view.scaleX = 1f
+        view.scaleY = 1f
+        view.animate().scaleX(.94f).scaleY(.94f).setDuration(65).withEndAction {
+            view.animate().scaleX(1f).scaleY(1f).setDuration(155)
+                .setInterpolator(android.view.animation.OvershootInterpolator()).start()
         }.start()
+    }
+
+    private var quickActionPanel: LinearLayout? = null
+    private val quickActionHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var quickActionHide: Runnable? = null
+
+    private fun showQuickActions() {
+        val panel = quickActionPanel ?: return
+        quickActionHide?.let { quickActionHandler.removeCallbacks(it) }
+        panel.visibility = View.VISIBLE
+        panel.alpha = 0f
+        panel.translationY = dp(18).toFloat()
+        panel.scaleX = .94f
+        panel.scaleY = .94f
+        panel.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+            .setDuration(220).setInterpolator(android.view.animation.OvershootInterpolator()).start()
+        quickActionHide = Runnable { hideQuickActions() }
+        quickActionHandler.postDelayed(quickActionHide!!, 10_000L)
+    }
+
+    private fun hideQuickActions() {
+        val panel = quickActionPanel ?: return
+        quickActionHide?.let { quickActionHandler.removeCallbacks(it) }
+        quickActionHide = null
+        if (panel.visibility != View.VISIBLE) return
+        panel.animate().alpha(0f).translationY(dp(15).toFloat()).scaleX(.94f).scaleY(.94f)
+            .setDuration(170).withEndAction { panel.visibility = View.GONE }.start()
     }
 
     private inner class RadarView : View(this@MainActivity) {
@@ -1830,8 +1979,8 @@ class MainActivity : Activity() {
         orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14))
         background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            if (darkMode) intArrayOf(0xFF19334A.toInt(), 0xFF10243A.toInt()) else intArrayOf(0xFFFFFFFF.toInt(), 0xFFF8FBFF.toInt())
-        ).apply { cornerRadius = dp(21).toFloat(); setStroke(dp(1), if (darkMode) 0x3348BFE5 else 0xFFE3EDF5.toInt()) }
+            if (darkMode) intArrayOf(0xFF18384B.toInt(), 0xFF162D3C.toInt(), 0xFF332D1C.toInt()) else intArrayOf(0xFFFFFDF4.toInt(), 0xFFF0FAF4.toInt())
+        ).apply { cornerRadius = dp(21).toFloat(); setStroke(dp(1), if (darkMode) 0x665CCCB4 else 0xFFE7D8A2.toInt()) }
         elevation = dp(3).toFloat()
     }
     private fun label(value: String, color: Int) = TextView(this).apply { text = value; textSize = 10f; letterSpacing = .1f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(color) }
