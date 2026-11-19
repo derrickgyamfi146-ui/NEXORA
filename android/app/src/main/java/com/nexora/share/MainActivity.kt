@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.provider.MediaStore
 import android.view.Gravity
+import android.view.View
 import android.widget.*
 import androidx.core.content.ContextCompat
 
@@ -76,60 +77,76 @@ class MainActivity : Activity() {
     }
 
     private fun showLaunchSplash() {
-        val splashBackground = android.graphics.drawable.GradientDrawable().apply {
-            setColor(0xFF101B38.toInt())
-        }
         val screen = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackground(splashBackground)
+            setPadding(dp(24), 0, dp(24), 0)
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF071526.toInt(), 0xFF102B4B.toInt(), 0xFF10204A.toInt())
+            )
         }
-        val mark = TextView(this).apply {
-            text = "N"
-            gravity = Gravity.CENTER
-            textSize = 54f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(-1)
+        val glow = View(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                cornerRadius = dp(30).toFloat()
-                setColor(0xFF4263EB.toInt())
-                setStroke(dp(2), 0xFF72E4FF.toInt())
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0x3328D7FF)
             }
-            elevation = dp(12).toFloat()
+            alpha = 0f
         }
-        screen.addView(mark, LinearLayout.LayoutParams(dp(112), dp(112)))
-        screen.addView(TextView(this).apply {
-            text = "NEXORA"
-            textSize = 25f
-            letterSpacing = .18f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(-1)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(22), 0, dp(4))
-        })
-        screen.addView(TextView(this).apply {
+        screen.addView(glow, LinearLayout.LayoutParams(dp(230), dp(230)))
+        val letters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        val word = "NEXORA"
+        val letterViews = word.mapIndexed { index, char ->
+            TextView(this).apply {
+                text = char.toString()
+                gravity = Gravity.CENTER
+                textSize = 39f
+                typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+                setTextColor(if (index == 2) 0xFF72F1FF.toInt() else -1)
+                alpha = 0f
+                translationY = -dp(72).toFloat()
+                elevation = dp(12).toFloat()
+            }.also { letters.addView(it, LinearLayout.LayoutParams(-2, dp(62)).apply { leftMargin = dp(1); rightMargin = dp(1) }) }
+        }
+        screen.addView(letters, LinearLayout.LayoutParams(-1, dp(74)))
+        val subtitle = TextView(this).apply {
             text = "SHARE WITHOUT LIMITS"
             textSize = 10f
-            letterSpacing = .16f
-            setTextColor(0xFFB9C9F5.toInt())
+            letterSpacing = .24f
             gravity = Gravity.CENTER
-        })
+            setTextColor(0xFFB9D8EA.toInt())
+            alpha = 0f
+            setPadding(0, dp(14), 0, 0)
+        }
+        screen.addView(subtitle)
         setContentView(screen)
-        mark.scaleX = .82f
-        mark.scaleY = .82f
-        mark.alpha = .35f
-        val pulse = android.animation.ObjectAnimator.ofPropertyValuesHolder(
-            mark,
-            android.animation.PropertyValuesHolder.ofFloat("scaleX", .82f, 1.08f, 1f),
-            android.animation.PropertyValuesHolder.ofFloat("scaleY", .82f, 1.08f, 1f),
-            android.animation.PropertyValuesHolder.ofFloat("alpha", .35f, 1f, .72f, 1f)
-        ).apply { duration = 720; interpolator = android.view.animation.AccelerateDecelerateInterpolator() }
-        pulse.start()
+        val set = android.animation.AnimatorSet()
+        val animations = ArrayList<android.animation.Animator>()
+        letterViews.forEachIndexed { index, view ->
+            animations.add(android.animation.ObjectAnimator.ofFloat(view, "translationY", -dp(72).toFloat(), 0f).apply {
+                duration = 520
+                startDelay = index * 105L
+                interpolator = android.view.animation.BounceInterpolator()
+            })
+            animations.add(android.animation.ObjectAnimator.ofFloat(view, "alpha", 0f, 1f).apply {
+                duration = 260
+                startDelay = index * 105L
+            })
+        }
+        animations.add(android.animation.ObjectAnimator.ofFloat(glow, "alpha", 0f, .9f, .25f, .8f).apply { duration = 1050; startDelay = 450 })
+        animations.add(android.animation.ObjectAnimator.ofFloat(subtitle, "alpha", 0f, 1f).apply { duration = 420; startDelay = 850 })
+        set.playTogether(animations)
+        set.start()
         android.os.Handler(mainLooper).postDelayed({
-            render()
-            refreshReceivedFiles()
-        }, 850)
+            val flash = View(this).apply { setBackgroundColor(0xFFE9FCFF.toInt()); alpha = 0f }
+            screen.addView(flash, LinearLayout.LayoutParams(-1, -1))
+            flash.animate().alpha(1f).setDuration(110).withEndAction {
+                render()
+                refreshReceivedFiles()
+                root.alpha = 0f
+                root.animate().alpha(1f).setDuration(260).start()
+            }.start()
+        }, 1500)
     }
     override fun onStart() { super.onStart(); bindService(Intent(this, TransferKeepAliveService::class.java), serviceConnection, BIND_AUTO_CREATE) }
     override fun onStop() {
@@ -138,31 +155,50 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
-        val page = if (darkMode) 0xFF101827.toInt() else 0xFFF3F6FC.toInt()
-        val card = if (darkMode) 0xFF1C2940.toInt() else -1
-        val ink = if (darkMode) -1 else 0xFF14213D.toInt()
-        val muted = if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()
-        val blue = 0xFF4263EB.toInt()
-        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(page) }
-        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(20), dp(18), dp(20), dp(14)) }
+        val page = if (darkMode) 0xFF071526.toInt() else 0xFFF3F7FC.toInt()
+        val card = if (darkMode) 0xFF142A40.toInt() else -1
+        val ink = if (darkMode) -1 else 0xFF10243B.toInt()
+        val muted = if (darkMode) 0xFFB1C6D8.toInt() else 0xFF63788C.toInt()
+        val blue = 0xFF176BDB.toInt()
+        root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                if (darkMode) intArrayOf(0xFF071526.toInt(), 0xFF102B42.toInt()) else intArrayOf(0xFFF6F9FF.toInt(), 0xFFEAF3FC.toInt())
+            )
+        }
+        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(20), dp(17), dp(20), dp(12)) }
+        val brandMark = TextView(this).apply {
+            text = "N"; gravity = Gravity.CENTER; textSize = 19f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
+            background = rounded(0xFF1677D2.toInt(), 13); elevation = dp(5).toFloat()
+        }
+        header.addView(brandMark, LinearLayout.LayoutParams(dp(38), dp(38)))
         header.addView(TextView(this).apply {
-            text = "NEXORA"; textSize = 23f; letterSpacing = .06f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink)
+            text = "NEXORA"; textSize = 21f; letterSpacing = .09f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(10), 0, 0, 0)
         }, LinearLayout.LayoutParams(0, -2, 1f))
-        header.addView(TextView(this).apply { text = "SHARE WITHOUT LIMITS"; textSize = 9f; letterSpacing = .08f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(muted) })
+        header.addView(TextView(this).apply {
+            text = "●  PRIVATE & LOCAL"; textSize = 9f; letterSpacing = .05f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(if (darkMode) 0xFF72E4C0.toInt() else 0xFF168A70.toInt())
+        })
         root.addView(header)
-        content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(14)) }
-        root.addView(ScrollView(this).apply { isFillViewport = true; addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(5), dp(7), dp(5), dp(7)); setBackgroundColor(card); elevation = 8f }
+        content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(17), dp(8), dp(17), dp(18)) }
+        root.addView(ScrollView(this).apply { isFillViewport = true; clipToPadding = false; addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(5), dp(6), dp(5), dp(6))
+            background = rounded(if (darkMode) 0xFF10243A.toInt() else 0xFFFFFFFF.toInt(), 20); elevation = dp(9).toFloat()
+        }
         listOf("Home", "Media", "Files", "Sent", "Received", "Settings").forEach { tab ->
             nav.addView(TextView(this).apply {
-                text = tab; textSize = 10f; gravity = Gravity.CENTER
+                text = when (tab) { "Received" -> "Inbox"; "Settings" -> "More"; else -> tab }
+                textSize = 10f; gravity = Gravity.CENTER
                 typeface = if (activeTab == tab) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
-                setTextColor(if (activeTab == tab) blue else muted); setPadding(dp(2), dp(10), dp(2), dp(10))
-                setOnClickListener { activeTab = tab; render() }
+                setTextColor(if (activeTab == tab) 0xFF1684D9.toInt() else muted)
+                setPadding(dp(2), dp(11), dp(2), dp(11))
+                setOnClickListener { animatePress(this); activeTab = tab; render() }
             }, LinearLayout.LayoutParams(0, -2, 1f))
         }
-        root.addView(nav); setContentView(root)
+        root.addView(nav, LinearLayout.LayoutParams(-1, -2).apply { leftMargin = dp(12); rightMargin = dp(12); bottomMargin = dp(10); topMargin = dp(5) })
+        setContentView(root)
         when (activeTab) {
             "Home" -> showHome(card, ink, muted, blue)
             "Media" -> showMedia(card, ink, muted, blue)
@@ -171,68 +207,124 @@ class MainActivity : Activity() {
             "Received" -> showReceived(card, ink, muted)
             "Settings" -> showSettings(card, ink, muted, blue)
         }
+        content.alpha = 0f
+        content.translationY = dp(10).toFloat()
+        content.animate().alpha(1f).translationY(0f).setDuration(230).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
     }
 
     private fun showHome(card: Int, ink: Int, muted: Int, blue: Int) {
-        content.addView(TextView(this).apply { text = "Share anything.\nAt high speed."; textSize = 28f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(14)) })
-        val statusCard = panel(card)
-        statusCard.addView(label("TRANSFER STATUS", muted))
-        status = TextView(this).apply { text = latestStatus; textSize = 14f; setTextColor(ink); setPadding(0, dp(8), 0, dp(4)) }
-        statusCard.addView(status); content.addView(statusCard, bottom(12))
-        content.addView(label("QUICK ACTIONS", muted), bottom(8))
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(actionTile("↑", "Send files", blue) { activeTab = "Media"; render() }, LinearLayout.LayoutParams(0, dp(112), 1f).apply { rightMargin = dp(6) })
-        actions.addView(actionTile("↓", "Receive files", 0xFF16A085.toInt()) { withNearbyPermissions { ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java)); sharing?.startReceiving() ?: updateStatus("Starting service. Try again.") } }, LinearLayout.LayoutParams(0, dp(112), 1f).apply { leftMargin = dp(6) })
-        content.addView(actions, bottom(12))
-        val devices = panel(card)
-        devices.addView(label("NEARBY DEVICES", muted))
-        devices.addView(TextView(this).apply { text = "Tap Find phones, then choose a device to connect."; textSize = 12f; setTextColor(muted); setPadding(0, dp(6), 0, dp(6)) })
-        peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }; devices.addView(peerList); rebuildPeerList()
-        devices.addView(button("FIND NEARBY PHONES", blue) {
-            withNearbyPermissions { ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java)); discovered.clear(); rebuildPeerList(); sharing?.startFinding() ?: updateStatus("Starting service. Tap Find again.") }
+        content.addView(TextView(this).apply {
+            text = "Move files.\nFeel the speed."
+            textSize = 29f; typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+            setTextColor(ink); setPadding(dp(2), dp(7), dp(2), dp(5))
         })
+        content.addView(TextView(this).apply {
+            text = "A simpler way to share with people nearby."
+            textSize = 12f; setTextColor(muted); setPadding(dp(3), 0, 0, dp(15))
+        })
+        val connection = panel(card).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF092B4A.toInt(), 0xFF124D73.toInt(), 0xFF123A5D.toInt())
+            ).apply { cornerRadius = dp(25).toFloat(); setStroke(dp(1), 0x6648DFFF) }
+            elevation = dp(8).toFloat()
+        }
+        connection.addView(TextView(this).apply {
+            text = "NEARBY CONNECTION"; textSize = 10f; letterSpacing = .12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF9DDDF2.toInt())
+        })
+        val radar = RadarView()
+        connection.addView(radar, LinearLayout.LayoutParams(-1, dp(178)))
+        connection.addView(TextView(this).apply {
+            text = if (discovered.isEmpty()) "Ready to discover nearby phones" else discovered.size.toString() + " device(s) nearby"
+            textSize = 13f; gravity = Gravity.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1); setPadding(0, dp(1), 0, dp(12))
+        })
+        connection.addView(button("⌁   FIND NEARBY PHONES", 0xFF1689D5.toInt()) {
+            withNearbyPermissions {
+                ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
+                discovered.clear(); rebuildPeerList()
+                sharing?.startFinding() ?: updateStatus("Starting service. Tap Find again.")
+                radar.startPulse()
+            }
+        })
+        content.addView(connection, bottom(14))
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        actions.addView(actionTile("↑", "SEND FILES", 0xFF1689D5.toInt()) { activeTab = "Media"; render() },
+            LinearLayout.LayoutParams(0, dp(112), 1f).apply { rightMargin = dp(6) })
+        actions.addView(actionTile("↓", "RECEIVE", 0xFF18A887.toInt()) {
+            withNearbyPermissions { ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java)); sharing?.startReceiving() ?: updateStatus("Starting service. Try again.") }
+        }, LinearLayout.LayoutParams(0, dp(112), 1f).apply { leftMargin = dp(6) })
+        content.addView(actions, bottom(13))
+        val devices = panel(card)
+        devices.addView(label("DEVICES AROUND YOU", muted))
+        devices.addView(TextView(this).apply {
+            text = "Nearby phones appear here when discovery finds them."
+            textSize = 11f; setTextColor(muted); setPadding(0, dp(5), 0, dp(8))
+        })
+        peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        devices.addView(peerList); rebuildPeerList()
         content.addView(devices, bottom(12))
-        sendButton = button(if (selectedUris.isEmpty()) "CHOOSE FILES TO SEND" else "SEND " + selectedUris.size + " SELECTED FILE(S)", blue) {
+        val statusCard = panel(card)
+        statusCard.addView(label("TRANSFER ACTIVITY", muted))
+        status = TextView(this).apply { text = latestStatus; textSize = 12f; setTextColor(ink); setPadding(0, dp(7), 0, dp(2)) }
+        statusCard.addView(status)
+        content.addView(statusCard, bottom(12))
+        sendButton = button(if (selectedUris.isEmpty()) "CONTINUE TO FILES" else "SEND " + selectedUris.size + " SELECTED FILE(S)", blue) {
             if (selectedUris.isEmpty()) { activeTab = "Media"; render() }
             else if (sharing == null) updateStatus("Connect to a nearby phone first.")
             else {
                 rememberSentFiles(selectedUris)
                 sharing?.sendFiles(ArrayList(selectedUris))
                 selectedUris.clear()
-                sendButton.isEnabled = true
-                sendButton.text = "CHOOSE FILES TO SEND"
+                sendButton.text = "CONTINUE TO FILES"
             }
         }
-        sendButton.isEnabled = true
-        content.addView(sendButton, bottom(10))
-        content.addView(button("STOP / DISCONNECT", 0xFF718096.toInt()) { sharing?.stopSharing(); discovered.clear(); rebuildPeerList(); updateStatus("Sharing stopped.") })
+        content.addView(sendButton, bottom(8))
+        content.addView(button("STOP SHARING", 0xFF62778A.toInt()) { sharing?.stopSharing(); discovered.clear(); rebuildPeerList(); updateStatus("Sharing stopped.") })
     }
 
     private fun showMedia(card: Int, ink: Int, muted: Int, blue: Int) {
         if (mediaCategory != null) { renderMediaLibrary(mediaCategory!!, ink, muted, blue); return }
-        content.addView(TextView(this).apply { text = "Choose what to share"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(4)) })
-        content.addView(TextView(this).apply { text = "Browse media on your phone or open the secure file picker."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(14)) })
-        listOf(Triple("Photos", "Browse images on this phone", "image"), Triple("Videos", "Browse video clips", "video"), Triple("Music", "Browse audio files", "audio"), Triple("Documents", "PDF, Word, ZIP and more", "documents"), Triple("All files", "Browse any file type", "all"), Triple("Apps", "Browse installed apps and share APKs", "apps")).forEach { item ->
-            val tile = panel(card); tile.orientation = LinearLayout.HORIZONTAL; tile.gravity = Gravity.CENTER_VERTICAL
-            val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            info.addView(TextView(this).apply { text = item.first; textSize = 16f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink) })
-            info.addView(TextView(this).apply { text = item.second; textSize = 11f; setTextColor(muted); setPadding(0, dp(3), 0, 0) })
-            tile.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
-            tile.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(blue) })
+        content.addView(TextView(this).apply { text = "Your phone,\nbeautifully organised."; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(5)) })
+        content.addView(TextView(this).apply { text = "Choose a category. Your files stay on your device."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, 0, dp(15)) })
+        val categories = listOf(
+            Triple("▧", "Photos", 0xFF277DDB.toInt()), Triple("▷", "Videos", 0xFF8A62D6.toInt()),
+            Triple("♫", "Music", 0xFFE18A38.toInt()), Triple("▤", "Documents", 0xFF159B83.toInt()),
+            Triple("▣", "All files", 0xFF526F8D.toInt()), Triple("◈", "Apps", 0xFFDE6688.toInt())
+        )
+        val grid = android.widget.GridLayout(this).apply { columnCount = 2; useDefaultMargins = false }
+        categories.forEach { item ->
+            val tile = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(15), dp(12), dp(14))
+                background = rounded(if (darkMode) 0xFF142A40.toInt() else -1, 20); elevation = dp(2).toFloat()
+                isClickable = true; isFocusable = true
+            }
+            tile.addView(TextView(this).apply {
+                text = item.first; textSize = 27f; gravity = Gravity.CENTER; setTextColor(-1)
+                background = rounded(item.third, 15)
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+            }, LinearLayout.LayoutParams(dp(48), dp(48)))
+            tile.addView(TextView(this).apply { text = item.second; textSize = 15f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(12), 0, dp(2)) })
+            tile.addView(TextView(this).apply { text = "Browse on this phone  ›"; textSize = 10f; setTextColor(muted) })
             tile.setOnClickListener {
-                when (item.third) {
-                    "image" -> openMediaLibrary("Photos")
-                    "video" -> openMediaLibrary("Videos")
-                    "audio" -> openMediaLibrary("Music")
-                    "documents" -> openPicker("application/*")
-                    "all" -> openPicker("*/*")
-                    "apps" -> { mediaCategory = "Apps"; render() }
+                animatePress(tile)
+                when (item.second) {
+                    "Photos", "Videos", "Music" -> openMediaLibrary(item.second)
+                    "Documents" -> openPicker("application/*")
+                    "All files" -> openPicker("*/*")
+                    "Apps" -> { mediaCategory = "Apps"; render() }
                 }
             }
-            content.addView(tile, bottom(9))
+            val params = android.widget.GridLayout.LayoutParams().apply {
+                width = 0; height = dp(132); columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                setMargins(dp(4), dp(4), dp(4), dp(8))
+            }
+            grid.addView(tile, params)
         }
-        sendButton = button("CHOOSE FILES TO SEND", blue) { openPicker("*/*") }
-        content.addView(sendButton)
+        content.addView(grid, bottom(12))
+        content.addView(button("OPEN FILE PICKER", blue) { openPicker("*/*") })
     }
 
     private fun openMediaLibrary(kind: String) {
@@ -566,21 +658,81 @@ class MainActivity : Activity() {
         content.addView(TextView(this).apply { text = "NEXORA • Version " + versionName + "\nAdvanced features depend on Android permissions and device support."; textSize = 11f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(dp(8), dp(12), dp(8), dp(12)) })
     }
 
+    private fun animatePress(view: View) {
+        view.animate().cancel()
+        view.scaleX = 1f; view.scaleY = 1f
+        view.animate().scaleX(.97f).scaleY(.97f).setDuration(75).withEndAction {
+            view.animate().scaleX(1f).scaleY(1f).setDuration(135).setInterpolator(android.view.animation.OvershootInterpolator()).start()
+        }.start()
+    }
+
+    private inner class RadarView : View(this@MainActivity) {
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private var phase = 0f
+        private var animator: android.animation.ValueAnimator? = null
+        init { startPulse() }
+        fun startPulse() {
+            if (animator?.isRunning == true) return
+            animator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 2300; repeatCount = android.animation.ValueAnimator.INFINITE
+                addUpdateListener { phase = it.animatedValue as Float; invalidate() }
+                start()
+            }
+        }
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            val cx = width / 2f; val cy = height / 2f
+            val max = dp(68).toFloat()
+            for (i in 0..2) {
+                val p = (phase + i / 3f) % 1f
+                paint.style = android.graphics.Paint.Style.STROKE
+                paint.strokeWidth = dp(1).toFloat()
+                paint.color = android.graphics.Color.argb(((1f - p) * 105).toInt(), 91, 224, 255)
+                canvas.drawCircle(cx, cy, max * (.25f + .75f * p), paint)
+            }
+            paint.style = android.graphics.Paint.Style.FILL
+            paint.color = 0xFF35D8F4.toInt()
+            canvas.drawCircle(cx, cy, dp(7).toFloat(), paint)
+            paint.color = 0x5535D8F4
+            canvas.drawCircle(cx, cy, dp(17).toFloat(), paint)
+            paint.color = -1
+            paint.textSize = dp(10).toFloat()
+            paint.textAlign = android.graphics.Paint.Align.CENTER
+            canvas.drawText("NEXORA", cx, cy + dp(92), paint)
+        }
+    }
+
     private fun actionTile(symbol: String, title: String, color: Int, action: () -> Unit): LinearLayout {
-        val tile = panel(if (darkMode) 0xFF1C2940.toInt() else -1); tile.gravity = Gravity.CENTER
-        tile.addView(TextView(this).apply { text = symbol; textSize = 26f; gravity = Gravity.CENTER; setTextColor(color) })
-        tile.addView(TextView(this).apply { text = title; textSize = 13f; gravity = Gravity.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(if (darkMode) -1 else 0xFF14213D.toInt()) })
-        tile.setOnClickListener { action() }; return tile
+        val tile = panel(if (darkMode) 0xFF142A40.toInt() else -1)
+        tile.gravity = Gravity.CENTER
+        tile.background = rounded(if (darkMode) 0xFF142A40.toInt() else -1, 20)
+        tile.addView(TextView(this).apply {
+            text = symbol; textSize = 29f; gravity = Gravity.CENTER; setTextColor(color)
+            background = rounded(if (darkMode) 0xFF203D56.toInt() else 0xFFEAF4FC.toInt(), 16)
+            setPadding(dp(10), dp(2), dp(10), dp(2))
+        })
+        tile.addView(TextView(this).apply {
+            text = title; textSize = 11f; gravity = Gravity.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(if (darkMode) -1 else 0xFF142B43.toInt()); setPadding(0, dp(9), 0, 0)
+        })
+        tile.setOnClickListener { animatePress(tile); action() }
+        return tile
     }
 
     private fun panel(color: Int) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14))
-        background = rounded(color, 18); elevation = 2f
+        background = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            if (darkMode) intArrayOf(0xFF19334A.toInt(), 0xFF10243A.toInt()) else intArrayOf(0xFFFFFFFF.toInt(), 0xFFF8FBFF.toInt())
+        ).apply { cornerRadius = dp(21).toFloat(); setStroke(dp(1), if (darkMode) 0x3348BFE5 else 0xFFE3EDF5.toInt()) }
+        elevation = dp(3).toFloat()
     }
-    private fun label(value: String, color: Int) = TextView(this).apply { text = value; textSize = 10f; letterSpacing = .08f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(color) }
+    private fun label(value: String, color: Int) = TextView(this).apply { text = value; textSize = 10f; letterSpacing = .1f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(color) }
     private fun button(value: String, color: Int, action: () -> Unit) = Button(this).apply {
         text = value; textSize = 12f; isAllCaps = false; typeface = android.graphics.Typeface.DEFAULT_BOLD
-        setTextColor(-1); background = rounded(color, 13); setPadding(dp(10), dp(8), dp(10), dp(8)); setOnClickListener { action() }
+        setTextColor(-1); background = rounded(color, 15); setPadding(dp(10), dp(9), dp(10), dp(9))
+        stateListAnimator = null
+        setOnClickListener { animatePress(this); action() }
     }
     private fun rounded(color: Int, radius: Int) = android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
     private fun bottom(margin: Int) = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(margin) }
