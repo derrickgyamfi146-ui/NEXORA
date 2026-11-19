@@ -419,7 +419,7 @@ class MainActivity : Activity() {
             intArrayOf(0xFF103C35.toInt(), 0xFF15594A.toInt(), 0xFF183C45.toInt())
         ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0x6656E5B6) }
         ready.addView(TextView(this).apply {
-            text = "●  RECEIVING MODE"; textSize = 10f; letterSpacing = .12f
+            text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"; textSize = 10f; letterSpacing = .12f
             typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF83F0C9.toInt())
         })
         ready.addView(TextView(this).apply {
