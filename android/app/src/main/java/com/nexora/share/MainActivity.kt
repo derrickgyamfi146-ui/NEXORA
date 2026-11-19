@@ -74,13 +74,13 @@ class MainActivity : Activity() {
     }
 
     private fun showLaunchSplash() {
-        val background = android.graphics.drawable.GradientDrawable().apply {
+        val splashBackground = android.graphics.drawable.GradientDrawable().apply {
             setColor(0xFF101B38.toInt())
         }
         val screen = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackground(background)
+            setBackground(splashBackground)
         }
         val mark = TextView(this).apply {
             text = "N"
