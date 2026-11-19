@@ -953,6 +953,7 @@ class MainActivity : Activity() {
     private var currentTreeDocumentId: String? = null
     private val treeDocumentStack = ArrayList<String>()
     private var sortTreeBySize = false
+    private var folderSearch = ""
 
     private fun showFiles(card: Int, ink: Int, muted: Int, blue: Int) {
         content.addView(TextView(this).apply { text = "File manager"; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(5)) })
@@ -1029,6 +1030,27 @@ class MainActivity : Activity() {
             sortTreeBySize = !sortTreeBySize
             render()
         }, bottom(7))
+        val searchRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val searchInput = EditText(this).apply {
+            hint = "Search this folder"
+            setSingleLine(true)
+            textSize = 12f
+            setTextColor(ink)
+            setHintTextColor(muted)
+            setPadding(dp(10), dp(5), dp(10), dp(5))
+            background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 11)
+            setText(folderSearch)
+        }
+        searchRow.addView(searchInput, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(6) })
+        searchRow.addView(button("SEARCH", 0xFF168FE5.toInt()) {
+            folderSearch = searchInput.text?.toString()?.trim().orEmpty()
+            render()
+        })
+        section.addView(searchRow, bottom(8))
+        if (folderSearch.isNotBlank()) section.addView(button("CLEAR SEARCH", 0xFF64748B.toInt()) {
+            folderSearch = ""
+            render()
+        }, bottom(6))
         val children = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         section.addView(children)
         val childUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId)
@@ -1045,6 +1067,7 @@ class MainActivity : Activity() {
                     if (idIndex < 0 || nameIndex < 0 || mimeIndex < 0) continue
                     val childId = cursor.getString(idIndex) ?: continue
                     val name = cursor.getString(nameIndex) ?: "Unnamed item"
+                    if (folderSearch.isNotBlank() && !name.contains(folderSearch, ignoreCase = true)) continue
                     val mime = cursor.getString(mimeIndex) ?: "*/*"
                     val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) readableSize(cursor.getLong(sizeIndex)) else "Folder"
                     val folder = mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR
