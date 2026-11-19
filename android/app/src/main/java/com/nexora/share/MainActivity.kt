@@ -1035,6 +1035,10 @@ class MainActivity : Activity() {
                     })
                 }
             }
+            sdPanel.addView(button("BROWSE SD CARD FOLDER", 0xFF7357E8.toInt()) {
+                updateStatus("Choose the SD card in Android's folder picker, then grant NEXORA access.")
+                openFolderTree()
+            }, bottom(5))
         }
         content.addView(sdPanel, bottom(12))
         val categoryPanel = panel(card)
