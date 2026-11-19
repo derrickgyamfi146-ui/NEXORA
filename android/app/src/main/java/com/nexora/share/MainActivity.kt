@@ -636,9 +636,19 @@ class MainActivity : Activity() {
 
     private fun beginSendSelected() {
         if (selectedUris.isEmpty()) { Toast.makeText(this, "Select something to send first.", Toast.LENGTH_SHORT).show(); return }
-        rememberOutgoingUris(ArrayList(selectedUris))
-        pendingSelectedSend = true
-        openSendQr()
+        val outgoing = ArrayList(selectedUris)
+        rememberOutgoingUris(outgoing)
+        if (connectedPeers.isNotEmpty() && sharing != null) {
+            sharing?.sendFiles(outgoing)
+            selectedUris.clear()
+            pendingSelectedSend = false
+            updateStatus("Sending your selected items…")
+            activeTab = "Home"
+            render()
+        } else {
+            pendingSelectedSend = true
+            openSendQr()
+        }
     }
 
     private fun runWithSharingService(action: (TransferKeepAliveService) -> Unit) {
