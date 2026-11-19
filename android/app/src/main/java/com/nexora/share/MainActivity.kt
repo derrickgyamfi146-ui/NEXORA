@@ -366,16 +366,39 @@ class MainActivity : Activity() {
         if (!::receivedList.isInitialized || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
         receivedList.removeAllViews()
         try {
-            val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE)
+            val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE, MediaStore.MediaColumns.SIZE)
             contentResolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, projection, MediaStore.MediaColumns.RELATIVE_PATH + " = ?", arrayOf("Download/NEXORA/"), MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
                 if (cursor.count == 0) addReceivedEmpty()
                 while (cursor.moveToNext()) {
-                    val id = cursor.getLong(0); val name = cursor.getString(1) ?: "Received file"; val mime = cursor.getString(2) ?: "*/*"
+                    val id = cursor.getLong(0); val name = cursor.getString(1) ?: "Received file"
+                    val mime = cursor.getString(2) ?: "*/*"; val size = readableSize(cursor.getLong(3))
                     val uri = android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
-                    receivedList.addView(button("Open  ·  $name", 0xFF4263EB.toInt()) {
+                    val row = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, dp(8)) }
+                    row.addView(TextView(this).apply { text = name + "\\n" + size; textSize = 12f; setTextColor(if (darkMode) -1 else 0xFF14213D.toInt()) })
+                    val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                    actions.addView(button("Open", 0xFF4263EB.toInt()) {
                         try { startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
-                        catch (_: Exception) { Toast.makeText(this, "No app found to open this file.", Toast.LENGTH_SHORT).show() }
-                    }, bottom(6))
+                        catch (_: Exception) { Toast.makeText(this@MainActivity, "No app found to open this file.", Toast.LENGTH_SHORT).show() }
+                    }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(4) })
+                    actions.addView(button("Rename", 0xFF64748B.toInt()) {
+                        val field = EditText(this@MainActivity).apply { setText(name); setSelection(text.length) }
+                        android.app.AlertDialog.Builder(this@MainActivity).setTitle("Rename file").setView(field)
+                            .setPositiveButton("Save") { _, _ ->
+                                val newName = field.text.toString().trim()
+                                if (newName.isNotBlank()) {
+                                    val values = android.content.ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, newName) }
+                                    contentResolver.update(uri, values, null, null)
+                                    refreshReceivedFiles()
+                                }
+                            }.setNegativeButton("Cancel", null).show()
+                    }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
+                    actions.addView(button("Delete", 0xFFB42318.toInt()) {
+                        android.app.AlertDialog.Builder(this@MainActivity).setTitle("Delete this file?")
+                            .setMessage(name).setPositiveButton("Delete") { _, _ -> contentResolver.delete(uri, null, null); refreshReceivedFiles() }
+                            .setNegativeButton("Cancel", null).show()
+                    }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(4) })
+                    row.addView(actions)
+                    receivedList.addView(row, bottom(6))
                 }
             } ?: addReceivedEmpty()
         } catch (_: Exception) { addReceivedEmpty() }
