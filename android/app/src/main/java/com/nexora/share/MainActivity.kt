@@ -29,7 +29,7 @@ class MainActivity : Activity() {
     private var pendingNearbyAction: (() -> Unit)? = null
     private var sharing: TransferKeepAliveService? = null
     private var bound = false
-    private var activeTab = "Home"
+    private var activeTab = "Media"
     private var latestStatus = "Ready. Choose Send or Receive to begin."
     private var darkMode = false
     private var mediaCategory: String? = null
@@ -211,7 +211,8 @@ class MainActivity : Activity() {
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(20), dp(17), dp(20), dp(12)) }
         val brandMark = TextView(this).apply {
             text = "N"; gravity = Gravity.CENTER; textSize = 19f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
-            background = rounded(0xFF1677D2.toInt(), 13); elevation = dp(5).toFloat()
+            background = rounded(0xFF7357E8.toInt(), 13); elevation = dp(5).toFloat()
+            contentDescription = "NEXORA home"; setOnClickListener { activeTab = "Home"; render() }
         }
         header.addView(brandMark, LinearLayout.LayoutParams(dp(38), dp(38)))
         header.addView(TextView(this).apply {
@@ -245,14 +246,30 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(5), dp(6), dp(5), dp(6))
             background = rounded(if (darkMode) 0xFF10243A.toInt() else 0xFFFFFFFF.toInt(), 20); elevation = dp(9).toFloat()
         }
-        listOf("Home", "Media", "Files", "Sent", "Received", "Settings").forEach { tab ->
+        listOf("Apps", "History", "Send", "Receive", "More").forEach { item ->
+            val selected = when (item) {
+                "Apps" -> activeTab == "Media"
+                "History" -> activeTab == "Sent" || activeTab == "Received"
+                "Send" -> activeTab == "Home"
+                "Receive" -> activeTab == "Home"
+                else -> activeTab == "Settings"
+            }
             nav.addView(TextView(this).apply {
-                text = when (tab) { "Received" -> "Inbox"; "Settings" -> "More"; else -> tab }
+                text = when (item) { "Apps" -> "▦\\nApps"; "History" -> "◷\\nHistory"; "Send" -> "↑\\nSend"; "Receive" -> "↓\\nReceive"; else -> "•••\\nMore" }
                 textSize = 10f; gravity = Gravity.CENTER
-                typeface = if (activeTab == tab) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
-                setTextColor(if (activeTab == tab) 0xFF1684D9.toInt() else muted)
-                setPadding(dp(2), dp(11), dp(2), dp(11))
-                setOnClickListener { animatePress(this); activeTab = tab; render() }
+                typeface = if (selected) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+                setTextColor(if (selected) when (item) { "Apps" -> 0xFF7357E8.toInt(); "History" -> 0xFF16A58A.toInt(); "Send" -> 0xFF168FE5.toInt(); "Receive" -> 0xFFE69A35.toInt(); else -> muted } else muted)
+                setPadding(dp(2), dp(7), dp(2), dp(7))
+                setOnClickListener {
+                    animatePress(this)
+                    when (item) {
+                        "Apps" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
+                        "History" -> { activeTab = "Sent"; render() }
+                        "Send" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
+                        "Receive" -> { activeTab = "Home"; render(); withNearbyPermissions { ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, TransferKeepAliveService::class.java)); sharing?.startReceiving() ?: updateStatus("Starting receive mode. Try again in a moment.") } }
+                        else -> { activeTab = "Settings"; render() }
+                    }
+                }
             }, LinearLayout.LayoutParams(0, -2, 1f))
         }
         root.addView(nav, LinearLayout.LayoutParams(-1, -2).apply { leftMargin = dp(12); rightMargin = dp(12); bottomMargin = dp(10); topMargin = dp(5) })
@@ -457,7 +474,7 @@ class MainActivity : Activity() {
             val selected = (if (kind == "Photos") "Images" else kind) == tab
             val tint = when(tab) { "Apps" -> 0xFF7357E8.toInt(); "Images" -> 0xFF168FE5.toInt(); "Videos" -> 0xFFE05C8A.toInt(); "Music" -> 0xFFE69A35.toInt(); else -> 0xFF16A58A.toInt() }
             val chip = TextView(this).apply { text = tab; textSize = 12f; gravity = Gravity.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(if (selected) -1 else tint); setPadding(dp(16), dp(10), dp(16), dp(10)); background = rounded(if (selected) tint else if (darkMode) 0xFF20364E.toInt() else 0xFFEAF2FB.toInt(), 18) }
-            chip.setOnClickListener { animatePress(chip); mediaCategory = when(tab) { "Images" -> "Photos"; else -> tab }; if (tab == "Files") openPicker("*/*") else if (tab == "Images" || tab == "Videos" || tab == "Music") openMediaLibrary(mediaCategory!!) else render() }
+            chip.setOnClickListener { animatePress(chip); mediaCategory = when(tab) { "Images" -> "Photos"; else -> tab }; if (tab == "Files") { activeTab = "Files"; render() } else if (tab == "Images" || tab == "Videos" || tab == "Music") openMediaLibrary(mediaCategory!!) else render() }
             tabRow.addView(chip, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(7) })
         }
         tabs.addView(tabRow); content.addView(tabs)
@@ -614,8 +631,8 @@ class MainActivity : Activity() {
     private val installedApps = ArrayList<android.content.pm.ApplicationInfo>()
 
     private fun renderAppsLibrary(ink: Int, muted: Int, blue: Int) {
-        content.addView(TextView(this).apply { text = "Apps on this phone"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
-        val search = EditText(this).apply { hint = "Search installed apps"; setSingleLine(true); textSize = 14f; setPadding(dp(12), dp(8), dp(12), dp(8)); setBackground(rounded(if (darkMode) 0xFF263650.toInt() else -1, 12)); setTextColor(ink); setHintTextColor(muted) }
+        content.addView(TextView(this).apply { text = "Apps"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
+        val search = EditText(this).apply { hint = "Search apps"; setSingleLine(true); textSize = 14f; setPadding(dp(12), dp(8), dp(12), dp(8)); setBackground(rounded(if (darkMode) 0xFF263650.toInt() else -1, 12)); setTextColor(ink); setHintTextColor(muted) }
         content.addView(search, bottom(8))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(list)
@@ -681,7 +698,7 @@ class MainActivity : Activity() {
             }
             list.addView(grid)
             }
-            addAppSection("YOUR APPS", userApps, 0xFF7357E8.toInt())
+            addAppSection("POPULAR & LOCAL APPS", userApps, 0xFF7357E8.toInt())
             addAppSection("SYSTEM APPS", systemApps, 0xFF168FE5.toInt())
         }
         search.addTextChangedListener(object : android.text.TextWatcher {
@@ -796,7 +813,7 @@ class MainActivity : Activity() {
 
     private fun showFiles(card: Int, ink: Int, muted: Int, blue: Int) {
         content.addView(TextView(this).apply { text = "File manager"; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(5)) })
-        content.addView(TextView(this).apply { text = "Browse folders, select multiple files and send them together."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(13)) })
+        content.addView(TextView(this).apply { text = "Find documents, downloads, APKs and large files."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(13)) })
         val storage = panel(card)
         storage.addView(label("PHONE STORAGE", 0xFF16A58A.toInt()))
         try {
@@ -813,6 +830,32 @@ class MainActivity : Activity() {
             storage.addView(TextView(this).apply { text = "NEXORA temporary cache: " + readableSize(cacheBytes); textSize = 11f; setTextColor(muted); setPadding(0, dp(7), 0, 0) })
         } catch (_: Exception) { storage.addView(TextView(this).apply { text = "Storage information is unavailable."; setTextColor(muted); textSize = 12f }) }
         content.addView(storage, bottom(12))
+        val categoryPanel = panel(card)
+        categoryPanel.addView(label("BROWSE BY CATEGORY", muted))
+        val categoryGrid = android.widget.GridLayout(this).apply { columnCount = 2 }
+        listOf(
+            Triple("Documents", "application/pdf", 0xFF168FE5.toInt()),
+            Triple("E-books", "application/epub+zip", 0xFF7357E8.toInt()),
+            Triple("APKs", "application/vnd.android.package-archive", 0xFFE69A35.toInt()),
+            Triple("Archives", "application/zip", 0xFF16A58A.toInt()),
+            Triple("Big Files", "*/*", 0xFFE05C8A.toInt())
+        ).forEach { item ->
+            val tile = TextView(this).apply {
+                text = "▤  " + item.first
+                textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(item.third); gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(13), dp(15), dp(8), dp(15))
+                background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 13)
+                setOnClickListener { if (item.first == "Big Files") openPicker("*/*") else openPicker(item.second) }
+            }
+            categoryGrid.addView(tile, android.widget.GridLayout.LayoutParams().apply {
+                width = 0; height = dp(58)
+                columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                setMargins(dp(3), dp(3), dp(3), dp(3))
+            })
+        }
+        categoryPanel.addView(categoryGrid)
+        content.addView(categoryPanel, bottom(10))
         content.addView(button("OPEN PHONE FOLDERS", 0xFF16A58A.toInt()) { openFolderTree() }, bottom(8))
         listOf("Browse all files" to "*/*", "Browse documents" to "application/*", "Browse images" to "image/*", "Browse videos" to "video/*", "Browse audio" to "audio/*").forEach { (title, mime) ->
             val tint = when (mime) { "image/*" -> 0xFF168FE5.toInt(); "video/*" -> 0xFFE05C8A.toInt(); "audio/*" -> 0xFFE69A35.toInt(); else -> blue }
