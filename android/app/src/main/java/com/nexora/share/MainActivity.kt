@@ -1188,16 +1188,48 @@ class MainActivity : Activity() {
             stepRow.addView(step, LinearLayout.LayoutParams(0, dp(34), 1f).apply { leftMargin = dp(2); rightMargin = dp(2) })
         }
         live.addView(stepRow, bottom(9))
+        val initialPercent = Regex("(\\d{1,3})%").find(latestStatus)?.groupValues?.getOrNull(1)?.toIntOrNull()
         val progressLine = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             progressTintList = android.content.res.ColorStateList.valueOf(0xFF16A58A.toInt())
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(if (darkMode) 0xFF29445B.toInt() else 0xFFE2EAF2.toInt())
-            progress = Regex("(\\d{1,3})%").find(latestStatus)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: if (transferStage >= 5) 100 else 0
+            isIndeterminate = initialPercent == null && (latestStatus.contains("sending", true) || latestStatus.contains("receiving", true))
+            progress = initialPercent ?: if (transferStage >= 5) 100 else 0
         }
         transferProgressBar = progressLine
         live.addView(progressLine, LinearLayout.LayoutParams(-1, dp(8)))
         live.addView(button("BACK TO SHARING", 0xFF1689D5.toInt()) { activeTab = "Home"; render() })
         content.addView(live, bottom(12))
+        val devices = panel(card)
+        devices.addView(label("CONNECTED PHONES", 0xFF168FE5.toInt()))
+        if (connectedPeers.isEmpty()) {
+            devices.addView(TextView(this).apply {
+                text = "No phones connected. Open Send or Receive to find a nearby device."
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(8), 0, dp(4))
+            })
+        } else {
+            devices.addView(TextView(this).apply {
+                text = connectedPeers.size.toString() + " phone(s) connected to this transfer session."
+                textSize = 13f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(ink)
+                setPadding(0, dp(8), 0, dp(7))
+            })
+            connectedPeers.forEach { endpointId ->
+                val peerName = discovered[endpointId] ?: "Nearby phone"
+                devices.addView(TextView(this).apply {
+                    text = "●  " + peerName + "  ·  CONNECTED"
+                    textSize = 11f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(0xFF16A58A.toInt())
+                    setPadding(dp(9), dp(8), dp(9), dp(8))
+                    background = rounded(if (darkMode) 0xFF173C3B.toInt() else 0xFFE7F7F1.toInt(), 10)
+                }, bottom(5))
+            }
+        }
+        content.addView(devices, bottom(12))
         val history = panel(card)
         history.addView(label("RECENTLY SENT", 0xFF7357E8.toInt()))
         val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
@@ -1418,7 +1450,7 @@ class MainActivity : Activity() {
         transferStatusView?.text = message
         val lower = message.lowercase()
         transferStage = when {
-            lower.contains("all selected files") || lower.startsWith("sent:") || lower.contains("file sent") || lower.contains("received and saved") -> 5
+            lower.contains("queue finished") || lower.contains("all selected files") || lower.startsWith("sent:") || lower.contains("file sent") || lower.contains("received and saved") -> 5
             lower.contains("sending") || lower.contains("receiving") -> 4
             lower.contains("connected") || lower.contains("requesting connection") -> 3
             lower.contains("searching") || lower.contains("found ") || lower.contains("visible") -> 2
@@ -1431,11 +1463,17 @@ class MainActivity : Activity() {
             view.setTextColor(if (index < transferStage) -1 else if (darkMode) 0xFFB1C6D8.toInt() else 0xFF63788C.toInt())
         }
         val percent = Regex("(\\d{1,3})%").find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()
-        if (percent != null) {
-            transferProgressBar?.let { bar ->
-                android.animation.ObjectAnimator.ofInt(bar, "progress", bar.progress, percent.coerceIn(0, 100)).apply { duration = 240; start() }
+        transferProgressBar?.let { bar ->
+            when {
+                percent != null -> {
+                    bar.isIndeterminate = false
+                    android.animation.ObjectAnimator.ofInt(bar, "progress", bar.progress, percent.coerceIn(0, 100)).apply { duration = 240; start() }
+                }
+                lower.contains("sending") || lower.contains("receiving") -> bar.isIndeterminate = true
+                transferStage >= 5 -> { bar.isIndeterminate = false; bar.progress = 100 }
+                lower.contains("searching") || lower.contains("queued") -> { bar.isIndeterminate = false; bar.progress = 0 }
             }
-        } else if (transferStage >= 5) transferProgressBar?.progress = 100
+        }
     }
     private fun rebuildPeerList() {
         if (!::peerList.isInitialized) return
