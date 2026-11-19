@@ -857,7 +857,7 @@ class MainActivity : Activity() {
         }
         mediaRows.clear(); mediaRows.addAll(cached)
         val matching = cached.filter { it.second.contains(mediaSearch, ignoreCase = true) }
-        val filtered = if (mediaSort == "Name A-Z") matching.sortedBy { it.second.lowercase() } else matching
+        val filtered = if (mediaSort == "Name A-Z") matching.sortedWith(compareByDescending<Triple<Uri, String, Long>> { it.third }.thenBy { it.second.lowercase() }) else matching
         if (filtered.isEmpty()) mediaList.addView(TextView(this).apply { text = if (cached.isEmpty()) "No " + kind.lowercase() + " found." else "No matching files."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
         val useGrid = kind == "Photos" || kind == "Videos"
         var mediaGrid: android.widget.GridLayout? = null
