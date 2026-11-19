@@ -440,12 +440,14 @@ class MainActivity : Activity() {
                 val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME)
                 val apkUris = ArrayList<Pair<Uri, String>>()
                 contentResolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, projection,
-                    MediaStore.MediaColumns.RELATIVE_PATH + " = ? AND " + MediaStore.MediaColumns.DISPLAY_NAME + " LIKE ?",
-                    arrayOf("Download/NEXORA/", prefix + "%"), MediaStore.MediaColumns.DISPLAY_NAME + " ASC")?.use { cursor ->
+                    MediaStore.MediaColumns.RELATIVE_PATH + " = ?",
+                    arrayOf("Download/NEXORA/"), MediaStore.MediaColumns.DISPLAY_NAME + " ASC")?.use { cursor ->
                     while (cursor.moveToNext()) {
                         val id = cursor.getLong(0)
                         val name = cursor.getString(1) ?: continue
-                        if (name.endsWith(".apk", true)) apkUris.add(Pair(android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id), name))
+                        if (name.startsWith(prefix) && name.endsWith(".apk", true)) {
+                            apkUris.add(Pair(android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id), name))
+                        }
                     }
                 }
                 if (apkUris.isEmpty()) throw java.io.IOException("The APK files could not be found.")
@@ -462,7 +464,7 @@ class MainActivity : Activity() {
                         }
                     }
                     val callback = Intent(this, InstallStatusReceiver::class.java).setAction("com.nexora.share.INSTALL_STATUS")
-                    val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
+                    val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
                     val pending = PendingIntent.getBroadcast(this, sessionId, callback, pendingFlags)
                     session.commit(pending.intentSender)
                 }
