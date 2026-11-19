@@ -34,6 +34,7 @@ class MainActivity : Activity() {
     private var darkMode = false
     private var mediaCategory: String? = null
     private lateinit var mediaList: LinearLayout
+    private var mediaContinueButton: Button? = null
     private val mediaRows = ArrayList<Triple<Uri, String, Long>>()
     private var mediaSearch = ""
     private var mediaSort = "Newest"
@@ -219,6 +220,7 @@ class MainActivity : Activity() {
 
     private fun render() {
         receiveModeLabel = null
+        mediaContinueButton = null
         transferStatusView = null
         transferProgressBar = null
         transferStepViews.clear()
@@ -738,7 +740,8 @@ class MainActivity : Activity() {
         mediaList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(mediaList)
         renderMediaRows(kind, ink, muted, blue)
-        content.addView(button("CONTINUE TO SEND  ·  " + selectedUris.size + " SELECTED", blue) { activeTab = "Send"; render() }, bottom(10))
+        mediaContinueButton = button("CONTINUE TO SEND  ·  " + selectedUris.size + " SELECTED", blue) { activeTab = "Send"; render() }
+        content.addView(mediaContinueButton, bottom(10))
     }
 
     private val mediaCache = HashMap<String, ArrayList<Triple<Uri, String, Long>>>()
@@ -832,7 +835,11 @@ class MainActivity : Activity() {
                 setPadding(if (useGrid) dp(2) else dp(10), dp(3), dp(2), 0)
             }, if (useGrid) LinearLayout.LayoutParams(-1, dp(38)) else LinearLayout.LayoutParams(0, -2, 1f))
             row.addView(TextView(this).apply { text = if (isSelected) "✓" else "+"; textSize = 18f; gravity = Gravity.CENTER; setTextColor(if (isSelected) 0xFF16A085.toInt() else blue) })
-            row.setOnClickListener { if (selectedUris.contains(item.first)) selectedUris.remove(item.first) else selectedUris.add(item.first); renderMediaRows(kind, ink, muted, blue) }
+            row.setOnClickListener {
+                if (selectedUris.contains(item.first)) selectedUris.remove(item.first) else selectedUris.add(item.first)
+                mediaContinueButton?.text = "CONTINUE TO SEND  ·  " + selectedUris.size + " SELECTED"
+                renderMediaRows(kind, ink, muted, blue)
+            }
             if (useGrid) {
                 val params = android.widget.GridLayout.LayoutParams().apply {
                     width = 0; height = dp(148)
