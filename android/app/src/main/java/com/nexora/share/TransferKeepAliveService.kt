@@ -206,7 +206,7 @@ class TransferKeepAliveService : Service() {
                 synchronized(connectedEndpoints) { connectedEndpoints.add(endpointId) }
                 listener?.onConnected(endpointId)
                 status("Connected to ${connectedEndpoints.size} phone(s). You can add more phones or send files.")
-                sendNextFile()
+                if (outgoingQueue.isNotEmpty()) sendNextFile()
             } else {
                 status("Connection was not completed. Try again.")
             }
