@@ -815,45 +815,67 @@ class MainActivity : Activity() {
                 list.addView(TextView(this).apply { text = "No matching apps found."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
                 return
             }
-            fun addAppSection(title: String, apps: List<android.content.pm.ApplicationInfo>, accent: Int) {
-            if (apps.isEmpty()) return
-            list.addView(TextView(this).apply { text = title + "  ·  " + apps.size; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(accent); setPadding(dp(3), dp(13), 0, dp(6)) })
-            val grid = android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }
-            apps.forEach { app ->
-                val appTile = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                    setPadding(dp(6), dp(12), dp(6), dp(10))
-                    background = rounded(if (darkMode) 0xFF142A40.toInt() else -1, 17)
-                    elevation = dp(2).toFloat()
-                    isClickable = true; isFocusable = true
+            fun addAppSection(title: String, apps: List<android.content.pm.ApplicationInfo>, accent: Int, collapsible: Boolean = false) {
+                if (apps.isEmpty()) return
+                var expanded = !collapsible
+                val section = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                val heading = TextView(this).apply {
+                    text = title + "  ·  " + apps.size + if (collapsible) "   ⌄" else ""
+                    textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(accent); setPadding(dp(3), dp(13), 0, dp(6))
+                    if (collapsible) setOnClickListener {
+                        expanded = !expanded
+                        text = title + "  ·  " + apps.size + if (expanded) "   ⌃" else "   ⌄"
+                        section.getChildAt(1)?.visibility = if (expanded) View.VISIBLE else View.GONE
+                    }
                 }
-                val iconView = ImageView(this).apply {
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    try { setImageDrawable(packageManager.getApplicationIcon(app)) } catch (_: Exception) { setImageResource(android.R.drawable.sym_def_app_icon) }
+                section.addView(heading)
+                val grid = android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }
+                apps.forEach { app ->
+                    val appTile = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                        setPadding(dp(6), dp(12), dp(6), dp(10))
+                        background = rounded(if (darkMode) 0xFF142A40.toInt() else -1, 17)
+                        elevation = dp(2).toFloat()
+                        isClickable = true; isFocusable = true
+                    }
+                    val iconView = ImageView(this).apply {
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        try { setImageDrawable(packageManager.getApplicationIcon(app)) } catch (_: Exception) { setImageResource(android.R.drawable.sym_def_app_icon) }
+                    }
+                    appTile.addView(iconView, LinearLayout.LayoutParams(dp(48), dp(48)))
+                    val appName = packageManager.getApplicationLabel(app).toString()
+                    appTile.addView(TextView(this).apply {
+                        text = appName; textSize = 11f; maxLines = 2; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(7), 0, dp(3))
+                    }, LinearLayout.LayoutParams(-1, dp(36)))
+                    appTile.addView(TextView(this).apply {
+                        text = "SHARE"; textSize = 9f; letterSpacing = .08f; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF1684D9.toInt())
+                    })
+                    appTile.setOnClickListener { animatePress(appTile); selectAppApk(app) }
+                    val params = android.widget.GridLayout.LayoutParams().apply {
+                        width = 0; height = dp(125)
+                        columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                        setMargins(dp(4), dp(4), dp(4), dp(7))
+                    }
+                    grid.addView(appTile, params)
                 }
-                appTile.addView(iconView, LinearLayout.LayoutParams(dp(48), dp(48)))
-                val appName = packageManager.getApplicationLabel(app).toString()
-                appTile.addView(TextView(this).apply {
-                    text = appName; textSize = 11f; maxLines = 2; gravity = Gravity.CENTER
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(7), 0, dp(3))
-                }, LinearLayout.LayoutParams(-1, dp(36)))
-                appTile.addView(TextView(this).apply {
-                    text = "SHARE"; textSize = 9f; letterSpacing = .08f; gravity = Gravity.CENTER
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF1684D9.toInt())
-                })
-                appTile.setOnClickListener { animatePress(appTile); selectAppApk(app) }
-                val params = android.widget.GridLayout.LayoutParams().apply {
-                    width = 0; height = dp(125)
-                    columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
-                    setMargins(dp(4), dp(4), dp(4), dp(7))
-                }
-                grid.addView(appTile, params)
+                section.addView(grid)
+                if (!expanded) grid.visibility = View.GONE
+                list.addView(section)
             }
-            list.addView(grid)
-            }
-            addAppSection("QUICK ACCESS", userApps.take(6), 0xFFE69A35.toInt())
+            val popularPackages = listOf(
+                "com.whatsapp", "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
+                "com.instagram.android", "com.facebook.katana", "com.google.android.youtube",
+                "com.android.chrome", "org.telegram.messenger", "com.snapchat.android",
+                "com.spotify.music", "com.google.android.gm", "com.google.android.apps.maps"
+            )
+            val popularApps = popularPackages.mapNotNull { pkg -> userApps.firstOrNull { it.packageName == pkg } }.distinctBy { it.packageName }
+            val featuredApps = (popularApps + userApps.filterNot { app -> popularApps.any { it.packageName == app.packageName } }).take(6)
+            addAppSection("POPULAR APPS", featuredApps, 0xFFE69A35.toInt())
             addAppSection("LOCAL APPS", userApps, 0xFF7357E8.toInt())
-            addAppSection("SYSTEM APPS", systemApps, 0xFF168FE5.toInt())
+            addAppSection("SYSTEM APPS", systemApps, 0xFF168FE5.toInt(), collapsible = true)
         }
         search.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
