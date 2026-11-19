@@ -181,6 +181,8 @@ class MainActivity : Activity() {
         header.addView(TextView(this).apply {
             text = "●  PRIVATE & LOCAL"; textSize = 9f; letterSpacing = .05f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(if (darkMode) 0xFF72E4C0.toInt() else 0xFF168A70.toInt())
         })
+        header.addView(button("⇧ Transfers", 0xFF7357E8.toInt()) { activeTab = "Transfers"; render() },
+            LinearLayout.LayoutParams(-2, dp(38)).apply { leftMargin = dp(8) })
         root.addView(header)
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(17), dp(8), dp(17), dp(18)) }
         root.addView(ScrollView(this).apply { isFillViewport = true; clipToPadding = false; addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -206,6 +208,7 @@ class MainActivity : Activity() {
             "Files" -> showFiles(card, ink, muted, blue)
             "Sent" -> showSent(card, ink, muted)
             "Received" -> showReceived(card, ink, muted)
+            "Transfers" -> showTransfers(card, ink, muted)
             "Settings" -> showSettings(card, ink, muted, blue)
         }
         content.alpha = 0f
@@ -257,6 +260,26 @@ class MainActivity : Activity() {
             withNearbyPermissions { ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java)); sharing?.startReceiving() ?: updateStatus("Starting service. Try again.") }
         }, LinearLayout.LayoutParams(0, dp(112), 1f).apply { leftMargin = dp(6) })
         content.addView(actions, bottom(13))
+        val quickAccess = panel(card)
+        quickAccess.addView(label("QUICK ACCESS", muted))
+        val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf(Triple("Apps", "▦", 0xFF7357E8.toInt()), Triple("Images", "▧", 0xFF168FE5.toInt()), Triple("Videos", "▷", 0xFFE05C8A.toInt()), Triple("Music", "♫", 0xFFE69A35.toInt()), Triple("Files", "▤", 0xFF16A58A.toInt())).forEach { item ->
+            val shortcut = TextView(this).apply {
+                text = item.second + "\n" + item.first; gravity = Gravity.CENTER
+                textSize = 10f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(item.third); setPadding(dp(5), dp(9), dp(5), dp(9))
+                background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF0F5FB.toInt(), 13)
+                setOnClickListener {
+                    mediaCategory = if (item.first == "Images") "Photos" else item.first
+                    if (item.first == "Files") { activeTab = "Files"; render() }
+                    else if (item.first == "Images" || item.first == "Videos" || item.first == "Music") openMediaLibrary(mediaCategory!!)
+                    else { activeTab = "Media"; render() }
+                }
+            }
+            quickRow.addView(shortcut, LinearLayout.LayoutParams(0, dp(58), 1f).apply { leftMargin = dp(2); rightMargin = dp(2) })
+        }
+        quickAccess.addView(quickRow)
+        content.addView(quickAccess, bottom(13))
         val devices = panel(card)
         devices.addView(label("DEVICES AROUND YOU", muted))
         devices.addView(TextView(this).apply {
@@ -273,12 +296,13 @@ class MainActivity : Activity() {
         content.addView(statusCard, bottom(12))
         sendButton = button(if (selectedUris.isEmpty()) "CONTINUE TO FILES" else "SEND " + selectedUris.size + " SELECTED FILE(S)", blue) {
             if (selectedUris.isEmpty()) { activeTab = "Media"; render() }
-            else if (sharing == null) updateStatus("Connect to a nearby phone first.")
+            else if (sharing == null) updateStatus("NEXORA is preparing the sharing service. Try again in a moment.")
             else {
                 rememberSentFiles(selectedUris)
                 sharing?.sendFiles(ArrayList(selectedUris))
                 selectedUris.clear()
                 sendButton.text = "CONTINUE TO FILES"
+                updateStatus("Files added to the transfer queue. Find and connect to a phone to begin.")
             }
         }
         content.addView(sendButton, bottom(8))
@@ -643,14 +667,105 @@ class MainActivity : Activity() {
         return String.format(java.util.Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
     }
 
+    private var selectedTreeUri: Uri? = null
+    private var currentTreeDocumentId: String? = null
+    private val treeDocumentStack = ArrayList<String>()
+
     private fun showFiles(card: Int, ink: Int, muted: Int, blue: Int) {
-        content.addView(TextView(this).apply { text = "File tools"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
+        content.addView(TextView(this).apply { text = "File manager"; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(5)) })
+        content.addView(TextView(this).apply { text = "Browse folders, select multiple files and send them together."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(13)) })
+        val storage = panel(card)
+        storage.addView(label("PHONE STORAGE", 0xFF16A58A.toInt()))
+        try {
+            val stat = android.os.StatFs(android.os.Environment.getDataDirectory().absolutePath)
+            val total = stat.totalBytes; val free = stat.availableBytes; val used = (total - free).coerceAtLeast(0L)
+            storage.addView(TextView(this).apply { text = readableSize(used) + " used  ·  " + readableSize(free) + " available"; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(8), 0, dp(5)) })
+            val bar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 100; progress = if (total > 0) ((used * 100L) / total).toInt() else 0
+                progressTintList = android.content.res.ColorStateList.valueOf(0xFF16A58A.toInt())
+                progressBackgroundTintList = android.content.res.ColorStateList.valueOf(if (darkMode) 0xFF29445B.toInt() else 0xFFE2EAF2.toInt())
+            }
+            storage.addView(bar, LinearLayout.LayoutParams(-1, dp(8)))
+            val cacheBytes = runCatching { cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } }.getOrDefault(0L)
+            storage.addView(TextView(this).apply { text = "NEXORA temporary cache: " + readableSize(cacheBytes); textSize = 11f; setTextColor(muted); setPadding(0, dp(7), 0, 0) })
+        } catch (_: Exception) { storage.addView(TextView(this).apply { text = "Storage information is unavailable."; setTextColor(muted); textSize = 12f }) }
+        content.addView(storage, bottom(12))
+        content.addView(button("OPEN PHONE FOLDERS", 0xFF16A58A.toInt()) { openFolderTree() }, bottom(8))
         listOf("Browse all files" to "*/*", "Browse documents" to "application/*", "Browse images" to "image/*", "Browse videos" to "video/*", "Browse audio" to "audio/*").forEach { (title, mime) ->
-            content.addView(button(title, blue) { openPicker(mime) }, bottom(9))
+            val tint = when (mime) { "image/*" -> 0xFF168FE5.toInt(); "video/*" -> 0xFFE05C8A.toInt(); "audio/*" -> 0xFFE69A35.toInt(); else -> blue }
+            content.addView(button(title, tint) { openPicker(mime) }, bottom(7))
         }
-        val note = panel(card); note.addView(label("ABOUT FILE ACCESS", muted))
-        note.addView(TextView(this).apply { text = "NEXORA uses Android's secure file picker. Your private folders remain protected, and you choose exactly what to share."; textSize = 12f; setTextColor(ink); setPadding(0, dp(8), 0, 0) })
-        content.addView(note, bottom(12))
+        selectedTreeUri?.let { uri ->
+            val rootId = runCatching { android.provider.DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            if (currentTreeDocumentId == null) currentTreeDocumentId = rootId
+            if (currentTreeDocumentId != null) renderTreeContents(uri, currentTreeDocumentId!!, ink, muted)
+        }
+    }
+
+    private fun openFolderTree() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        try { startActivityForResult(intent, REQUEST_TREE) } catch (_: Exception) { updateStatus("This phone does not provide folder browsing.") }
+    }
+
+    private fun renderTreeContents(treeUri: Uri, documentId: String, ink: Int, muted: Int) {
+        val section = panel(if (darkMode) 0xFF142A40.toInt() else -1)
+        section.addView(label("CURRENT FOLDER", 0xFF16A58A.toInt()))
+        section.addView(TextView(this).apply { text = documentId.substringAfterLast(':').ifBlank { "Phone folder" }; textSize = 12f; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
+        if (treeDocumentStack.isNotEmpty()) section.addView(button("← PARENT FOLDER", 0xFF64748B.toInt()) {
+            currentTreeDocumentId = treeDocumentStack.removeAt(treeDocumentStack.lastIndex); render()
+        }, bottom(6))
+        val children = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        section.addView(children)
+        val childUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId)
+        val projection = arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID, android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME, android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE, android.provider.DocumentsContract.Document.COLUMN_SIZE)
+        try {
+            contentResolver.query(childUri, projection, null, null, android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME + " ASC")?.use { cursor ->
+                if (cursor.count == 0) children.addView(TextView(this).apply { text = "This folder is empty."; textSize = 12f; setTextColor(muted); setPadding(0, dp(10), 0, dp(10)) })
+                while (cursor.moveToNext()) {
+                    val idIndex = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                    val nameIndex = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                    val mimeIndex = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE)
+                    val sizeIndex = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_SIZE)
+                    if (idIndex < 0 || nameIndex < 0 || mimeIndex < 0) continue
+                    val childId = cursor.getString(idIndex) ?: continue
+                    val name = cursor.getString(nameIndex) ?: "Unnamed item"
+                    val mime = cursor.getString(mimeIndex) ?: "*/*"
+                    val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) readableSize(cursor.getLong(sizeIndex)) else "Folder"
+                    val folder = mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR
+                    val itemUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
+                    val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(7), dp(8), dp(7), dp(8)); background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 12) }
+                    row.addView(TextView(this).apply { text = (if (folder) "📁  " else "📄  ") + name + "\n" + size; textSize = 12f; setTextColor(ink) }, LinearLayout.LayoutParams(0, -2, 1f))
+                    row.addView(button(if (folder) "OPEN" else "ADD", if (folder) 0xFF16A58A.toInt() else 0xFF168FE5.toInt()) {
+                        if (folder) { treeDocumentStack.add(currentTreeDocumentId ?: documentId); currentTreeDocumentId = childId; render() }
+                        else { if (!selectedUris.contains(itemUri)) selectedUris.add(itemUri); updateStatus("${selectedUris.size} file(s) selected."); Toast.makeText(this, "Added: $name", Toast.LENGTH_SHORT).show() }
+                    })
+                    children.addView(row, bottom(5))
+                }
+            } ?: children.addView(TextView(this).apply { text = "Could not read this folder."; textSize = 12f; setTextColor(muted) })
+        } catch (e: Exception) { children.addView(TextView(this).apply { text = "Folder could not be opened: " + (e.localizedMessage ?: "unknown error"); textSize = 12f; setTextColor(muted) }) }
+        section.addView(button("SEND ${selectedUris.size} SELECTED FILE(S)", 0xFF1689D5.toInt()) {
+            if (selectedUris.isEmpty()) Toast.makeText(this, "Select files first.", Toast.LENGTH_SHORT).show()
+            else { activeTab = "Home"; render(); updateStatus("${selectedUris.size} file(s) selected. Tap Send to continue.") }
+        }, bottom(5))
+        content.addView(section, bottom(12))
+    }
+
+    private fun showTransfers(card: Int, ink: Int, muted: Int) {
+        content.addView(TextView(this).apply { text = "Transfer centre"; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
+        val live = panel(card)
+        live.addView(label("LIVE TRANSFER STATUS", 0xFF16A58A.toInt()))
+        live.addView(TextView(this).apply { text = latestStatus; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(8), 0, dp(6)) })
+        live.addView(button("BACK TO SHARING", 0xFF1689D5.toInt()) { activeTab = "Home"; render() })
+        content.addView(live, bottom(12))
+        val history = panel(card)
+        history.addView(label("RECENTLY SENT", 0xFF7357E8.toInt()))
+        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\\n")?.filter { it.isNotBlank() } ?: emptyList()
+        if (entries.isEmpty()) history.addView(TextView(this).apply { text = "Your sent files will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(5)) })
+        else entries.take(30).forEach { entry -> history.addView(TextView(this).apply { text = "↗  " + entry; textSize = 12f; setTextColor(ink); setPadding(0, dp(7), 0, dp(7)) }) }
+        content.addView(history, bottom(12))
+        content.addView(button("OPEN RECEIVED FILES", 0xFFE05C8A.toInt()) { activeTab = "Received"; render() })
     }
 
     private fun showSent(card: Int, ink: Int, muted: Int) {
@@ -833,7 +948,18 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated Android callback retained for broad device compatibility.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_FILE && resultCode == RESULT_OK && data != null) {
+        if (requestCode == REQUEST_TREE && resultCode == RESULT_OK && data?.data != null) {
+            val uri = data.data!!
+            try {
+                val flags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                contentResolver.takePersistableUriPermission(uri, flags)
+                selectedTreeUri = uri
+                currentTreeDocumentId = android.provider.DocumentsContract.getTreeDocumentId(uri)
+                treeDocumentStack.clear()
+                activeTab = "Files"
+                render()
+            } catch (e: Exception) { updateStatus("Folder access was not saved: " + (e.localizedMessage ?: "unknown error")) }
+        } else if (requestCode == REQUEST_FILE && resultCode == RESULT_OK && data != null) {
             val chosen = LinkedHashSet<Uri>()
             data.clipData?.let { clip -> for (i in 0 until clip.itemCount) chosen.add(clip.getItemAt(i).uri) }
             data.data?.let { chosen.add(it) }
@@ -922,5 +1048,5 @@ class MainActivity : Activity() {
         receivedList.addView(TextView(this).apply { text = "Received files will appear here when saved."; textSize = 12f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
     }
 
-    companion object { private const val REQUEST_NEARBY = 2001; private const val REQUEST_FILE = 2002; private const val REQUEST_MEDIA = 2003 }
+    companion object { private const val REQUEST_NEARBY = 2001; private const val REQUEST_FILE = 2002; private const val REQUEST_MEDIA = 2003; private const val REQUEST_TREE = 2004 }
 }
