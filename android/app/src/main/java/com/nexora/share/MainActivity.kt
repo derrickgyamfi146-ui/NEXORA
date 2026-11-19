@@ -147,18 +147,19 @@ class MainActivity : Activity() {
             setPadding(dp(24), 0, dp(24), 0)
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF071526.toInt(), 0xFF102B4B.toInt(), 0xFF10204A.toInt())
+                intArrayOf(0xFF071526.toInt(), 0xFF0B4A43.toInt(), 0xFF493817.toInt())
             )
         }
         val glow = TextView(this).apply {
-            text = "✦"
-            textSize = 72f
+            text = "N"
+            textSize = 68f
+            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
             gravity = Gravity.CENTER
-            setTextColor(0xFF72F1FF.toInt())
+            setTextColor(0xFFFFD66B.toInt())
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0x3328D7FF)
-                setStroke(dp(1), 0x5572F1FF)
+                setColor(0x33F6C85F)
+                setStroke(dp(1), 0x88F6C85F)
             }
             alpha = 0f
             scaleX = .72f
@@ -174,7 +175,7 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER
                 textSize = 39f
                 typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-                setTextColor(if (index == 2) 0xFF72F1FF.toInt() else -1)
+                setTextColor(if (index == 2) 0xFFFFD66B.toInt() else -1)
                 alpha = 0f
                 translationY = -dp(72).toFloat()
                 elevation = dp(12).toFloat()
