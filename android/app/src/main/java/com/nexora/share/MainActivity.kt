@@ -91,7 +91,7 @@ class MainActivity : Activity() {
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(14)) }
         root.addView(ScrollView(this).apply { isFillViewport = true; addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
         val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(5), dp(7), dp(5), dp(7)); setBackgroundColor(card); elevation = 8f }
-        listOf("Home", "Media", "Files", "Received", "Settings").forEach { tab ->
+        listOf("Home", "Media", "Files", "Sent", "Received", "Settings").forEach { tab ->
             nav.addView(TextView(this).apply {
                 text = tab; textSize = 10f; gravity = Gravity.CENTER
                 typeface = if (activeTab == tab) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
@@ -104,6 +104,7 @@ class MainActivity : Activity() {
             "Home" -> showHome(card, ink, muted, blue)
             "Media" -> showMedia(card, ink, muted, blue)
             "Files" -> showFiles(card, ink, muted, blue)
+            "Sent" -> showSent(card, ink, muted)
             "Received" -> showReceived(card, ink, muted)
             "Settings" -> showSettings(card, ink, muted, blue)
         }
@@ -132,6 +133,7 @@ class MainActivity : Activity() {
             if (selectedUris.isEmpty()) { activeTab = "Media"; render() }
             else if (sharing == null) updateStatus("Connect to a nearby phone first.")
             else {
+                rememberSentFiles(selectedUris)
                 sharing?.sendFiles(ArrayList(selectedUris))
                 selectedUris.clear()
                 sendButton.isEnabled = true
@@ -292,6 +294,29 @@ class MainActivity : Activity() {
         content.addView(note, bottom(12))
     }
 
+    private fun showSent(card: Int, ink: Int, muted: Int) {
+        content.addView(TextView(this).apply { text = "Sent activity"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
+        val box = panel(card)
+        box.addView(label("FILES SELECTED TO SEND", muted))
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(list)
+        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\\n")?.filter { it.isNotBlank() } ?: emptyList()
+        if (entries.isEmpty()) list.addView(TextView(this).apply { text = "Files you send will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(8)) })
+        else entries.take(100).forEach { entry -> list.addView(TextView(this).apply { text = entry; textSize = 12f; setTextColor(ink); setPadding(0, dp(8), 0, dp(8)) }) }
+        content.addView(box)
+    }
+
+    private fun rememberSentFiles(uris: List<Uri>) {
+        val prefs = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
+        val old = prefs.getString("sent_items", "") ?: ""
+        val stamp = java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val names = uris.map { uri ->
+            var name = uri.lastPathSegment ?: "Selected file"
+            try { contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) name = c.getString(0) ?: name } } catch (_: Exception) {}
+            stamp + " · " + name
+        }
+        prefs.edit().putString("sent_items", (names + old.split("\\n").filter { it.isNotBlank() }).take(100).joinToString("\\n")).apply()
+    }
     private fun showReceived(card: Int, ink: Int, muted: Int) {
         content.addView(TextView(this).apply { text = "Received files"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
         val box = panel(card); box.addView(label("SAVED ON THIS PHONE", muted))
@@ -399,6 +424,7 @@ class MainActivity : Activity() {
                 sendButton.text = "SEND ${selectedUris.size} SELECTED FILE(S)"
                 sendButton.isEnabled = true
                 sendButton.setOnClickListener {
+                    rememberSentFiles(selectedUris)
                     sharing?.sendFiles(ArrayList(selectedUris)); selectedUris.clear()
                     sendButton.isEnabled = true; sendButton.text = "CHOOSE FILES TO SEND"
                 }
