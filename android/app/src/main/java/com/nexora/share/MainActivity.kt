@@ -404,7 +404,8 @@ class MainActivity : Activity() {
             val isSelected = selectedUris.contains(item.first)
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(5), dp(8), dp(5)); background = rounded(if (isSelected) 0xFFE4F5EF.toInt() else if (darkMode) 0xFF1C2940.toInt() else -1, 12) }
             val preview = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(if (darkMode) 0xFF263650.toInt() else 0xFFE8EDF5.toInt()) }
-            row.addView(preview, LinearLayout.LayoutParams(dp(58), dp(58)))
+            row.addView(preview, LinearLayout.LayoutParams(dp(66), dp(66)))
+            if (kind == "Videos") preview.setOnClickListener { previewVideo(item.first, item.second) }
             row.addView(TextView(this).apply { text = item.second; textSize = 12f; setTextColor(if (darkMode) -1 else 0xFF14213D.toInt()); setPadding(dp(10), 0, dp(8), 0) }, LinearLayout.LayoutParams(0, -2, 1f))
             row.addView(TextView(this).apply { text = if (isSelected) "✓" else "+"; textSize = 22f; setTextColor(if (isSelected) 0xFF16A085.toInt() else blue) })
             row.setOnClickListener { if (selectedUris.contains(item.first)) selectedUris.remove(item.first) else selectedUris.add(item.first); renderMediaRows(kind, ink, muted, blue) }
@@ -421,6 +422,23 @@ class MainActivity : Activity() {
     }
 
     private fun preloadLibraries() {
+        listOf("Photos", "Videos", "Music").forEach { kind ->
+            if (!hasMediaPermission(kind) || mediaCache.containsKey(kind) || !mediaLoading.add(kind)) return@forEach
+            Thread {
+                val loaded = ArrayList<Pair<Uri, String>>()
+                val collection = when (kind) { "Photos" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI; "Videos" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI; else -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI }
+                try {
+                    val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
+                    contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
+                        while (cursor.moveToNext()) {
+                            val id = cursor.getLong(0); val name = cursor.getString(1) ?: "Media file"; val size = cursor.getLong(2)
+                            loaded.add(Pair(android.content.ContentUris.withAppendedId(collection, id), name + " · " + readableSize(size)))
+                        }
+                    }
+                } catch (e: Exception) { mediaErrors[kind] = e.localizedMessage ?: "Could not read media." }
+                runOnUiThread { mediaLoading.remove(kind); if (!mediaErrors.containsKey(kind)) mediaCache[kind] = loaded }
+            }.start()
+        }
         if (!appsLoaded && !appsLoading) {
             appsLoading = true
             Thread {
@@ -431,6 +449,18 @@ class MainActivity : Activity() {
                 }
             }.start()
         }
+    }
+
+    private fun previewVideo(uri: Uri, title: String) {
+        val video = android.widget.VideoView(this)
+        val dialog = android.app.Dialog(this)
+        val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(12), dp(12), dp(12)); background = rounded(0xFF12243A.toInt(), 20) }
+        panel.addView(TextView(this).apply { text = title; textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1); setPadding(0, 0, 0, dp(8)) })
+        panel.addView(video, LinearLayout.LayoutParams(-1, dp(230)))
+        panel.addView(button("CLOSE PREVIEW", 0xFFE05C8A.toInt()) { video.stopPlayback(); dialog.dismiss() })
+        dialog.setContentView(panel); dialog.show(); dialog.window?.setBackgroundDrawableResource(android.R.color.transparent); dialog.window?.setLayout(-1, -2)
+        try { video.setVideoURI(uri); video.setOnPreparedListener { video.start() }; video.setOnErrorListener { _, _, _ -> Toast.makeText(this, "This video cannot be previewed.", Toast.LENGTH_SHORT).show(); true } }
+        catch (_: Exception) { Toast.makeText(this, "Could not open this video.", Toast.LENGTH_SHORT).show() }
     }
 
     private var appsLoaded = false
