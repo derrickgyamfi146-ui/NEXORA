@@ -224,9 +224,7 @@ class MainActivity : Activity() {
                     "audio" -> openMediaLibrary("Music")
                     "documents" -> openPicker("application/*")
                     "all" -> openPicker("*/*")
-                    "apps" -> android.app.AlertDialog.Builder(this@MainActivity).setTitle("App sharing")
-                        .setMessage("Android limits access to other apps' installation files. NEXORA can share files you select, but automatic APK extraction is not enabled in this version.")
-                        .setPositiveButton("OK", null).show()
+                    "apps" -> { mediaCategory = "Apps"; render() }
                 }
             }
             content.addView(tile, bottom(9))
@@ -248,6 +246,7 @@ class MainActivity : Activity() {
     }
 
     private fun renderMediaLibrary(kind: String, ink: Int, muted: Int, blue: Int) {
+        if (kind == "Apps") { renderAppsLibrary(ink, muted, blue); return }
         content.addView(button("‹  Back to categories", blue) { mediaCategory = null; render() }, bottom(10))
         content.addView(TextView(this).apply { text = kind; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
         val search = EditText(this).apply {
@@ -338,6 +337,77 @@ class MainActivity : Activity() {
             }.start() else { preview.setImageResource(android.R.drawable.ic_media_play); preview.scaleType = ImageView.ScaleType.CENTER }
         }
     }
+
+    private var appsLoaded = false
+    private var appsLoading = false
+    private val installedApps = ArrayList<android.content.pm.ApplicationInfo>()
+
+    private fun renderAppsLibrary(ink: Int, muted: Int, blue: Int) {
+        content.addView(button("‹  Back to categories", blue) { mediaCategory = null; render() }, bottom(10))
+        content.addView(TextView(this).apply { text = "Apps on this phone"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
+        val search = EditText(this).apply { hint = "Search installed apps"; setSingleLine(true); textSize = 14f; setPadding(dp(12), dp(8), dp(12), dp(8)); setBackground(rounded(if (darkMode) 0xFF263650.toInt() else -1, 12)); setTextColor(ink); setHintTextColor(muted) }
+        content.addView(search, bottom(8))
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(list)
+        fun populate(query: String) {
+            list.removeAllViews()
+            if (!appsLoaded) {
+                list.addView(TextView(this).apply { text = "Loading installed apps…"; textSize = 13f; setTextColor(muted); setPadding(0, dp(14), 0, dp(14)) })
+                if (!appsLoading) {
+                    appsLoading = true
+                    Thread {
+                        val result = try { packageManager.getInstalledApplications(0).sortedBy { packageManager.getApplicationLabel(it).toString().lowercase() } } catch (_: Exception) { emptyList() }
+                        runOnUiThread {
+                            installedApps.clear()
+                            installedApps.addAll(result)
+                            appsLoaded = true
+                            appsLoading = false
+                            if (mediaCategory == "Apps") populate(search.text.toString())
+                        }
+                    }.start()
+                }
+                return
+            }
+            val matches = installedApps.filter { packageManager.getApplicationLabel(it).toString().contains(query, true) || it.packageName.contains(query, true) }
+            if (matches.isEmpty()) list.addView(TextView(this).apply { text = "No matching apps found."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
+            matches.forEach { app ->
+                val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(7), dp(8), dp(7)); background = rounded(if (darkMode) 0xFF1C2940.toInt() else -1, 12) }
+                val iconView = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; try { setImageDrawable(packageManager.getApplicationIcon(app)) } catch (_: Exception) { setImageResource(android.R.drawable.sym_def_app_icon) } }
+                row.addView(iconView, LinearLayout.LayoutParams(dp(44), dp(44)))
+                val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, dp(6), 0) }
+                details.addView(TextView(this).apply { text = packageManager.getApplicationLabel(app).toString(); textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink) })
+                details.addView(TextView(this).apply { text = app.packageName; textSize = 9f; setTextColor(muted) })
+                row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+                row.addView(button("Select APK", blue) { selectAppApk(app) })
+                list.addView(row, bottom(6))
+            }
+        }
+        search.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { populate(s?.toString() ?: "") }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+        populate("")
+    }
+
+    private fun selectAppApk(app: android.content.pm.ApplicationInfo) {
+        try {
+            val source = java.io.File(app.sourceDir)
+            val folder = java.io.File(cacheDir, "shared_apks").apply { mkdirs() }
+            val label = packageManager.getApplicationLabel(app).toString().replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
+            val apk = java.io.File(folder, label + ".apk")
+            source.copyTo(apk, overwrite = true)
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, packageName + ".fileprovider", apk)
+            if (!selectedUris.contains(uri)) selectedUris.add(uri)
+            activeTab = "Home"
+            mediaCategory = null
+            render()
+            updateStatus(label + " APK selected. Connect to a phone, then tap Send.")
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not prepare this app: " + e.localizedMessage, Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun readableSize(bytes: Long): String {
         if (bytes < 1024) return bytes.toString() + " B"
         if (bytes < 1024 * 1024) return String.format(java.util.Locale.US, "%.1f KB", bytes / 1024.0)
