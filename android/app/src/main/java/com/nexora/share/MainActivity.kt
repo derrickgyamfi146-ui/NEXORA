@@ -805,10 +805,10 @@ class MainActivity : Activity() {
             }
             val label = packageManager.getApplicationLabel(app).toString()
             val parts = sources.size
-            activeTab = "Home"
-            mediaCategory = null
+            activeTab = "Send"
+            mediaCategory = "Apps"
             render()
-            updateStatus(label + ": " + parts + " APK part(s) selected. Connect to a phone, then tap Send.")
+            updateStatus(label + ": " + parts + " APK part(s) selected. Choose a nearby phone, then tap Send.")
         } catch (e: Exception) {
             Toast.makeText(this, "Could not prepare this app: " + e.localizedMessage, Toast.LENGTH_LONG).show()
         }
