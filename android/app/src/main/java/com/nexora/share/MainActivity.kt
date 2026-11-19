@@ -1021,10 +1021,11 @@ class MainActivity : Activity() {
             val popularApps = popularPackages.mapNotNull { pkg -> userApps.firstOrNull { it.packageName == pkg } }.distinctBy { it.packageName }
             val featuredApps = (popularApps + userApps.filterNot { app -> popularApps.any { it.packageName == app.packageName } }).take(6)
             addAppSection(if (popularApps.isNotEmpty()) "POPULAR APPS" else "QUICK ACCESS", featuredApps, 0xFFE69A35.toInt())
-            addAppSection("LOCAL APPS", userApps.take(appDisplayLimit), 0xFF7357E8.toInt())
-            if (userApps.size > appDisplayLimit) {
+            val localApps = userApps.filterNot { app -> featuredApps.any { it.packageName == app.packageName } }
+            addAppSection("LOCAL APPS", localApps.take(appDisplayLimit), 0xFF7357E8.toInt())
+            if (localApps.size > appDisplayLimit) {
                 list.addView(button("LOAD MORE APPS", blue) {
-                    appDisplayLimit = (appDisplayLimit + 20).coerceAtMost(userApps.size)
+                    appDisplayLimit = (appDisplayLimit + 20).coerceAtMost(localApps.size)
                     populate(search.text.toString())
                 }, bottom(8))
             }
