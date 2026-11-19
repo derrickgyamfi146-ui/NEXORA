@@ -30,6 +30,7 @@ class MainActivity : Activity() {
     private lateinit var mediaList: LinearLayout
     private val mediaRows = ArrayList<Pair<Uri, String>>()
     private var mediaSearch = ""
+    private var mediaSort = "Newest"
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -196,7 +197,11 @@ class MainActivity : Activity() {
                 override fun afterTextChanged(s: android.text.Editable?) {}
             })
         }
-        content.addView(search, bottom(10))
+        content.addView(search, bottom(8))
+        content.addView(button("Sort: " + mediaSort, blue) {
+            mediaSort = if (mediaSort == "Newest") "Name A-Z" else "Newest"
+            render()
+        }, bottom(8))
         mediaList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(mediaList)
         renderMediaRows(kind, ink, muted, blue)
@@ -230,7 +235,8 @@ class MainActivity : Activity() {
             mediaList.addView(TextView(this).apply { text = "Allow media access to view files."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
             return
         } catch (_: Exception) {}
-        val filtered = mediaRows.filter { it.second.contains(mediaSearch, ignoreCase = true) }
+        val matching = mediaRows.filter { it.second.contains(mediaSearch, ignoreCase = true) }
+        val filtered = if (mediaSort == "Name A-Z") matching.sortedBy { it.second.lowercase() } else matching
         if (filtered.isEmpty()) mediaList.addView(TextView(this).apply {
             text = if (mediaRows.isEmpty()) "No " + kind.lowercase() + " found on this phone." else "No matching files."
             textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12))
