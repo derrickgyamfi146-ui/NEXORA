@@ -43,6 +43,7 @@ class TransferKeepAliveService : Service() {
     private var advertising = false
     private var discovering = false
     private val openFiles = ConcurrentHashMap<Long, android.os.ParcelFileDescriptor>()
+    private val outgoingPayloadNames = ConcurrentHashMap<Long, String>()
     private val outgoingQueue = ArrayDeque<Uri>()
     private var sending = false
     private var currentOutgoingPayloadId: Long? = null
@@ -143,6 +144,7 @@ class TransferKeepAliveService : Service() {
             val payload = Payload.fromFile(descriptor)
             payload.setFileName(name)
             openFiles[payload.id] = descriptor
+            outgoingPayloadNames[payload.id] = name
             sending = true
             currentOutgoingPayloadId = payload.id
             transferStartedAt = System.currentTimeMillis()
@@ -151,6 +153,7 @@ class TransferKeepAliveService : Service() {
             pendingPayloadEndpoints[payload.id] = java.util.Collections.synchronizedSet(endpoints.toMutableSet())
             client.sendPayload(endpoints, payload).addOnFailureListener {
                 pendingPayloadEndpoints.remove(payload.id)
+                outgoingPayloadNames.remove(payload.id)
                 openFiles.remove(payload.id)?.close()
                 currentOutgoingPayloadId = null
                 sending = false
@@ -173,6 +176,7 @@ class TransferKeepAliveService : Service() {
         pendingPayloadEndpoints.clear()
         openFiles.values.forEach { runCatching { it.close() } }
         openFiles.clear()
+        outgoingPayloadNames.clear()
         outgoingQueue.clear()
         sending = false
         currentOutgoingPayloadId = null
@@ -220,6 +224,7 @@ class TransferKeepAliveService : Service() {
                     pending.remove(endpointId)
                     if (pending.isEmpty()) {
                         pendingPayloadEndpoints.remove(activeId)
+                        outgoingPayloadNames.remove(activeId)
                         openFiles.remove(activeId)?.close()
                         currentOutgoingPayloadId = null
                         sending = false
@@ -267,10 +272,11 @@ class TransferKeepAliveService : Service() {
                             if (pending.isEmpty()) {
                                 pendingPayloadEndpoints.remove(update.payloadId)
                                 openFiles.remove(update.payloadId)?.close()
+                                val sentName = outgoingPayloadNames.remove(update.payloadId) ?: "File"
                                 if (currentOutgoingPayloadId == update.payloadId) {
                                     currentOutgoingPayloadId = null
                                     sending = false
-                                    status("File sent to connected phone(s). ${outgoingQueue.size} file(s) remaining.")
+                                    status("Sent: $sentName")
                                     sendNextFile()
                                 }
                             }
@@ -288,6 +294,7 @@ class TransferKeepAliveService : Service() {
                             status("One phone could not receive the file.")
                             if (pending.isEmpty()) {
                                 pendingPayloadEndpoints.remove(update.payloadId)
+                                outgoingPayloadNames.remove(update.payloadId)
                                 openFiles.remove(update.payloadId)?.close()
                                 if (currentOutgoingPayloadId == update.payloadId) {
                                     currentOutgoingPayloadId = null
@@ -311,6 +318,7 @@ class TransferKeepAliveService : Service() {
                             pending.remove(endpointId)
                             if (pending.isEmpty()) {
                                 pendingPayloadEndpoints.remove(update.payloadId)
+                                outgoingPayloadNames.remove(update.payloadId)
                                 openFiles.remove(update.payloadId)?.close()
                                 if (currentOutgoingPayloadId == update.payloadId) {
                                     currentOutgoingPayloadId = null
