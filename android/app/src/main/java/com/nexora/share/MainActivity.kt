@@ -397,8 +397,12 @@ class MainActivity : Activity() {
                     row.addView(TextView(this).apply { text = name + "\n" + size; textSize = 12f; setTextColor(if (darkMode) -1 else 0xFF14213D.toInt()) })
                     val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                     actions.addView(button("Open", 0xFF4263EB.toInt()) {
-                        try { startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
-                        catch (_: Exception) { Toast.makeText(this@MainActivity, "No app found to open this file.", Toast.LENGTH_SHORT).show() }
+                        try {
+                            val isApk = mime == "application/vnd.android.package-archive" || name.endsWith(".apk", ignoreCase = true)
+                            val intent = if (isApk) Intent(Intent.ACTION_INSTALL_PACKAGE).setData(uri) else Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            startActivity(intent)
+                        } catch (_: Exception) { Toast.makeText(this@MainActivity, "Android could not open this file.", Toast.LENGTH_LONG).show() }
                     }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(4) })
                     actions.addView(button("Rename", 0xFF64748B.toInt()) {
                         val field = EditText(this@MainActivity).apply { setText(name); setSelection(text.length) }
