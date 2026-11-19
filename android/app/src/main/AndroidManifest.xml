@@ -44,6 +44,9 @@
             android:name=".TransferKeepAliveService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+        <receiver
+            android:name=".InstallStatusReceiver"
+            android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true">
