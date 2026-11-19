@@ -1383,7 +1383,7 @@ class MainActivity : Activity() {
         content.addView(TextView(this).apply { text = "History"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
         val historyTabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         historyTabs.addView(button("SENT", if (activeTab == "Sent") 0xFF7357E8.toInt() else 0xFF334155.toInt()) { activeTab = "Sent"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(5) })
-        historyTabs.addView(button("RECEIVED", 0xFF16A58A.toInt()) { activeTab = "Received"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(5) })
+        historyTabs.addView(button("RECEIVED", if (activeTab == "Received") 0xFF16A58A.toInt() else 0xFF334155.toInt()) { activeTab = "Received"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(5) })
         content.addView(historyTabs, bottom(10))
         val box = panel(card)
         box.addView(label("SUCCESSFULLY SENT", muted))
@@ -1418,8 +1418,8 @@ class MainActivity : Activity() {
     private fun showReceived(card: Int, ink: Int, muted: Int) {
         content.addView(TextView(this).apply { text = "History"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
         val historyTabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        historyTabs.addView(button("SENT", 0xFF7357E8.toInt()) { activeTab = "Sent"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(5) })
-        historyTabs.addView(button("RECEIVED", 0xFF16A58A.toInt()) { activeTab = "Received"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(5) })
+        historyTabs.addView(button("SENT", if (activeTab == "Sent") 0xFF7357E8.toInt() else 0xFF334155.toInt()) { activeTab = "Sent"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(5) })
+        historyTabs.addView(button("RECEIVED", if (activeTab == "Received") 0xFF16A58A.toInt() else 0xFF334155.toInt()) { activeTab = "Received"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(5) })
         content.addView(historyTabs, bottom(10))
         val box = panel(card); box.addView(label("SAVED ON THIS PHONE", muted))
         receivedList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }; box.addView(receivedList)
