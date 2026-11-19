@@ -957,10 +957,19 @@ class MainActivity : Activity() {
                         if (drawable != null) runOnUiThread { if (iconView.tag == app.packageName && iconView.parent != null) iconView.setImageDrawable(drawable) }
                     }
                     val appName = appLabels[app.packageName] ?: app.packageName
+                    val appSize = runCatching {
+                        val base = java.io.File(app.sourceDir).length()
+                        val splits = app.splitSourceDirs?.sumOf { java.io.File(it).length() } ?: 0L
+                        readableSize(base + splits)
+                    }.getOrDefault("Size unavailable")
                     appTile.addView(TextView(this).apply {
                         text = appName; textSize = 11f; maxLines = 2; gravity = Gravity.CENTER
-                        typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(7), 0, dp(3))
-                    }, LinearLayout.LayoutParams(-1, dp(36)))
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(5), 0, dp(1))
+                    }, LinearLayout.LayoutParams(-1, dp(32)))
+                    appTile.addView(TextView(this).apply {
+                        text = appSize; textSize = 9f; gravity = Gravity.CENTER
+                        setTextColor(muted); setPadding(0, 0, 0, dp(2))
+                    })
                     appTile.addView(TextView(this).apply {
                         text = if (selectedAppPackages.contains(app.packageName)) "✓ SELECTED" else "＋ SELECT"
                         textSize = 9f; letterSpacing = .04f; gravity = Gravity.CENTER
@@ -973,7 +982,7 @@ class MainActivity : Activity() {
                         populate(query)
                     }
                     val params = android.widget.GridLayout.LayoutParams().apply {
-                        width = 0; height = dp(125)
+                        width = 0; height = dp(137)
                         columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
                         setMargins(dp(4), dp(4), dp(4), dp(7))
                     }
