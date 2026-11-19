@@ -1376,9 +1376,25 @@ class MainActivity : Activity() {
         history.addView(label("RECENTLY SENT", 0xFF7357E8.toInt()))
         val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
         if (entries.isEmpty()) history.addView(TextView(this).apply { text = "Your sent files will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(5)) })
-        else entries.take(30).forEach { entry -> history.addView(historyCard(entry, 0xFF16A58A.toInt(), ink), bottom(6)) }
+        else addGroupedHistory(history, entries.take(30), 0xFF16A58A.toInt(), ink, muted)
         content.addView(history, bottom(12))
         content.addView(button("OPEN RECEIVED FILES", 0xFFE05C8A.toInt()) { activeTab = "Received"; render() })
+    }
+
+    private fun addGroupedHistory(target: LinearLayout, entries: List<String>, accent: Int, ink: Int, muted: Int) {
+        entries.groupBy { it.substringBefore(" · ").substringBefore(",").ifBlank { "Earlier" } }
+            .forEach { (date, datedEntries) ->
+                target.addView(TextView(this).apply {
+                    text = date
+                    textSize = 12f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(if (darkMode) 0xFF8FE0C3.toInt() else 0xFF16856A.toInt())
+                    setPadding(dp(3), dp(12), dp(3), dp(5))
+                })
+                datedEntries.forEach { entry ->
+                    target.addView(historyCard(entry, accent, ink), bottom(6))
+                }
+            }
     }
 
     private fun historyCard(entry: String, accent: Int, ink: Int): LinearLayout {
@@ -1440,7 +1456,7 @@ class MainActivity : Activity() {
         box.addView(list)
         val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
         if (entries.isEmpty()) list.addView(TextView(this).apply { text = "Files you send will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(8)) })
-        else entries.take(100).forEach { entry -> list.addView(historyCard(entry, 0xFF7357E8.toInt(), ink), bottom(6)) }
+        else addGroupedHistory(list, entries.take(100), 0xFF7357E8.toInt(), ink, muted)
         content.addView(box)
     }
 
