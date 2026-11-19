@@ -1029,6 +1029,302 @@ function nxRenderTransferDrawer() {
 document.getElementById("nxDrawerOverlay").addEventListener("click", event => {
   if (event.target.id === "nxDrawerOverlay") nxToggleDrawer(false);
 });  
+
+
+/* NEXORA CORE TRANSFER UPGRADE */
+let nxAbortRequested = false;
+let nxAckWaiters = new Map();
+let nxProgressPanel = null;
+let nxCancelButton = null;
+
+(function nxBuildTransferControls(){
+  const progress = nxEl("nxProgress");
+  nxProgressPanel = document.createElement("div");
+  nxProgressPanel.className = "nx-live-progress";
+  nxProgressPanel.style.cssText = "margin:12px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel);";
+  const label = document.createElement("div");
+  label.id = "nxLiveLabel";
+  label.textContent = "Ready for file transfers";
+  label.style.cssText = "font-weight:700;font-size:14px;margin-bottom:9px;";
+  const track = document.createElement("div");
+  track.style.cssText = "height:8px;background:var(--panel2);border-radius:20px;overflow:hidden;";
+  const fill = document.createElement("div");
+  fill.id = "nxLiveFill";
+  fill.style.cssText = "height:100%;width:0%;background:var(--blue);border-radius:20px;transition:width .2s ease;";
+  track.appendChild(fill);
+  const meta = document.createElement("div");
+  meta.id = "nxLiveMeta";
+  meta.textContent = "Speed and remaining time will appear here.";
+  meta.style.cssText = "font-size:12px;color:var(--muted);margin-top:8px;";
+  nxProgressPanel.append(label,track,meta);
+  progress.insertAdjacentElement("afterend",nxProgressPanel);
+
+  nxCancelButton = document.createElement("button");
+  nxCancelButton.className = "secondary";
+  nxCancelButton.textContent = "Cancel transfer";
+  nxCancelButton.style.cssText = "display:none;width:100%;margin:8px 0;";
+  nxCancelButton.onclick = () => {
+    nxAbortRequested = true;
+    nxCancelButton.disabled = true;
+    nxCancelButton.textContent = "Cancelling…";
+    if (nxChannel && nxChannel.open) {
+      try { nxChannel.send(JSON.stringify({type:"file-cancel"})); } catch(e) {}
+    }
+  };
+  nxProgressPanel.insertAdjacentElement("afterend",nxCancelButton);
+
+  const style = document.createElement("style");
+  style.textContent = ".nx-history-row{padding:13px 0;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center;justify-content:space-between;}.nx-history-row:last-child{border-bottom:0}.nx-history-row small{display:block;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}.nx-history-download{white-space:nowrap}";
+  document.head.appendChild(style);
+})();
+
+function nxSetLiveProgress(label, percent, meta){
+  const title = document.getElementById("nxLiveLabel");
+  const fill = document.getElementById("nxLiveFill");
+  const info = document.getElementById("nxLiveMeta");
+  if(title) title.textContent = label;
+  if(fill) fill.style.width = Math.max(0,Math.min(100,percent||0))+"%";
+  if(info) info.textContent = meta || "";
+}
+
+function nxFormatRate(bytesPerSecond){
+  if(!Number.isFinite(bytesPerSecond) || bytesPerSecond<=0) return "Calculating speed…";
+  return nxFormatSize(bytesPerSecond)+"/s";
+}
+function nxFormatSize(bytes){
+  if(bytes<1024) return Math.round(bytes)+" B";
+  if(bytes<1048576) return (bytes/1024).toFixed(1)+" KB";
+  if(bytes<1073741824) return (bytes/1048576).toFixed(2)+" MB";
+  return (bytes/1073741824).toFixed(2)+" GB";
+}
+function nxFormatTime(seconds){
+  if(!Number.isFinite(seconds) || seconds<0) return "Estimating time…";
+  if(seconds<60) return Math.ceil(seconds)+" sec left";
+  if(seconds<3600) return Math.ceil(seconds/60)+" min left";
+  return Math.floor(seconds/3600)+" hr "+Math.ceil((seconds%3600)/60)+" min left";
+}
+function nxRenderHistory(){
+  const section=document.querySelector("#history .section");
+  if(!section) return;
+  section.innerHTML="";
+  const records=nxTransferRecords.slice().reverse();
+  if(!records.length){
+    const empty=document.createElement("div");
+    empty.className="empty";
+    empty.textContent="Your transfer history is empty.";
+    section.appendChild(empty);
+    return;
+  }
+  records.forEach(record=>{
+    const row=document.createElement("div");
+    row.className="nx-history-row";
+    const details=document.createElement("div");
+    details.style.minWidth="0";
+    const name=document.createElement("strong");
+    name.textContent=record.name;
+    const meta=document.createElement("small");
+    meta.textContent=(record.direction==="sent"?"Sent":"Received")+" · "+nxFormatSize(record.size||0)+" · "+record.status;
+    details.append(name,meta);
+    row.appendChild(details);
+    if(record.direction==="received" && record.downloadUrl && record.status==="completed"){
+      const link=document.createElement("a");
+      link.href=record.downloadUrl;
+      link.download=record.name;
+      link.textContent="Download";
+      link.className="secondary nx-history-download";
+      link.style.cssText="padding:9px 12px;border-radius:10px;text-decoration:none;";
+      row.appendChild(link);
+    }
+    section.appendChild(row);
+  });
+}
+function nxWaitForAck(id){
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>{
+      nxAckWaiters.delete(id);
+      reject(new Error("The other device did not confirm the file in time."));
+    },120000);
+    nxAckWaiters.set(id,{
+      resolve:()=>{clearTimeout(timer);nxAckWaiters.delete(id);resolve();},
+      reject:error=>{clearTimeout(timer);nxAckWaiters.delete(id);reject(error);}
+    });
+  });
+}
+
+nxSetupChannel = function(channel){
+  nxChannel=channel;
+  channel.on("open",()=>{
+    nxStatus("Connected! Ready to share files.");
+    nxEl("nxSend").disabled=false;
+  });
+  channel.on("close",()=>{
+    nxStatus("Connection closed.");
+    nxEl("nxSend").disabled=true;
+    nxAckWaiters.forEach(waiter=>waiter.reject(new Error("Connection closed.")));
+  });
+  channel.on("error",error=>nxStatus("Connection error: "+(error.message||"Please reconnect.")));
+  channel.on("data",data=>{
+    if(typeof data==="string"){
+      let message;
+      try{message=JSON.parse(data);}catch(e){return;}
+      if(message.type==="file-received" && message.id){
+        const waiter=nxAckWaiters.get(message.id);
+        if(waiter) waiter.resolve();
+        return;
+      }
+      if(message.type==="file-start"){
+        if(nxIncoming && nxIncoming.record) nxIncoming.record.status="interrupted";
+        const record={name:message.name||"Unnamed file",size:message.size||0,direction:"received",status:"active",progress:0,startedAt:Date.now()};
+        nxTransferRecords.push(record);
+        nxIncoming={id:message.id,name:record.name,size:record.size,mime:message.mime||"application/octet-stream",chunks:[],received:0,record};
+        nxEl("nxProgress").textContent="Receiving "+record.name+"…";
+        nxSetLiveProgress("Receiving "+record.name,0,"Waiting for file data…");
+        nxRenderTransferDrawer();
+        nxRenderHistory();
+        return;
+      }
+      if(message.type==="file-cancel"){
+        if(nxIncoming){
+          nxIncoming.record.status="cancelled";
+          nxIncoming.record.progress=0;
+          nxIncoming=null;
+          nxEl("nxProgress").textContent="The sender cancelled the transfer.";
+          nxSetLiveProgress("Transfer cancelled",0,"No file was saved.");
+          nxRenderTransferDrawer();
+          nxRenderHistory();
+        }
+        return;
+      }
+      if(message.type==="file-end" && nxIncoming){
+        const incoming=nxIncoming;
+        const blob=new Blob(incoming.chunks,{type:incoming.mime});
+        const url=URL.createObjectURL(blob);
+        incoming.record.downloadUrl=url;
+        incoming.record.status="completed";
+        incoming.record.progress=100;
+        incoming.record.completedAt=Date.now();
+        const link=document.createElement("a");
+        link.href=url;
+        link.download=incoming.name;
+        link.textContent="Download: "+incoming.name;
+        link.style.cssText="display:block;padding:12px;margin:8px 0;border-radius:10px;background:var(--panel);overflow-wrap:anywhere;";
+        nxEl("nxReceived").appendChild(link);
+        nxEl("nxProgress").textContent="Received "+incoming.name+" successfully.";
+        nxSetLiveProgress("Received "+incoming.name,100,nxFormatSize(incoming.size)+" received");
+        if(channel.open) channel.send(JSON.stringify({type:"file-received",id:incoming.id}));
+        nxIncoming=null;
+        nxRenderTransferDrawer();
+        nxRenderHistory();
+        return;
+      }
+    }else if(nxIncoming){
+      nxIncoming.chunks.push(data);
+      const amount=data.byteLength||data.size||0;
+      nxIncoming.received+=amount;
+      const percent=nxIncoming.size?Math.min(100,Math.round(nxIncoming.received/nxIncoming.size*100)):100;
+      nxIncoming.record.progress=percent;
+      nxSetLiveProgress("Receiving "+nxIncoming.name,percent,nxFormatSize(nxIncoming.received)+" of "+nxFormatSize(nxIncoming.size));
+      nxRenderTransferDrawer();
+    }
+  });
+};
+
+nxEl("nxSend").onclick = async function(){
+  if(!nxChannel || !nxChannel.open){
+    nxStatus("Connect to the receiving device first.");
+    return;
+  }
+  const files=[...nexoraFiles];
+  if(!files.length){
+    nxEl("nxProgress").textContent="Choose files on the Send screen first.";
+    return;
+  }
+  nxAbortRequested=false;
+  nxCancelButton.style.display="block";
+  nxCancelButton.disabled=false;
+  nxCancelButton.textContent="Cancel transfer";
+  nxEl("nxSend").disabled=true;
+  let finished=true;
+  try{
+    for(const file of files){
+      if(nxAbortRequested){finished=false;break;}
+      const id="nx-"+Date.now()+"-"+Math.random().toString(36).slice(2,9);
+      const record={id,name:file.name,size:file.size,direction:"sent",status:"active",progress:0,startedAt:Date.now()};
+      nxTransferRecords.push(record);
+      nxRenderTransferDrawer();
+      nxRenderHistory();
+      nxChannel.send(JSON.stringify({type:"file-start",id,name:file.name,size:file.size,mime:file.type}));
+      const chunkSize=65536;
+      const started=Date.now();
+      let sent=0;
+      for(let offset=0;offset<file.size;offset+=chunkSize){
+        if(nxAbortRequested || !nxChannel || !nxChannel.open){
+          finished=false;
+          break;
+        }
+        await nxWaitBuffer();
+        if(nxAbortRequested || !nxChannel || !nxChannel.open){
+          finished=false;
+          break;
+        }
+        const chunk=await file.slice(offset,Math.min(offset+chunkSize,file.size)).arrayBuffer();
+        nxChannel.send(chunk);
+        sent+=chunk.byteLength;
+        record.progress=file.size?Math.round(sent/file.size*100):100;
+        const elapsed=Math.max((Date.now()-started)/1000,0.2);
+        const rate=sent/elapsed;
+        const remaining=file.size-sent;
+        nxSetLiveProgress("Sending "+file.name,record.progress,nxFormatRate(rate)+" · "+nxFormatTime(rate?remaining/rate:Infinity));
+        nxEl("nxProgress").textContent="Sending "+file.name+" · "+record.progress+"%";
+        nxRenderTransferDrawer();
+      }
+      if(!finished || nxAbortRequested){
+        record.status="cancelled";
+        try{if(nxChannel && nxChannel.open) nxChannel.send(JSON.stringify({type:"file-cancel",id}));}catch(e){}
+        nxRenderTransferDrawer();
+        nxRenderHistory();
+        finished=false;
+        break;
+      }
+      const acknowledgement=nxWaitForAck(id);
+      nxChannel.send(JSON.stringify({type:"file-end",id}));
+      await acknowledgement;
+      record.progress=100;
+      record.status="completed";
+      record.completedAt=Date.now();
+      nxSetLiveProgress("Sent "+file.name,100,nxFormatSize(file.size)+" · Confirmed by receiving device");
+      nxEl("nxProgress").textContent="Sent "+file.name+" successfully.";
+      nxRenderTransferDrawer();
+      nxRenderHistory();
+    }
+    if(finished && !nxAbortRequested){
+      nxEl("nxProgress").textContent="All "+files.length+" file(s) sent and confirmed.";
+      nxSetLiveProgress("All files sent",100,files.length+" file(s) confirmed by the receiving device.");
+    }else{
+      nxEl("nxProgress").textContent="Transfer cancelled. You can send the remaining files again.";
+    }
+  }catch(error){
+    nxEl("nxProgress").textContent="Transfer problem: "+error.message;
+    nxSetLiveProgress("Transfer interrupted",0,error.message);
+    const active=nxTransferRecords.findLast ? nxTransferRecords.findLast(item=>item.direction==="sent" && item.status==="active") : [...nxTransferRecords].reverse().find(item=>item.direction==="sent" && item.status==="active");
+    if(active) active.status="failed";
+    nxRenderTransferDrawer();
+    nxRenderHistory();
+  }finally{
+    nxCancelButton.style.display="none";
+    nxCancelButton.disabled=false;
+    nxCancelButton.textContent="Cancel transfer";
+    nxEl("nxSend").disabled=!nxChannel || !nxChannel.open;
+  }
+};
+
+const nxOriginalDrawerRender=nxRenderTransferDrawer;
+nxRenderTransferDrawer=function(){
+  nxOriginalDrawerRender();
+  nxRenderHistory();
+};
+nxRenderHistory();
+
 </script>
 </body>
 </html>
