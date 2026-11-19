@@ -35,6 +35,10 @@ class MainActivity : Activity() {
     private var mediaSearch = ""
     private var mediaSort = "Newest"
     private val mediaErrors = HashMap<String, String>()
+    private val thumbnailCache = object : android.util.LruCache<String, android.graphics.Bitmap>(24 * 1024) {
+        override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
+    }
+    private val thumbnailExecutor = java.util.concurrent.Executors.newFixedThreadPool(2)
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -149,6 +153,11 @@ class MainActivity : Activity() {
             }.start()
         }, 1500)
     }
+    override fun onDestroy() {
+        thumbnailExecutor.shutdownNow()
+        super.onDestroy()
+    }
+
     override fun onStart() { super.onStart(); bindService(Intent(this, TransferKeepAliveService::class.java), serviceConnection, BIND_AUTO_CREATE) }
     override fun onStop() {
         if (bound) { sharing?.setListener(null); unbindService(serviceConnection); bound = false }
@@ -398,7 +407,7 @@ class MainActivity : Activity() {
                     }
                     try {
                         val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
-                        contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
+                        contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC LIMIT 1500")?.use { cursor ->
                             val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                             val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                             val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
@@ -435,42 +444,41 @@ class MainActivity : Activity() {
             row.addView(TextView(this).apply { text = if (isSelected) "✓" else "+"; textSize = 22f; setTextColor(if (isSelected) 0xFF16A085.toInt() else blue) })
             row.setOnClickListener { if (selectedUris.contains(item.first)) selectedUris.remove(item.first) else selectedUris.add(item.first); renderMediaRows(kind, ink, muted, blue) }
             mediaList.addView(row, bottom(6))
-            if (kind == "Photos" || kind == "Videos") Thread {
-                try {
-                    if (Build.VERSION.SDK_INT >= 29) {
-                        val bitmap = contentResolver.loadThumbnail(item.first, android.util.Size(120, 120), null)
-                        runOnUiThread { if (preview.parent != null) preview.setImageBitmap(bitmap) }
-                    } else runOnUiThread { if (preview.parent != null) preview.setImageURI(item.first) }
-                } catch (_: Exception) {}
-            }.start() else { preview.setImageResource(android.R.drawable.ic_media_play); preview.scaleType = ImageView.ScaleType.CENTER }
+            if (kind == "Photos" || kind == "Videos") {
+                preview.tag = item.first.toString()
+                val cachedThumb = thumbnailCache.get(item.first.toString())
+                if (cachedThumb != null) preview.setImageBitmap(cachedThumb)
+                else thumbnailExecutor.execute {
+                    val bitmap = try {
+                        if (Build.VERSION.SDK_INT >= 29) {
+                            contentResolver.loadThumbnail(item.first, android.util.Size(144, 144), null)
+                        } else {
+                            val mediaId = android.content.ContentUris.parseId(item.first)
+                            if (kind == "Photos") android.provider.MediaStore.Images.Thumbnails.getThumbnail(contentResolver, mediaId, android.provider.MediaStore.Images.Thumbnails.MINI_KIND, null)
+                            else android.provider.MediaStore.Video.Thumbnails.getThumbnail(contentResolver, mediaId, android.provider.MediaStore.Video.Thumbnails.MINI_KIND, null)
+                        }
+                    } catch (_: Exception) { null }
+                    if (bitmap != null) {
+                        thumbnailCache.put(item.first.toString(), bitmap)
+                        runOnUiThread { if (preview.parent != null && preview.tag == item.first.toString()) preview.setImageBitmap(bitmap) }
+                    }
+                }
+            } else { preview.setImageResource(android.R.drawable.ic_media_play); preview.scaleType = ImageView.ScaleType.CENTER }
         }
     }
 
     private fun preloadLibraries() {
-        listOf("Photos", "Videos", "Music").forEach { kind ->
-            if (!hasMediaPermission(kind) || mediaCache.containsKey(kind) || !mediaLoading.add(kind)) return@forEach
-            Thread {
-                val loaded = ArrayList<Pair<Uri, String>>()
-                val collection = when (kind) { "Photos" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI; "Videos" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI; else -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI }
-                try {
-                    val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
-                    contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
-                        while (cursor.moveToNext()) {
-                            val id = cursor.getLong(0); val name = cursor.getString(1) ?: "Media file"; val size = cursor.getLong(2)
-                            loaded.add(Pair(android.content.ContentUris.withAppendedId(collection, id), name + " · " + readableSize(size)))
-                        }
-                    }
-                } catch (e: Exception) { mediaErrors[kind] = e.localizedMessage ?: "Could not read media." }
-                runOnUiThread { mediaLoading.remove(kind); if (!mediaErrors.containsKey(kind)) mediaCache[kind] = loaded }
-            }.start()
-        }
         if (!appsLoaded && !appsLoading) {
             appsLoading = true
             Thread {
-                val result = try { packageManager.getInstalledApplications(0).sortedBy { packageManager.getApplicationLabel(it).toString().lowercase() } } catch (_: Exception) { emptyList() }
+                val result = try {
+                    packageManager.getInstalledApplications(0).sortedBy { packageManager.getApplicationLabel(it).toString().lowercase() }
+                } catch (_: Exception) { emptyList() }
                 runOnUiThread {
-                    installedApps.clear(); installedApps.addAll(result); appsLoaded = true; appsLoading = false
-                    if (activeTab == "Media" && mediaCategory == "Apps") render()
+                    installedApps.clear()
+                    installedApps.addAll(result)
+                    appsLoaded = true
+                    appsLoading = false
                 }
             }.start()
         }
