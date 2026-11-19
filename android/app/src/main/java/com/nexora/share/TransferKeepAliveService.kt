@@ -375,6 +375,7 @@ class TransferKeepAliveService : Service() {
             stopSharing()
             return START_NOT_STICKY
         }
+        promoteToForeground()
         return START_STICKY
     }
 
