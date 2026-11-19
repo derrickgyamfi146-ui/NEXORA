@@ -1284,7 +1284,8 @@ class MainActivity : Activity() {
             activeTab = "Send"
             mediaCategory = "Apps"
             render()
-            updateStatus(labels.size.toString() + " app(s) selected (" + totalParts + " APK part(s)). Choose a nearby phone, then tap Send.")
+            updateStatus(labels.size.toString() + " app(s) selected (" + totalParts + " APK part(s)). Opening connection…")
+            beginSendSelected()
         } catch (e: Exception) {
             Toast.makeText(this, "Could not prepare selected apps: " + e.localizedMessage, Toast.LENGTH_LONG).show()
         }
