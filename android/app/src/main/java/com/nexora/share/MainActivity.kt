@@ -291,7 +291,7 @@ class MainActivity : Activity() {
                     }
                 }.setNegativeButton("Cancel", null).show()
         }, bottom(10))
-        content.addView(TextView(this).apply { text = "NEXORA • Version 0.1.0\nAdvanced features depend on Android permissions and device support."; textSize = 11f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(dp(8), dp(12), dp(8), dp(12)) })
+        content.addView(TextView(this).apply { text = "NEXORA • Version 0.3.0\nAdvanced features depend on Android permissions and device support."; textSize = 11f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(dp(8), dp(12), dp(8), dp(12)) })
     }
 
     private fun actionTile(symbol: String, title: String, color: Int, action: () -> Unit): LinearLayout {
