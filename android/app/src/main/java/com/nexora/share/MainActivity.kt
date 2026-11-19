@@ -212,45 +212,69 @@ class MainActivity : Activity() {
         }, bottom(10))
     }
 
+    private val mediaCache = HashMap<String, ArrayList<Pair<Uri, String>>>()
+    private val mediaLoading = HashSet<String>()
+
     private fun renderMediaRows(kind: String, ink: Int, muted: Int, blue: Int) {
         if (!::mediaList.isInitialized) return
-        mediaList.removeAllViews(); mediaRows.clear()
-        val collection = when (kind) {
-            "Photos" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-            "Videos" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-            else -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        }
-        try {
-            val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
-            contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
-                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
-                while (cursor.moveToNext()) {
-                    val id = cursor.getLong(idCol); val name = cursor.getString(nameCol) ?: "Media file"; val size = cursor.getLong(sizeCol)
-                    val uri = android.content.ContentUris.withAppendedId(collection, id)
-                    mediaRows.add(Pair(uri, name + "  ·  " + readableSize(size)))
-                }
+        mediaList.removeAllViews()
+        val cached = mediaCache[kind]
+        if (cached == null) {
+            if (mediaLoading.add(kind)) {
+                mediaList.addView(TextView(this).apply { text = "Loading…"; textSize = 13f; setTextColor(muted); setPadding(0, dp(16), 0, dp(16)) })
+                Thread {
+                    val loaded = ArrayList<Pair<Uri, String>>()
+                    val collection = when (kind) {
+                        "Photos" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                        "Videos" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                        else -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                    }
+                    try {
+                        val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
+                        contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
+                            val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                            val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                            val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                            while (cursor.moveToNext()) {
+                                val id = cursor.getLong(idCol)
+                                val name = cursor.getString(nameCol) ?: "Media file"
+                                val size = cursor.getLong(sizeCol)
+                                loaded.add(Pair(android.content.ContentUris.withAppendedId(collection, id), name + " · " + readableSize(size)))
+                            }
+                        }
+                    } catch (_: Exception) {}
+                    runOnUiThread {
+                        mediaLoading.remove(kind)
+                        mediaCache[kind] = loaded
+                        if (mediaCategory == kind && ::mediaList.isInitialized) renderMediaRows(kind, ink, muted, blue)
+                    }
+                }.start()
             }
-        } catch (_: SecurityException) {
-            mediaList.addView(TextView(this).apply { text = "Allow media access to view files."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
             return
-        } catch (_: Exception) {}
-        val matching = mediaRows.filter { it.second.contains(mediaSearch, ignoreCase = true) }
+        }
+        mediaRows.clear(); mediaRows.addAll(cached)
+        val matching = cached.filter { it.second.contains(mediaSearch, ignoreCase = true) }
         val filtered = if (mediaSort == "Name A-Z") matching.sortedBy { it.second.lowercase() } else matching
-        if (filtered.isEmpty()) mediaList.addView(TextView(this).apply {
-            text = if (mediaRows.isEmpty()) "No " + kind.lowercase() + " found on this phone." else "No matching files."
-            textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12))
-        })
+        if (filtered.isEmpty()) mediaList.addView(TextView(this).apply { text = if (cached.isEmpty()) "No " + kind.lowercase() + " found." else "No matching files."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
         filtered.forEach { item ->
             val isSelected = selectedUris.contains(item.first)
-            mediaList.addView(button((if (isSelected) "✓  " else "＋  ") + item.second, if (isSelected) 0xFF16A085.toInt() else blue) {
-                if (selectedUris.contains(item.first)) selectedUris.remove(item.first) else selectedUris.add(item.first)
-                renderMediaRows(kind, ink, muted, blue)
-            }, bottom(6))
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(5), dp(8), dp(5)); background = rounded(if (isSelected) 0xFFE4F5EF.toInt() else if (darkMode) 0xFF1C2940.toInt() else -1, 12) }
+            val preview = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(if (darkMode) 0xFF263650.toInt() else 0xFFE8EDF5.toInt()) }
+            row.addView(preview, LinearLayout.LayoutParams(dp(58), dp(58)))
+            row.addView(TextView(this).apply { text = item.second; textSize = 12f; setTextColor(if (darkMode) -1 else 0xFF14213D.toInt()); setPadding(dp(10), 0, dp(8), 0) }, LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(TextView(this).apply { text = if (isSelected) "✓" else "+"; textSize = 22f; setTextColor(if (isSelected) 0xFF16A085.toInt() else blue) })
+            row.setOnClickListener { if (selectedUris.contains(item.first)) selectedUris.remove(item.first) else selectedUris.add(item.first); renderMediaRows(kind, ink, muted, blue) }
+            mediaList.addView(row, bottom(6))
+            if (kind == "Photos" || kind == "Videos") Thread {
+                try {
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        val bitmap = contentResolver.loadThumbnail(item.first, android.util.Size(120, 120), null)
+                        runOnUiThread { if (preview.parent != null) preview.setImageBitmap(bitmap) }
+                    } else runOnUiThread { if (preview.parent != null) preview.setImageURI(item.first) }
+                } catch (_: Exception) {}
+            }.start() else { preview.setImageResource(android.R.drawable.ic_media_play); preview.scaleType = ImageView.ScaleType.CENTER }
         }
     }
-
     private fun readableSize(bytes: Long): String {
         if (bytes < 1024) return bytes.toString() + " B"
         if (bytes < 1024 * 1024) return String.format(java.util.Locale.US, "%.1f KB", bytes / 1024.0)
