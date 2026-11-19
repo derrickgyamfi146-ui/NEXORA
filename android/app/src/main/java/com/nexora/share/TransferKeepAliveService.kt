@@ -61,6 +61,8 @@ class TransferKeepAliveService : Service() {
 
     fun setListener(value: Listener?) { listener = value; value?.onStatus(lastStatusMessage) }
 
+    val isAdvertising: Boolean get() = advertising
+
     @Synchronized
     fun startReceiving() {
         if (advertising) {
