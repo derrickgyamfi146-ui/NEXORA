@@ -1607,7 +1607,12 @@ class MainActivity : Activity() {
                             getSharedPreferences("nexora_file_manager", MODE_PRIVATE).edit().putString("current_document_id", childId).apply()
                             render()
                         }
-                        else { if (!selectedUris.contains(itemUri)) selectedUris.add(itemUri); updateStatus("${selectedUris.size} file(s) selected."); Toast.makeText(this, "Added: $name", Toast.LENGTH_SHORT).show() }
+                        else {
+                            if (selectedUris.contains(itemUri)) selectedUris.remove(itemUri) else selectedUris.add(itemUri)
+                            updateSelectionAction()
+                            updateStatus("${selectedUris.size} file(s) selected.")
+                            Toast.makeText(this, if (selectedUris.contains(itemUri)) "Added: $name" else "Removed: $name", Toast.LENGTH_SHORT).show()
+                        }
                     })
                     children.addView(row, bottom(5))
                 }
@@ -1619,10 +1624,6 @@ class MainActivity : Activity() {
                 setPadding(dp(4), dp(12), dp(4), dp(12))
             })
         } catch (e: Exception) { children.addView(TextView(this).apply { text = "Folder could not be opened: " + (e.localizedMessage ?: "unknown error"); textSize = 12f; setTextColor(muted) }) }
-        section.addView(button("SEND ${selectedUris.size} SELECTED FILE(S)", 0xFF1689D5.toInt()) {
-            if (selectedUris.isEmpty()) Toast.makeText(this, "Select files first.", Toast.LENGTH_SHORT).show()
-            else { activeTab = "Send"; render(); updateStatus("${selectedUris.size} file(s) selected. Choose a nearby phone, then tap Send.") }
-        }, bottom(5))
         content.addView(section, bottom(12))
     }
 
@@ -1659,7 +1660,7 @@ class MainActivity : Activity() {
         }
         transferProgressBar = progressLine
         live.addView(progressLine, LinearLayout.LayoutParams(-1, dp(8)))
-        live.addView(button("BACK TO SHARING", 0xFF1689D5.toInt()) { activeTab = "Home"; render() })
+        live.addView(button("BACK TO APPS", 0xFF1689D5.toInt()) { activeTab = "Media"; mediaCategory = "Apps"; render() })
         content.addView(live, bottom(12))
         val devices = panel(card)
         devices.addView(label("CONNECTED PHONES", 0xFF168FE5.toInt()))
@@ -1930,7 +1931,7 @@ class MainActivity : Activity() {
             sheet.addView(row, LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(7) })
         }
         val goHome = button("⌂  HOME", 0xFFB38A2E.toInt()) {
-            dialog.dismiss(); activeTab = "Home"; mediaCategory = "Apps"; render()
+            dialog.dismiss(); activeTab = "Media"; mediaCategory = "Apps"; render()
         }
         sheet.addView(goHome, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(5) })
         val close = button("CLOSE", 0xFF168A83.toInt()) { dialog.dismiss() }
@@ -2024,7 +2025,7 @@ class MainActivity : Activity() {
     }
 
     private fun showSettings(card: Int, ink: Int, muted: Int, blue: Int) {
-        content.addView(button("‹  BACK TO HOME", 0xFF4C46A8.toInt()) { activeTab = "Home"; render() }, bottom(8))
+        content.addView(button("‹  BACK TO APPS", 0xFF4C46A8.toInt()) { activeTab = "Media"; mediaCategory = "Apps"; render() }, bottom(8))
         content.addView(TextView(this).apply { text = "Preferences"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
         val appearance = panel(card); appearance.addView(label("APPEARANCE", muted))
         appearance.addView(button(if (darkMode) "Switch to light theme" else "Switch to dark theme", blue) { darkMode = !darkMode; getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply(); render() })
