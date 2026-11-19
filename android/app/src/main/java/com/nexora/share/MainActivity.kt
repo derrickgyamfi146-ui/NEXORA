@@ -234,72 +234,144 @@ class MainActivity : Activity() {
                 if (darkMode) intArrayOf(0xFF071526.toInt(), 0xFF102B42.toInt()) else intArrayOf(0xFFF6F9FF.toInt(), 0xFFEAF3FC.toInt())
             )
         }
-        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(20), dp(17), dp(20), dp(12)) }
-        val brandMark = TextView(this).apply {
-            text = "N"; gravity = Gravity.CENTER; textSize = 19f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
-            background = rounded(0xFF7357E8.toInt(), 13); elevation = dp(5).toFloat()
-            contentDescription = "NEXORA home"; setOnClickListener { activeTab = "Home"; render() }
+        val libraryMode = activeTab in setOf("Home", "Media", "Files", "Sent", "Received", "Contacts")
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setBackgroundColor(0xFF008F68.toInt())
         }
-        header.addView(brandMark, LinearLayout.LayoutParams(dp(38), dp(38)))
+        val menuButton = TextView(this).apply {
+            text = "☰"; textSize = 23f; gravity = Gravity.CENTER; setTextColor(-1)
+            setOnClickListener { showXenderMenu() }
+        }
+        header.addView(menuButton, LinearLayout.LayoutParams(dp(42), dp(42)))
         header.addView(TextView(this).apply {
-            text = "NEXORA"; textSize = 21f; letterSpacing = .09f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(10), 0, 0, 0)
+            text = "NEXORA"; textSize = 21f; letterSpacing = .04f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
         }, LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(TextView(this).apply {
-            text = "●  PRIVATE & LOCAL"; textSize = 9f; letterSpacing = .05f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(if (darkMode) 0xFF72E4C0.toInt() else 0xFF168A70.toInt())
-        })
-        root.addView(header)
-        content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(17), dp(8), dp(17), dp(18)) }
-        val contentFrame = android.widget.FrameLayout(this)
-        contentFrame.addView(ScrollView(this).apply { isFillViewport = true; clipToPadding = false; addView(content) },
-            android.widget.FrameLayout.LayoutParams(-1, -1))
-        val transferFab = TextView(this).apply {
-            text = "⇧"
-            textSize = 24f
+            text = "●"; textSize = 14f; setTextColor(0xFFB7F5D9.toInt())
             gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(-1)
-            background = rounded(0xFF7357E8.toInt(), 28)
-            elevation = dp(10).toFloat()
-            contentDescription = "Open transfer centre"
-            setOnClickListener { animatePress(this); activeTab = "Transfers"; render() }
-        }
-        contentFrame.addView(transferFab, android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.END).apply {
-            rightMargin = dp(18); bottomMargin = dp(16)
-        })
-        root.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
-        val nav = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(5), dp(6), dp(5), dp(6))
-            background = rounded(if (darkMode) 0xFF10243A.toInt() else 0xFFFFFFFF.toInt(), 20); elevation = dp(9).toFloat()
-        }
-        listOf("Apps", "History", "Send", "Receive", "More").forEach { item ->
-            val selected = when (item) {
-                "Apps" -> activeTab == "Media" || activeTab == "Files"
-                "History" -> activeTab == "Sent" || activeTab == "Received"
-                "Send" -> activeTab == "Send"
-                "Receive" -> activeTab == "Receive"
-                else -> activeTab == "Settings"
+        }, LinearLayout.LayoutParams(dp(28), dp(38)))
+        root.addView(header)
+        if (libraryMode) {
+            val tabs = android.widget.HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                setBackgroundColor(if (darkMode) 0xFF10243A.toInt() else 0xFFE7F3EF.toInt())
             }
-            nav.addView(TextView(this).apply {
-                text = when (item) { "Apps" -> "▦\\nApps"; "History" -> "◷\\nHistory"; "Send" -> "↑\\nSend"; "Receive" -> "↓\\nReceive"; else -> "•••\\nMore" }
-                textSize = 10f; gravity = Gravity.CENTER
-                typeface = if (selected) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
-                setTextColor(if (selected) when (item) { "Apps" -> 0xFF7357E8.toInt(); "History" -> 0xFF16A58A.toInt(); "Send" -> 0xFF168FE5.toInt(); "Receive" -> 0xFFE69A35.toInt(); else -> muted } else muted)
-                setPadding(dp(2), dp(7), dp(2), dp(7))
-                setOnClickListener {
-                    animatePress(this)
-                    when (item) {
-                        "Apps" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(dp(8), dp(5), dp(8), dp(5))
+            }
+            listOf("History", "Apps", "Photos", "Videos", "Music", "Files", "Contacts").forEach { tab ->
+                val selected = when (tab) {
+                    "History" -> activeTab == "Sent" || activeTab == "Received"
+                    "Apps" -> activeTab == "Media" && mediaCategory == "Apps"
+                    "Photos" -> activeTab == "Media" && mediaCategory == "Photos"
+                    "Videos" -> activeTab == "Media" && mediaCategory == "Videos"
+                    "Music" -> activeTab == "Media" && mediaCategory == "Music"
+                    "Files" -> activeTab == "Files"
+                    else -> activeTab == "Contacts"
+                }
+                val chip = TextView(this).apply {
+                    text = tab; textSize = 12f; gravity = Gravity.CENTER
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(if (selected) -1 else if (darkMode) 0xFFB8C9D8.toInt() else 0xFF356052.toInt())
+                    setPadding(dp(13), dp(10), dp(13), dp(10))
+                    if (selected) background = rounded(0xFF00A878.toInt(), 18)
+                }
+                chip.setOnClickListener {
+                    animatePress(chip)
+                    when (tab) {
                         "History" -> { activeTab = "Sent"; render() }
-                        "Send" -> { activeTab = "Send"; render() }
-                        "Receive" -> { activeTab = "Receive"; render(); withNearbyPermissions { ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, TransferKeepAliveService::class.java)); sharing?.startReceiving() ?: updateStatus("Starting receive mode. Try again in a moment.") } }
-                        else -> { activeTab = "Settings"; render() }
+                        "Apps" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
+                        "Photos" -> openMediaLibrary("Photos")
+                        "Videos" -> openMediaLibrary("Videos")
+                        "Music" -> openMediaLibrary("Music")
+                        "Files" -> { activeTab = "Files"; render() }
+                        "Contacts" -> { activeTab = "Contacts"; render() }
                     }
                 }
-            }, LinearLayout.LayoutParams(0, -2, 1f))
+                row.addView(chip, LinearLayout.LayoutParams(-2, dp(38)).apply { rightMargin = dp(5) })
+            }
+            tabs.addView(row)
+            root.addView(tabs)
         }
-        root.addView(nav, LinearLayout.LayoutParams(-1, -2).apply { leftMargin = dp(12); rightMargin = dp(12); bottomMargin = dp(10); topMargin = dp(5) })
-        setContentView(root)
+        content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(13), dp(7), dp(13), dp(18))
+        }
+        val contentFrame = android.widget.FrameLayout(this)
+        contentFrame.addView(ScrollView(this).apply {
+            isFillViewport = true; clipToPadding = false; addView(content)
+        }, android.widget.FrameLayout.LayoutParams(-1, -1))
+        if (libraryMode) {
+            val sendFab = TextView(this).apply {
+                text = "➤  SEND"; textSize = 12f; gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
+                background = rounded(0xFF009D70.toInt(), 24); elevation = dp(10).toFloat()
+                setPadding(dp(12), 0, dp(12), 0)
+                setOnClickListener { animatePress(this); activeTab = "Send"; render() }
+            }
+            val receiveFab = TextView(this).apply {
+                text = "⇩  RECEIVE"; textSize = 12f; gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
+                background = rounded(0xFF009D70.toInt(), 24); elevation = dp(10).toFloat()
+                setPadding(dp(12), 0, dp(12), 0)
+                setOnClickListener {
+                    animatePress(this); activeTab = "Receive"; render()
+                    withNearbyPermissions {
+                        ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, TransferKeepAliveService::class.java))
+                        sharing?.startReceiving() ?: updateStatus("Starting receive mode. Try again in a moment.")
+                    }
+                }
+            }
+            contentFrame.addView(sendFab, android.widget.FrameLayout.LayoutParams(dp(132), dp(43), Gravity.BOTTOM or Gravity.START).apply {
+                leftMargin = dp(16); bottomMargin = dp(14)
+            })
+            contentFrame.addView(receiveFab, android.widget.FrameLayout.LayoutParams(dp(132), dp(43), Gravity.BOTTOM or Gravity.END).apply {
+                rightMargin = dp(16); bottomMargin = dp(14)
+            })
+            content.setPadding(dp(13), dp(7), dp(13), dp(70))
+        }
+        root.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
+        if (libraryMode) {
+            val nav = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+                setPadding(dp(5), dp(5), dp(5), dp(5))
+                setBackgroundColor(if (darkMode) 0xFF071526.toInt() else -1)
+            }
+            listOf("Music", "Videos", "Connect", "Photos", "Social").forEach { item ->
+                val selected = when (item) {
+                    "Music" -> activeTab == "Media" && mediaCategory == "Music"
+                    "Videos" -> activeTab == "Media" && mediaCategory == "Videos"
+                    "Photos" -> activeTab == "Media" && mediaCategory == "Photos"
+                    "Connect" -> activeTab == "Home" || activeTab == "Transfers"
+                    else -> activeTab == "Settings"
+                }
+                nav.addView(TextView(this).apply {
+                    text = when (item) { "Music" -> "♫\\nMusic"; "Videos" -> "▣\\nVideos"; "Connect" -> "↔"; "Photos" -> "▧\\nPhotos"; else -> "☻\\nSocial" }
+                    textSize = if (item == "Connect") 23f else 10f
+                    gravity = Gravity.CENTER
+                    typeface = if (selected) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+                    setTextColor(if (selected) 0xFF00A878.toInt() else muted)
+                    setPadding(dp(2), dp(5), dp(2), dp(5))
+                    setOnClickListener {
+                        animatePress(this)
+                        when (item) {
+                            "Music" -> openMediaLibrary("Music")
+                            "Videos" -> openMediaLibrary("Videos")
+                            "Photos" -> openMediaLibrary("Photos")
+                            "Connect" -> { activeTab = "Home"; render() }
+                            else -> { activeTab = "Settings"; render() }
+                        }
+                    }
+                }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            }
+            root.addView(nav, LinearLayout.LayoutParams(-1, -2))
+        }
+                setContentView(root)
         when (activeTab) {
             "Home" -> showHome(card, ink, muted, blue)
             "Media" -> showMedia(card, ink, muted, blue)
@@ -309,7 +381,7 @@ class MainActivity : Activity() {
             "Transfers" -> showTransfers(card, ink, muted)
             "Send" -> showSend(card, ink, muted, blue)
             "Receive" -> showReceive(card, ink, muted)
-            "Settings" -> showSettings(card, ink, muted, blue)
+            "Settings" -> showSettings(card, ink, muted, blue)\n            "Contacts" -> showContacts(card, ink, muted)
         }
         content.alpha = 0f
         content.translationY = dp(10).toFloat()
