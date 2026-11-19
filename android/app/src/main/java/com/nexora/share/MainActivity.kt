@@ -576,6 +576,7 @@ class MainActivity : Activity() {
                     installedApps.addAll(result)
                     appsLoaded = true
                     appsLoading = false
+                    if (activeTab == "Media" && mediaCategory == "Apps") render()
                 }
             }.start()
         }
