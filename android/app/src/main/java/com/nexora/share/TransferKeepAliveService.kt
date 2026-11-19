@@ -130,39 +130,44 @@ class TransferKeepAliveService : Service() {
             status("Files are queued. Connect to a nearby phone to start sending.")
             return
         }
-        val uri = outgoingQueue.pollFirst()
-        if (uri == null) {
-            sending = false
-            currentOutgoingPayloadId = null
-            status("All selected files have been sent.")
-            return
-        }
-        try {
-            val descriptor = contentResolver.openFileDescriptor(uri, "r")
-                ?: throw IOException("Could not open this file")
-            val name = queryDisplayName(uri) ?: "NEXORA-file"
-            val payload = Payload.fromFile(descriptor)
-            payload.setFileName(name)
-            openFiles[payload.id] = descriptor
-            outgoingPayloadNames[payload.id] = name
-            sending = true
-            currentOutgoingPayloadId = payload.id
-            transferStartedAt = System.currentTimeMillis()
-            lastProgressAt = transferStartedAt
-            status("Sending $name…")
-            pendingPayloadEndpoints[payload.id] = java.util.Collections.synchronizedSet(endpoints.toMutableSet())
-            client.sendPayload(endpoints, payload).addOnFailureListener {
-                pendingPayloadEndpoints.remove(payload.id)
-                outgoingPayloadNames.remove(payload.id)
-                openFiles.remove(payload.id)?.close()
-                currentOutgoingPayloadId = null
+        while (true) {
+            val uri = outgoingQueue.pollFirst()
+            if (uri == null) {
                 sending = false
-                status("Could not start $name: ${it.localizedMessage}. Trying the next file…")
-                sendNextFile()
+                currentOutgoingPayloadId = null
+                status("All selected files have been sent.")
+                return
             }
-        } catch (e: Exception) {
-            status("Could not send file: ${e.localizedMessage}. Trying the next file…")
-            sendNextFile()
+            var descriptor: android.os.ParcelFileDescriptor? = null
+            try {
+                descriptor = contentResolver.openFileDescriptor(uri, "r")
+                    ?: throw IOException("Could not open this file")
+                val name = queryDisplayName(uri) ?: "NEXORA-file"
+                val payload = Payload.fromFile(descriptor)
+                payload.setFileName(name)
+                openFiles[payload.id] = descriptor
+                descriptor = null // Ownership moves to openFiles until the transfer finishes.
+                outgoingPayloadNames[payload.id] = name
+                sending = true
+                currentOutgoingPayloadId = payload.id
+                transferStartedAt = System.currentTimeMillis()
+                lastProgressAt = transferStartedAt
+                status("Sending $name…")
+                pendingPayloadEndpoints[payload.id] = java.util.Collections.synchronizedSet(endpoints.toMutableSet())
+                client.sendPayload(endpoints, payload).addOnFailureListener {
+                    pendingPayloadEndpoints.remove(payload.id)
+                    outgoingPayloadNames.remove(payload.id)
+                    openFiles.remove(payload.id)?.close()
+                    currentOutgoingPayloadId = null
+                    sending = false
+                    status("Could not start $name: ${it.localizedMessage}. Trying the next file…")
+                    sendNextFile()
+                }
+                return
+            } catch (e: Exception) {
+                runCatching { descriptor?.close() }
+                status("Could not send this file: ${e.localizedMessage}. Skipping to the next file…")
+            }
         }
     }
 
