@@ -320,7 +320,8 @@ class MainActivity : Activity() {
     private val payloadCallback = object : PayloadCallback() {
         override fun onPayloadReceived(endpointId: String, payload: Payload) {
             if (payload.type == Payload.Type.FILE) {
-                val fileUri = payload.asFile().asUri()
+                val filePayload = payload.asFile() ?: return
+                val fileUri = filePayload.asUri() ?: return
                 val receivedName = queryDisplayName(fileUri) ?: "NEXORA-received-file"
                 incomingFiles[payload.id] = Pair(fileUri, receivedName)
             }
