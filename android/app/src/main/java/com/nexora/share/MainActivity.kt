@@ -473,18 +473,42 @@ class MainActivity : Activity() {
                 return
             }
             val matches = installedApps.filter { packageManager.getApplicationLabel(it).toString().contains(query, true) || it.packageName.contains(query, true) }
-            if (matches.isEmpty()) list.addView(TextView(this).apply { text = "No matching apps found."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
-            matches.forEach { app ->
-                val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(7), dp(8), dp(7)); background = rounded(if (darkMode) 0xFF1C2940.toInt() else -1, 12) }
-                val iconView = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; try { setImageDrawable(packageManager.getApplicationIcon(app)) } catch (_: Exception) { setImageResource(android.R.drawable.sym_def_app_icon) } }
-                row.addView(iconView, LinearLayout.LayoutParams(dp(44), dp(44)))
-                val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, dp(6), 0) }
-                details.addView(TextView(this).apply { text = packageManager.getApplicationLabel(app).toString(); textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink) })
-                details.addView(TextView(this).apply { text = app.packageName; textSize = 9f; setTextColor(muted) })
-                row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
-                row.addView(button("Share APK", blue) { selectAppApk(app) })
-                list.addView(row, bottom(6))
+            if (matches.isEmpty()) {
+                list.addView(TextView(this).apply { text = "No matching apps found."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
+                return
             }
+            val grid = android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }
+            matches.forEach { app ->
+                val appTile = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                    setPadding(dp(6), dp(12), dp(6), dp(10))
+                    background = rounded(if (darkMode) 0xFF142A40.toInt() else -1, 17)
+                    elevation = dp(2).toFloat()
+                    isClickable = true; isFocusable = true
+                }
+                val iconView = ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    try { setImageDrawable(packageManager.getApplicationIcon(app)) } catch (_: Exception) { setImageResource(android.R.drawable.sym_def_app_icon) }
+                }
+                appTile.addView(iconView, LinearLayout.LayoutParams(dp(48), dp(48)))
+                val appName = packageManager.getApplicationLabel(app).toString()
+                appTile.addView(TextView(this).apply {
+                    text = appName; textSize = 10f; maxLines = 2; gravity = Gravity.CENTER
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(7), 0, dp(3))
+                }, LinearLayout.LayoutParams(-1, dp(36)))
+                appTile.addView(TextView(this).apply {
+                    text = "SHARE"; textSize = 9f; letterSpacing = .08f; gravity = Gravity.CENTER
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF1684D9.toInt())
+                })
+                appTile.setOnClickListener { animatePress(appTile); selectAppApk(app) }
+                val params = android.widget.GridLayout.LayoutParams().apply {
+                    width = 0; height = dp(125)
+                    columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(4), dp(4), dp(4), dp(7))
+                }
+                grid.addView(appTile, params)
+            }
+            list.addView(grid)
         }
         search.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
