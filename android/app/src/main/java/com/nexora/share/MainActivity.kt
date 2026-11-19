@@ -158,8 +158,8 @@ class MainActivity : Activity() {
             setTextColor(0xFFFFD66B.toInt())
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0x33F6C85F)
-                setStroke(dp(1), 0x88F6C85F)
+                setColor(0x33F6C85F.toInt())
+                setStroke(dp(1), 0x88F6C85F.toInt())
             }
             alpha = 0f
             scaleX = .72f
