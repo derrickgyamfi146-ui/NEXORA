@@ -668,7 +668,7 @@ class MainActivity : Activity() {
     private val mediaCache = HashMap<String, ArrayList<Pair<Uri, String>>>()
     private val mediaLoading = HashSet<String>()
     // Render media in small batches to avoid creating hundreds of views on the UI thread.
-    private var mediaDisplayLimit = 40
+    private var mediaDisplayLimit = 20
 
     private fun renderMediaRows(kind: String, ink: Int, muted: Int, blue: Int) {
         if (!::mediaList.isInitialized) return
