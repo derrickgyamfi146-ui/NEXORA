@@ -310,7 +310,7 @@ class TransferKeepAliveService : Service() {
                     }
                 }
                 PayloadTransferUpdate.Status.CANCELED -> {
-                    openFiles.remove(update.payloadId)?.close()
+                    // Keep the shared file descriptor open until every recipient has finished.
                     incomingFiles.remove(update.payloadId)
                     val pending = pendingPayloadEndpoints[update.payloadId]
                     if (pending != null) {
