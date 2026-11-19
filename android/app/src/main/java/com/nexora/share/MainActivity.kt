@@ -800,7 +800,7 @@ class MainActivity : Activity() {
         var mediaGrid: android.widget.GridLayout? = null
         var currentMediaDay = ""
         filtered.take(mediaDisplayLimit).forEach { item ->
-            if (useGrid) {
+            if (useGrid || kind == "Music") {
                 val day = java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(item.third * 1000L))
                 if (day != currentMediaDay) {
                     currentMediaDay = day
@@ -809,8 +809,10 @@ class MainActivity : Activity() {
                         setTextColor(if (darkMode) 0xFF8FE0C3.toInt() else 0xFF16856A.toInt())
                         setPadding(dp(3), dp(12), dp(3), dp(6))
                     })
-                    mediaGrid = android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }
-                    mediaList.addView(mediaGrid)
+                    if (useGrid) {
+                        mediaGrid = android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }
+                        mediaList.addView(mediaGrid)
+                    }
                 }
             }
             val isSelected = selectedUris.contains(item.first)
