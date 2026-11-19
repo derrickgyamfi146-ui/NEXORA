@@ -16,6 +16,7 @@ import com.google.android.gms.nearby.connection.*
 import androidx.core.app.NotificationCompat
 import java.io.File
 import java.io.IOException
+import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
 
 class TransferKeepAliveService : Service() {
@@ -40,6 +41,11 @@ class TransferKeepAliveService : Service() {
     private var advertising = false
     private var discovering = false
     private val openFiles = ConcurrentHashMap<Long, android.os.ParcelFileDescriptor>()
+    private val outgoingQueue = ArrayDeque<Uri>()
+    private var sending = false
+    private var currentOutgoingPayloadId: Long? = null
+    private var transferStartedAt = 0L
+    private var lastProgressAt = 0L
     private val incomingFiles = ConcurrentHashMap<Long, Pair<Uri, String>>()
     private val serviceId = "com.nexora.share"
     private val strategy = Strategy.P2P_POINT_TO_POINT
@@ -104,17 +110,29 @@ class TransferKeepAliveService : Service() {
         status("Connection rejected.")
     }
 
+    @Synchronized
     fun sendFiles(uris: List<Uri>) {
         if (uris.isEmpty()) { status("Choose at least one file."); return }
         if (connectedEndpoint == null) { status("Connect to a phone first."); return }
-        status("Sending " + uris.size + " file(s)…")
-        uris.forEach { sendFile(it) }
+        outgoingQueue.addAll(uris)
+        status("${outgoingQueue.size} file(s) queued. Starting transfer…")
+        sendNextFile()
     }
 
-    fun sendFile(uri: Uri) {
+    @Synchronized
+    private fun sendNextFile() {
+        if (sending) return
         val endpoint = connectedEndpoint
         if (endpoint == null) {
-            status("Connect to a phone first.")
+            outgoingQueue.clear()
+            status("Connection lost. Reconnect before sending again.")
+            return
+        }
+        val uri = outgoingQueue.pollFirst()
+        if (uri == null) {
+            sending = false
+            currentOutgoingPayloadId = null
+            status("All selected files have been sent.")
             return
         }
         try {
@@ -124,13 +142,21 @@ class TransferKeepAliveService : Service() {
             val payload = Payload.fromFile(descriptor)
             payload.setFileName(name)
             openFiles[payload.id] = descriptor
+            sending = true
+            currentOutgoingPayloadId = payload.id
+            transferStartedAt = System.currentTimeMillis()
+            lastProgressAt = transferStartedAt
             status("Sending $name…")
             client.sendPayload(endpoint, payload).addOnFailureListener {
                 openFiles.remove(payload.id)?.close()
-                status("Send failed: ${it.localizedMessage}")
+                currentOutgoingPayloadId = null
+                sending = false
+                status("Could not start $name: ${it.localizedMessage}. Trying the next file…")
+                sendNextFile()
             }
         } catch (e: Exception) {
-            status("Could not send file: ${e.localizedMessage}")
+            status("Could not send file: ${e.localizedMessage}. Trying the next file…")
+            sendNextFile()
         }
     }
 
@@ -143,6 +169,9 @@ class TransferKeepAliveService : Service() {
         connectedEndpoint = null
         openFiles.values.forEach { runCatching { it.close() } }
         openFiles.clear()
+        outgoingQueue.clear()
+        sending = false
+        currentOutgoingPayloadId = null
         incomingFiles.clear()
         stopForegroundCompat()
         stopSelf()
@@ -200,23 +229,49 @@ class TransferKeepAliveService : Service() {
                     val total = update.totalBytes
                     val done = update.bytesTransferred
                     val percent = if (total > 0) (done * 100 / total).toInt() else 0
-                    listener?.onTransferProgress("Transferring… $percent%")
+                    if (openFiles.containsKey(update.payloadId)) {
+                        val now = System.currentTimeMillis()
+                        val elapsedSeconds = ((now - transferStartedAt).coerceAtLeast(1)) / 1000.0
+                        val speed = if (elapsedSeconds > 0) (done / elapsedSeconds).toLong() else 0L
+                        val remaining = if (speed > 0 && total > done) (total - done) / speed else 0L
+                        listener?.onTransferProgress("Sending… $percent% · ${formatBytes(speed)}/s · ${formatTime(remaining)} left")
+                        lastProgressAt = now
+                    } else {
+                        listener?.onTransferProgress("Receiving… $percent%")
+                    }
                 }
                 PayloadTransferUpdate.Status.SUCCESS -> {
-                    openFiles.remove(update.payloadId)?.close()
+                    val outgoing = openFiles.remove(update.payloadId)
+                    outgoing?.close()
                     val incoming = incomingFiles.remove(update.payloadId)
-                    if (incoming != null) saveReceivedFile(incoming.first, incoming.second)
-                    else status("File sent successfully.")
+                    if (incoming != null) {
+                        saveReceivedFile(incoming.first, incoming.second)
+                    } else if (outgoing != null) {
+                        currentOutgoingPayloadId = null
+                        sending = false
+                        status("File sent. ${outgoingQueue.size} file(s) remaining.")
+                        sendNextFile()
+                    }
                 }
                 PayloadTransferUpdate.Status.FAILURE -> {
                     openFiles.remove(update.payloadId)?.close()
                     incomingFiles.remove(update.payloadId)
-                    status("Transfer failed. Check both phones and try again.")
+                    if (currentOutgoingPayloadId == update.payloadId) {
+                        currentOutgoingPayloadId = null
+                        sending = false
+                        status("One file failed. Continuing with the queue…")
+                        sendNextFile()
+                    } else status("Transfer failed. Check both phones and try again.")
                 }
                 PayloadTransferUpdate.Status.CANCELED -> {
                     openFiles.remove(update.payloadId)?.close()
                     incomingFiles.remove(update.payloadId)
-                    status("Transfer canceled.")
+                    if (currentOutgoingPayloadId == update.payloadId) {
+                        currentOutgoingPayloadId = null
+                        sending = false
+                        status("Transfer canceled. Continuing with the queue…")
+                        sendNextFile()
+                    } else status("Transfer canceled.")
                 }
             }
         }
@@ -259,6 +314,22 @@ class TransferKeepAliveService : Service() {
                 status("Received, but saving failed: ${e.localizedMessage}")
             }
         }.start()
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes < 1024) return "$bytes B"
+        val kb = bytes / 1024.0
+        if (kb < 1024) return String.format(java.util.Locale.US, "%.1f KB", kb)
+        val mb = kb / 1024.0
+        if (mb < 1024) return String.format(java.util.Locale.US, "%.1f MB", mb)
+        return String.format(java.util.Locale.US, "%.2f GB", mb / 1024.0)
+    }
+
+    private fun formatTime(seconds: Long): String {
+        if (seconds <= 0) return "estimating"
+        val minutes = seconds / 60
+        val remainder = seconds % 60
+        return if (minutes > 0) "${minutes}m ${remainder}s" else "${remainder}s"
     }
 
     private fun queryDisplayName(uri: Uri): String? {
