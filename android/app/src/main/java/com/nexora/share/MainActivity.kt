@@ -26,6 +26,10 @@ class MainActivity : Activity() {
     private var bound = false
     private var activeTab = "Home"
     private var darkMode = false
+    private var mediaCategory: String? = null
+    private lateinit var mediaList: LinearLayout
+    private val mediaRows = ArrayList<Pair<Uri, String>>()
+    private var mediaSearch = ""
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -138,22 +142,113 @@ class MainActivity : Activity() {
     }
 
     private fun showMedia(card: Int, ink: Int, muted: Int, blue: Int) {
+        if (mediaCategory != null) { renderMediaLibrary(mediaCategory!!, ink, muted, blue); return }
         content.addView(TextView(this).apply { text = "Choose what to share"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(4)) })
-        content.addView(TextView(this).apply { text = "Select a category. You can choose one or many items."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(14)) })
-        val categories = listOf(Triple("Photos", "Images from your phone", "image/*"), Triple("Videos", "Video clips", "video/*"), Triple("Music", "Audio files", "audio/*"), Triple("Documents", "PDF, Word, ZIP and more", "application/*"), Triple("All files", "Browse any file type", "*/*"))
-        categories.forEach { item ->
+        content.addView(TextView(this).apply { text = "Browse media on your phone or open the secure file picker."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(14)) })
+        listOf(Triple("Photos", "Browse images on this phone", "image"), Triple("Videos", "Browse video clips", "video"), Triple("Music", "Browse audio files", "audio"), Triple("Documents", "PDF, Word, ZIP and more", "documents"), Triple("All files", "Browse any file type", "all"), Triple("Apps", "App sharing availability", "apps")).forEach { item ->
             val tile = panel(card); tile.orientation = LinearLayout.HORIZONTAL; tile.gravity = Gravity.CENTER_VERTICAL
             val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             info.addView(TextView(this).apply { text = item.first; textSize = 16f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink) })
             info.addView(TextView(this).apply { text = item.second; textSize = 11f; setTextColor(muted); setPadding(0, dp(3), 0, 0) })
             tile.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
             tile.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(blue) })
-            tile.setOnClickListener { openPicker(item.third) }
+            tile.setOnClickListener {
+                when (item.third) {
+                    "image" -> openMediaLibrary("Photos")
+                    "video" -> openMediaLibrary("Videos")
+                    "audio" -> openMediaLibrary("Music")
+                    "documents" -> openPicker("application/*")
+                    "all" -> openPicker("*/*")
+                    "apps" -> android.app.AlertDialog.Builder(this@MainActivity).setTitle("App sharing")
+                        .setMessage("Android limits access to other apps' installation files. NEXORA can share files you select, but automatic APK extraction is not enabled in this version.")
+                        .setPositiveButton("OK", null).show()
+                }
+            }
             content.addView(tile, bottom(9))
         }
-        content.addView(TextView(this).apply { text = "Connect to a nearby phone from Home. Your selection stays ready until you send or choose another batch."; textSize = 11f; setTextColor(muted); setPadding(dp(4), dp(8), dp(4), dp(8)) })
         sendButton = button("CHOOSE FILES TO SEND", blue) { openPicker("*/*") }
         content.addView(sendButton)
+    }
+
+    private fun openMediaLibrary(kind: String) {
+        mediaCategory = kind
+        mediaSearch = ""
+        val permission = when (kind) {
+            "Photos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
+            "Videos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
+            else -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) render()
+        else requestPermissions(arrayOf(permission), REQUEST_MEDIA)
+    }
+
+    private fun renderMediaLibrary(kind: String, ink: Int, muted: Int, blue: Int) {
+        content.addView(button("‹  Back to categories", blue) { mediaCategory = null; render() }, bottom(10))
+        content.addView(TextView(this).apply { text = kind; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
+        val search = EditText(this).apply {
+            hint = "Search " + kind.lowercase(); setSingleLine(true); textSize = 14f
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackground(rounded(if (darkMode) 0xFF263650.toInt() else -1, 12))
+            setTextColor(ink); setHintTextColor(muted); setText(mediaSearch)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { mediaSearch = s?.toString() ?: ""; renderMediaRows(kind, ink, muted, blue) }
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
+        }
+        content.addView(search, bottom(10))
+        mediaList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(mediaList)
+        renderMediaRows(kind, ink, muted, blue)
+        content.addView(button("SEND SELECTED (" + selectedUris.size + ")", blue) {
+            if (selectedUris.isEmpty()) updateStatus("Select at least one item first.")
+            else { activeTab = "Home"; render(); updateStatus(selectedUris.size.toString() + " item(s) ready. Connect to a phone, then tap Send.") }
+        }, bottom(10))
+    }
+
+    private fun renderMediaRows(kind: String, ink: Int, muted: Int, blue: Int) {
+        if (!::mediaList.isInitialized) return
+        mediaList.removeAllViews(); mediaRows.clear()
+        val collection = when (kind) {
+            "Photos" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            "Videos" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            else -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        }
+        try {
+            val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
+            contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idCol); val name = cursor.getString(nameCol) ?: "Media file"; val size = cursor.getLong(sizeCol)
+                    val uri = android.content.ContentUris.withAppendedId(collection, id)
+                    mediaRows.add(Pair(uri, name + "  ·  " + readableSize(size)))
+                }
+            }
+        } catch (_: SecurityException) {
+            mediaList.addView(TextView(this).apply { text = "Allow media access to view files."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
+            return
+        } catch (_: Exception) {}
+        val filtered = mediaRows.filter { it.second.contains(mediaSearch, ignoreCase = true) }
+        if (filtered.isEmpty()) mediaList.addView(TextView(this).apply {
+            text = if (mediaRows.isEmpty()) "No " + kind.lowercase() + " found on this phone." else "No matching files."
+            textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12))
+        })
+        filtered.forEach { item ->
+            val isSelected = selectedUris.contains(item.first)
+            mediaList.addView(button((if (isSelected) "✓  " else "＋  ") + item.second, if (isSelected) 0xFF16A085.toInt() else blue) {
+                if (selectedUris.contains(item.first)) selectedUris.remove(item.first) else selectedUris.add(item.first)
+                renderMediaRows(kind, ink, muted, blue)
+            }, bottom(6))
+        }
+    }
+
+    private fun readableSize(bytes: Long): String {
+        if (bytes < 1024) return bytes.toString() + " B"
+        if (bytes < 1024 * 1024) return String.format(java.util.Locale.US, "%.1f KB", bytes / 1024.0)
+        if (bytes < 1024L * 1024L * 1024L) return String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+        return String.format(java.util.Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
     }
 
     private fun showFiles(card: Int, ink: Int, muted: Int, blue: Int) {
@@ -226,6 +321,11 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_MEDIA) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) render()
+            else updateStatus("Media permission was not granted.")
+            return
+        }
         if (requestCode == REQUEST_NEARBY) {
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) Toast.makeText(this, "Permissions granted. Tap Send or Receive again.", Toast.LENGTH_LONG).show()
             else updateStatus("Nearby permissions are needed to connect to phones.")
@@ -286,5 +386,5 @@ class MainActivity : Activity() {
         receivedList.addView(TextView(this).apply { text = "Received files will appear here when saved."; textSize = 12f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
     }
 
-    companion object { private const val REQUEST_NEARBY = 2001; private const val REQUEST_FILE = 2002 }
+    companion object { private const val REQUEST_NEARBY = 2001; private const val REQUEST_FILE = 2002; private const val REQUEST_MEDIA = 2003 }
 }
