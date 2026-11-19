@@ -37,6 +37,8 @@ class TransferKeepAliveService : Service() {
     private val client by lazy { Nearby.getConnectionsClient(this) }
     private var listener: Listener? = null
     private var connectedEndpoint: String? = null
+    private var advertising = false
+    private var discovering = false
     private val openFiles = ConcurrentHashMap<Long, android.os.ParcelFileDescriptor>()
     private val incomingFiles = ConcurrentHashMap<Long, Pair<Uri, String>>()
     private val serviceId = "com.nexora.share"
@@ -44,20 +46,46 @@ class TransferKeepAliveService : Service() {
 
     fun setListener(value: Listener?) { listener = value }
 
+    @Synchronized
     fun startReceiving() {
+        if (advertising) {
+            status("Already visible. Keep this screen open while the other phone searches.")
+            return
+        }
+        if (discovering) {
+            client.stopDiscovery()
+            discovering = false
+        }
         promoteToForeground()
+        advertising = true
         val options = AdvertisingOptions.Builder().setStrategy(strategy).build()
         client.startAdvertising(deviceName(), serviceId, connectionCallback, options)
-            .addOnSuccessListener { status("Ready to receive. Ask the other phone to tap Send.") }
-            .addOnFailureListener { status("Could not become visible: ${it.localizedMessage}") }
+            .addOnSuccessListener { status("Your phone is visible. On the other phone, tap Send.") }
+            .addOnFailureListener {
+                advertising = false
+                status("Could not become visible: ${it.localizedMessage}")
+            }
     }
 
+    @Synchronized
     fun startFinding() {
+        if (discovering) {
+            status("Already searching. Wait for the other phone to appear below.")
+            return
+        }
+        if (advertising) {
+            client.stopAdvertising()
+            advertising = false
+        }
         promoteToForeground()
+        discovering = true
         val options = DiscoveryOptions.Builder().setStrategy(strategy).build()
         client.startDiscovery(serviceId, discoveryCallback, options)
-            .addOnSuccessListener { status("Searching… Select the phone when it appears.") }
-            .addOnFailureListener { status("Could not search: ${it.localizedMessage}") }
+            .addOnSuccessListener { status("Searching for nearby NEXORA phones…") }
+            .addOnFailureListener {
+                discovering = false
+                status("Could not search: ${it.localizedMessage}")
+            }
     }
 
     fun connect(endpointId: String, name: String) {
@@ -102,6 +130,8 @@ class TransferKeepAliveService : Service() {
     fun stopSharing() {
         client.stopAdvertising()
         client.stopDiscovery()
+        advertising = false
+        discovering = false
         client.stopAllEndpoints()
         connectedEndpoint = null
         openFiles.values.forEach { runCatching { it.close() } }
@@ -133,6 +163,8 @@ class TransferKeepAliveService : Service() {
                 connectedEndpoint = endpointId
                 client.stopDiscovery()
                 client.stopAdvertising()
+                discovering = false
+                advertising = false
                 listener?.onConnected(endpointId)
                 status("Connected securely. Choose a file to send.")
             } else {
