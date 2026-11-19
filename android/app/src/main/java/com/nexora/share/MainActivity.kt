@@ -37,6 +37,9 @@ class MainActivity : Activity() {
     private var highSpeedMode = false
     private var pendingServiceAction: ((TransferKeepAliveService) -> Unit)? = null
     private var appSelectionButton: Button? = null
+    private var selectionSendButton: TextView? = null
+    private var pendingCameraScan = false
+    private var preparingApps = false
     private val appIconCache = java.util.concurrent.ConcurrentHashMap<String, android.graphics.drawable.Drawable>()
     private lateinit var mediaList: LinearLayout
     private var mediaContinueButton: Button? = null
@@ -102,10 +105,12 @@ class MainActivity : Activity() {
                 if (::sendButton.isInitialized) sendButton.isEnabled = true
                 if (pendingSelectedSend && selectedUris.isNotEmpty()) {
                     pendingSelectedSend = false
-                    val outgoing = ArrayList(selectedUris)
+                    val outgoing = ArrayList(LinkedHashSet(selectedUris))
                     rememberOutgoingUris(outgoing)
                     sharing?.sendFiles(outgoing)
                     selectedUris.clear()
+                    selectedAppPackages.clear()
+                    updateSelectionAction()
                     updateStatus("Connected. Sending your selected files…")
                     if (::root.isInitialized) render()
                 }
@@ -240,10 +245,10 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         when {
             activeTab == "Settings" || activeTab == "Transfers" || activeTab == "Send" || activeTab == "Receive" || activeTab == "Files" || activeTab == "Sent" || activeTab == "Received" || activeTab == "Contacts" -> {
-                activeTab = "Home"; mediaCategory = "Apps"; render()
+                activeTab = "Media"; mediaCategory = "Apps"; render()
             }
             activeTab == "Media" && mediaCategory != "Apps" -> { mediaCategory = "Apps"; render() }
-            activeTab == "Media" -> { activeTab = "Home"; render() }
+            activeTab == "Media" -> showExitConfirmation()
             else -> showExitConfirmation()
         }
     }
@@ -277,7 +282,7 @@ class MainActivity : Activity() {
                 if (darkMode) intArrayOf(0xFF061522.toInt(), 0xFF103C45.toInt(), 0xFF3D3218.toInt()) else intArrayOf(0xFFFFF8DF.toInt(), 0xFFE8F7EF.toInt(), 0xFFE5F2FF.toInt())
             )
         }
-        val libraryMode = activeTab in setOf("Home", "Media", "Files", "Sent", "Received", "Contacts")
+        val libraryMode = activeTab in setOf("Media", "Files", "Sent", "Received", "Contacts")
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -290,12 +295,6 @@ class MainActivity : Activity() {
             setOnClickListener { animatePress(this); showXenderMenu() }
         }
         header.addView(menuButton, LinearLayout.LayoutParams(dp(42), dp(42)))
-        val homeButton = TextView(this).apply {
-            text = "⌂"; textSize = 27f; gravity = Gravity.CENTER; setTextColor(0xFFFFD66B.toInt())
-            contentDescription = "Go to home"
-            setOnClickListener { animatePress(this); activeTab = "Home"; mediaCategory = "Apps"; render() }
-        }
-        header.addView(homeButton, LinearLayout.LayoutParams(dp(42), dp(42)))
         header.addView(TextView(this).apply {
             text = "NEXORA"; textSize = 21f; letterSpacing = .04f
             typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
@@ -388,7 +387,29 @@ class MainActivity : Activity() {
                 bottomMargin = dp(10)
             })
             quickActionPanel = quickActions
-            content.setPadding(dp(13), dp(7), dp(13), dp(18))
+            val selectionSend = TextView(this).apply {
+                text = "➤  SEND"; textSize = 14f; gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
+                background = android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(0xFF00A6A6.toInt(), 0xFF635BDF.toInt(), 0xFF9B4DCA.toInt())
+                ).apply { cornerRadius = dp(24).toFloat(); setStroke(dp(1), 0x88FFFFFF.toInt()) }
+                elevation = dp(16).toFloat()
+                setPadding(dp(32), 0, dp(32), 0)
+                visibility = View.GONE
+                setOnClickListener {
+                    animatePress(this)
+                    if (activeTab == "Media" && mediaCategory == "Apps") {
+                        val chosen = installedApps.filter { selectedAppPackages.contains(it.packageName) }
+                        selectAppApks(chosen)
+                    } else beginSendSelected()
+                }
+            }
+            selectionSendButton = selectionSend
+            contentFrame.addView(selectionSend, android.widget.FrameLayout.LayoutParams(-1, dp(54), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+                leftMargin = dp(24); rightMargin = dp(24); bottomMargin = dp(12)
+            })
+            content.setPadding(dp(13), dp(7), dp(13), dp(84))
         }
         root.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
         if (libraryMode) {
@@ -421,7 +442,6 @@ class MainActivity : Activity() {
         }
                 setContentView(root)
         when (activeTab) {
-            "Home" -> showHome(card, ink, muted, blue)
             "Media" -> showMedia(card, ink, muted, blue)
             "Files" -> showFiles(card, ink, muted, blue)
             "Sent" -> showSent(card, ink, muted)
@@ -598,7 +618,7 @@ class MainActivity : Activity() {
             runWithSharingService { it.setHighSpeedMode(highSpeedMode) }
             render()
         }, bottom(8))
-        content.addView(button("BACK TO HOME", 0xFF4C46A8.toInt()) { activeTab = "Home"; render() }, bottom(8))
+        content.addView(button("BACK TO APPS", 0xFF4C46A8.toInt()) { activeTab = "Media"; mediaCategory = "Apps"; render() }, bottom(8))
         content.addView(button("STOP RECEIVING", 0xFF64748B.toInt()) {
             sharing?.stopSharing()
             discovered.clear(); connectedPeers.clear()
@@ -632,7 +652,7 @@ class MainActivity : Activity() {
             if (selectedUris.isEmpty()) openPicker("*/*") else beginSendSelected()
         }, bottom(8))
         content.addView(button("CHOOSE MORE FILES", 0xFF4C46A8.toInt()) { openPicker("*/*") }, bottom(8))
-        content.addView(button("BACK TO HOME", 0xFFB38A2E.toInt()) { activeTab = "Home"; mediaCategory = "Apps"; render() })
+        content.addView(button("BACK TO APPS", 0xFFB38A2E.toInt()) { activeTab = "Media"; mediaCategory = "Apps"; render() })
     }
 
     private fun beginSendSelected() {
@@ -642,9 +662,12 @@ class MainActivity : Activity() {
         if (connectedPeers.isNotEmpty() && sharing != null) {
             sharing?.sendFiles(outgoing)
             selectedUris.clear()
+            selectedAppPackages.clear()
             pendingSelectedSend = false
+            updateSelectionAction()
             updateStatus("Sending your selected items…")
-            activeTab = "Home"
+            activeTab = "Media"
+            mediaCategory = "Apps"
             render()
         } else {
             pendingSelectedSend = true
@@ -848,6 +871,15 @@ class MainActivity : Activity() {
     }
 
     private fun scanQrCode() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            pendingCameraScan = true
+            requestPermissions(arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
+            return
+        }
+        launchQrScanner()
+    }
+
+    private fun launchQrScanner() {
         try {
             Toast.makeText(this, "Opening NEXORA scanner…", Toast.LENGTH_SHORT).show()
             com.google.zxing.integration.android.IntentIntegrator(this)
@@ -1019,6 +1051,7 @@ class MainActivity : Activity() {
                 if (selectedUris.contains(item.first)) selectedUris.remove(item.first) else selectedUris.add(item.first)
                 mediaContinueButton?.text = "SEND SELECTED  ·  " + selectedUris.size
                 mediaContinueButton?.isEnabled = selectedUris.isNotEmpty()
+                updateSelectionAction()
                 renderMediaRows(kind, ink, muted, blue)
             }
             if (useGrid) {
@@ -1101,13 +1134,7 @@ class MainActivity : Activity() {
         val search = EditText(this).apply { hint = "Search apps"; setSingleLine(true); textSize = 14f; setPadding(dp(12), dp(8), dp(12), dp(8)); setBackground(rounded(if (darkMode) 0xFF263650.toInt() else -1, 12)); setTextColor(ink); setHintTextColor(muted) }
         content.addView(search, bottom(8))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val selectedFooter = button("SEND SELECTED APPS", 0xFF0B9B75.toInt()) {
-            val chosen = installedApps.filter { selectedAppPackages.contains(it.packageName) }
-            selectAppApks(chosen)
-        }
-        selectedFooter.visibility = if (selectedAppPackages.isEmpty()) View.GONE else View.VISIBLE
-        appSelectionButton = selectedFooter
-        content.addView(selectedFooter, bottom(8))
+        appSelectionButton = null
         content.addView(list)
         fun populate(query: String) {
             list.removeAllViews()
@@ -1212,8 +1239,7 @@ class MainActivity : Activity() {
                             if (nowSelected) { if (darkMode) 0xFF174A3D.toInt() else 0xFFE4F5EF.toInt() }
                             else if (darkMode) 0xFF142A40.toInt() else -1, 17
                         )
-                        appSelectionButton?.visibility = if (selectedAppPackages.isEmpty()) View.GONE else View.VISIBLE
-                        appSelectionButton?.text = "SEND " + selectedAppPackages.size + " SELECTED APP(S)"
+                        updateSelectionAction()
                     }
                     val params = android.widget.GridLayout.LayoutParams().apply {
                         width = 0; height = dp(137)
@@ -1245,8 +1271,7 @@ class MainActivity : Activity() {
                 }, bottom(8))
             }
             addAppSection("SYSTEM APPS", systemApps, 0xFF168FE5.toInt(), collapsible = query.isBlank())
-            appSelectionButton?.text = "SEND " + selectedAppPackages.size + " SELECTED APP(S)"
-            appSelectionButton?.visibility = if (selectedAppPackages.isEmpty()) View.GONE else View.VISIBLE
+            updateSelectionAction()
         }
         search.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -1259,36 +1284,53 @@ class MainActivity : Activity() {
     private fun selectAppApk(app: android.content.pm.ApplicationInfo) = selectAppApks(listOf(app))
 
     private fun selectAppApks(apps: List<android.content.pm.ApplicationInfo>) {
-        if (apps.isEmpty()) return
-        try {
-            val folder = java.io.File(cacheDir, "shared_apks").apply { mkdirs() }
-            val batch = System.currentTimeMillis().toString()
-            var totalParts = 0
+        if (apps.isEmpty() || preparingApps) return
+        preparingApps = true
+        selectionSendButton?.isEnabled = false
+        updateStatus("Preparing " + apps.size + " app(s)…")
+        Thread {
+            val preparedUris = LinkedHashSet<Uri>()
             val labels = ArrayList<String>()
-            apps.forEach { app ->
-                val prefix = "NEXORA_APP_" + app.packageName + "_" + batch
-                val sources = ArrayList<java.io.File>()
-                sources.add(java.io.File(app.sourceDir))
-                app.splitSourceDirs?.forEach { sources.add(java.io.File(it)) }
-                sources.forEachIndexed { index, source ->
-                    val suffix = if (index == 0) "_BASE.apk" else "_SPLIT_" + (index - 1) + ".apk"
-                    val apk = java.io.File(folder, prefix + suffix)
-                    source.copyTo(apk, overwrite = true)
-                    val uri = androidx.core.content.FileProvider.getUriForFile(this, packageName + ".fileprovider", apk)
-                    if (!selectedUris.contains(uri)) selectedUris.add(uri)
-                    totalParts++
+            var totalParts = 0
+            var failure: String? = null
+            try {
+                val folder = java.io.File(cacheDir, "shared_apks").apply { mkdirs() }
+                val batch = System.currentTimeMillis().toString()
+                apps.distinctBy { it.packageName }.forEach { app ->
+                    val prefix = "NEXORA_APP_" + app.packageName + "_" + batch
+                    val sources = ArrayList<java.io.File>()
+                    sources.add(java.io.File(app.sourceDir))
+                    app.splitSourceDirs?.forEach { sources.add(java.io.File(it)) }
+                    sources.forEachIndexed { index, source ->
+                        val suffix = if (index == 0) "_BASE.apk" else "_SPLIT_" + (index - 1) + ".apk"
+                        val apk = java.io.File(folder, prefix + suffix)
+                        source.copyTo(apk, overwrite = true)
+                        preparedUris.add(androidx.core.content.FileProvider.getUriForFile(this, packageName + ".fileprovider", apk))
+                        totalParts++
+                    }
+                    labels.add(packageManager.getApplicationLabel(app).toString())
                 }
-                labels.add(packageManager.getApplicationLabel(app).toString())
+            } catch (e: Exception) {
+                failure = e.localizedMessage ?: "unknown error"
             }
-            selectedAppPackages.clear()
-            activeTab = "Send"
-            mediaCategory = "Apps"
-            render()
-            updateStatus(labels.size.toString() + " app(s) selected (" + totalParts + " APK part(s)). Opening connection…")
-            beginSendSelected()
-        } catch (e: Exception) {
-            Toast.makeText(this, "Could not prepare selected apps: " + e.localizedMessage, Toast.LENGTH_LONG).show()
-        }
+            runOnUiThread {
+                preparingApps = false
+                selectedUris.clear()
+                selectedUris.addAll(preparedUris)
+                selectedAppPackages.clear()
+                updateSelectionAction()
+                if (failure != null || selectedUris.isEmpty()) {
+                    selectionSendButton?.isEnabled = true
+                    Toast.makeText(this, "Could not prepare selected apps: " + (failure ?: "no app files found"), Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                activeTab = "Send"
+                mediaCategory = "Apps"
+                render()
+                updateStatus(labels.size.toString() + " app(s) prepared (" + totalParts + " APK part(s)). Opening connection…")
+                beginSendSelected()
+            }
+        }.start()
     }
 
     private fun installReceivedApkGroup(prefix: String) {
@@ -2038,7 +2080,19 @@ class MainActivity : Activity() {
     private val quickActionHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var quickActionHide: Runnable? = null
 
+    private fun currentSelectionCount(): Int =
+        if (activeTab == "Media" && mediaCategory == "Apps") selectedAppPackages.size else selectedUris.size
+
+    private fun updateSelectionAction() {
+        val count = currentSelectionCount()
+        val button = selectionSendButton ?: return
+        button.visibility = if (count > 0 && activeTab in setOf("Media", "Files")) View.VISIBLE else View.GONE
+        button.isEnabled = count > 0 && !preparingApps
+        if (count > 0) quickActionPanel?.visibility = View.GONE
+    }
+
     private fun showQuickActions() {
+        if (currentSelectionCount() > 0) { updateSelectionAction(); return }
         val panel = quickActionPanel ?: return
         quickActionHide?.let { quickActionHandler.removeCallbacks(it) }
         panel.visibility = View.VISIBLE
@@ -2224,6 +2278,14 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CAMERA) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            val resume = pendingCameraScan
+            pendingCameraScan = false
+            if (granted && resume) launchQrScanner()
+            else updateStatus("Camera permission is required to scan a QR code.")
+            return
+        }
         if (requestCode == REQUEST_MEDIA) {
             val kind = mediaCategory
             if (kind != null && hasMediaPermission(kind)) { mediaErrors.remove(kind); mediaCache.remove(kind); render() }
@@ -2447,5 +2509,5 @@ class MainActivity : Activity() {
         receivedList.addView(TextView(this).apply { text = "Received files will appear here when saved."; textSize = 12f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
     }
 
-    companion object { private const val REQUEST_NEARBY = 2001; private const val REQUEST_FILE = 2002; private const val REQUEST_MEDIA = 2003; private const val REQUEST_TREE = 2004 }
+    companion object { private const val REQUEST_NEARBY = 2001; private const val REQUEST_FILE = 2002; private const val REQUEST_MEDIA = 2003; private const val REQUEST_TREE = 2004; private const val REQUEST_CAMERA = 2005 }
 }
