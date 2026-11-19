@@ -274,7 +274,7 @@ class MainActivity : Activity() {
         }
         listOf("Apps", "History", "Send", "Receive", "More").forEach { item ->
             val selected = when (item) {
-                "Apps" -> activeTab == "Media"
+                "Apps" -> activeTab == "Media" || activeTab == "Files"
                 "History" -> activeTab == "Sent" || activeTab == "Received"
                 "Send" -> activeTab == "Send"
                 "Receive" -> activeTab == "Receive"
