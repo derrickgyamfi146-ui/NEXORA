@@ -57,11 +57,31 @@ class TransferKeepAliveService : Service() {
     private var lastProgressAt = 0L
     private val incomingFiles = ConcurrentHashMap<Long, Pair<Uri, String>>()
     private val serviceId = "com.nexora.share"
-    private val strategy = Strategy.P2P_STAR
+    private var strategy = Strategy.P2P_STAR
 
     fun setListener(value: Listener?) { listener = value; value?.onStatus(lastStatusMessage) }
 
     val isAdvertising: Boolean get() = advertising
+
+    @Synchronized
+    fun setHighSpeedMode(enabled: Boolean) {
+        val next = if (enabled) Strategy.P2P_POINT_TO_POINT else Strategy.P2P_STAR
+        if (strategy == next) return
+        val wasAdvertising = advertising
+        val wasDiscovering = discovering
+        if (wasAdvertising) client.stopAdvertising()
+        if (wasDiscovering) client.stopDiscovery()
+        advertising = false
+        discovering = false
+        strategy = next
+        status(if (enabled) {
+            "High-speed direct mode selected. Both phones must enable it."
+        } else {
+            "Standard compatibility mode selected."
+        })
+        if (wasAdvertising) startReceiving()
+        else if (wasDiscovering) startFinding()
+    }
 
     @Synchronized
     fun startReceiving() {
@@ -81,7 +101,11 @@ class TransferKeepAliveService : Service() {
             .addOnFailureListener {
                 advertising = false
                 releaseWakeLockIfIdle()
-                status("Could not become visible: ${it.localizedMessage}")
+                status(if (strategy == Strategy.P2P_POINT_TO_POINT) {
+                    "High-speed mode is not supported by this connection. Turn it off on both phones and retry."
+                } else {
+                    "Could not become visible: ${it.localizedMessage}"
+                })
             }
     }
 
@@ -103,7 +127,11 @@ class TransferKeepAliveService : Service() {
             .addOnFailureListener {
                 discovering = false
                 releaseWakeLockIfIdle()
-                status("Could not search: ${it.localizedMessage}")
+                status(if (strategy == Strategy.P2P_POINT_TO_POINT) {
+                    "High-speed mode is not supported by this connection. Turn it off on both phones and retry."
+                } else {
+                    "Could not search: ${it.localizedMessage}"
+                })
             }
     }
 
