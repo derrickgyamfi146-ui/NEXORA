@@ -112,14 +112,14 @@ class MainActivity : Activity() {
         content.addView(label("QUICK ACTIONS", muted), bottom(8))
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         actions.addView(actionTile("↑", "Send files", blue) { activeTab = "Media"; render() }, LinearLayout.LayoutParams(0, dp(112), 1f).apply { rightMargin = dp(6) })
-        actions.addView(actionTile("↓", "Receive files", 0xFF16A085.toInt()) { withNearbyPermissions { sharing?.startReceiving() ?: updateStatus("Starting service. Try again.") } }, LinearLayout.LayoutParams(0, dp(112), 1f).apply { leftMargin = dp(6) })
+        actions.addView(actionTile("↓", "Receive files", 0xFF16A085.toInt()) { withNearbyPermissions { ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java)); sharing?.startReceiving() ?: updateStatus("Starting service. Try again.") } }, LinearLayout.LayoutParams(0, dp(112), 1f).apply { leftMargin = dp(6) })
         content.addView(actions, bottom(12))
         val devices = panel(card)
         devices.addView(label("NEARBY DEVICES", muted))
         devices.addView(TextView(this).apply { text = "Tap Find phones, then choose a device to connect."; textSize = 12f; setTextColor(muted); setPadding(0, dp(6), 0, dp(6)) })
         peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }; devices.addView(peerList)
         devices.addView(button("FIND NEARBY PHONES", blue) {
-            withNearbyPermissions { discovered.clear(); rebuildPeerList(); sharing?.startFinding() ?: updateStatus("Starting service. Tap Find again.") }
+            withNearbyPermissions { ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java)); discovered.clear(); rebuildPeerList(); sharing?.startFinding() ?: updateStatus("Starting service. Tap Find again.") }
         })
         content.addView(devices, bottom(12))
         sendButton = button(if (selectedUris.isEmpty()) "CHOOSE FILES TO SEND" else "SEND " + selectedUris.size + " SELECTED FILE(S)", blue) {
