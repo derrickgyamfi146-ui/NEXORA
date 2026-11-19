@@ -99,6 +99,7 @@ class MainActivity : Activity() {
         page.addView(Button(this).apply {
             text = "Stop searching / disconnect"
             setOnClickListener {
+                stopTransferKeepAlive()
                 client.stopAdvertising()
                 client.stopDiscovery()
                 client.stopAllEndpoints()
@@ -159,6 +160,7 @@ class MainActivity : Activity() {
     }
 
     private fun startReceiving() {
+        startTransferKeepAlive()
         discovered.clear()
         peerList.removeAllViews()
         updateStatus("Making this phone visible to nearby NEXORA devices…")
@@ -169,6 +171,7 @@ class MainActivity : Activity() {
     }
 
     private fun startFinding() {
+        startTransferKeepAlive()
         discovered.clear()
         peerList.removeAllViews()
         updateStatus("Searching for nearby NEXORA phones…")
@@ -394,6 +397,21 @@ class MainActivity : Activity() {
                 runOnUiThread { updateStatus("Received, but saving failed: " + e.localizedMessage) }
             }
         }.start()
+    }
+
+    private fun startTransferKeepAlive() {
+        val intent = Intent(this, TransferKeepAliveService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ContextCompat.startForegroundService(this, intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    private fun stopTransferKeepAlive() {
+        startService(Intent(this, TransferKeepAliveService::class.java).apply {
+            action = TransferKeepAliveService.ACTION_STOP
+        })
     }
 
     private fun updateStatus(message: String) {
