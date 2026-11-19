@@ -1090,6 +1090,13 @@ class MainActivity : Activity() {
         val search = EditText(this).apply { hint = "Search apps"; setSingleLine(true); textSize = 14f; setPadding(dp(12), dp(8), dp(12), dp(8)); setBackground(rounded(if (darkMode) 0xFF263650.toInt() else -1, 12)); setTextColor(ink); setHintTextColor(muted) }
         content.addView(search, bottom(8))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val selectedFooter = button("SEND SELECTED APPS", 0xFF0B9B75.toInt()) {
+            val chosen = installedApps.filter { selectedAppPackages.contains(it.packageName) }
+            selectAppApks(chosen)
+        }
+        selectedFooter.visibility = if (selectedAppPackages.isEmpty()) View.GONE else View.VISIBLE
+        appSelectionButton = selectedFooter
+        content.addView(selectedFooter, bottom(8))
         content.addView(list)
         fun populate(query: String) {
             list.removeAllViews()
@@ -1142,13 +1149,23 @@ class MainActivity : Activity() {
                     }
                     val iconView = ImageView(this).apply {
                         scaleType = ImageView.ScaleType.FIT_CENTER
-                        setImageResource(android.R.drawable.sym_def_app_icon)
                         tag = app.packageName
+                        background = rounded(if (darkMode) 0xFF263B50.toInt() else 0xFFE8EEF6.toInt(), 12)
+                        val cached = appIconCache[app.packageName]
+                        if (cached != null) setImageDrawable(cached)
                     }
                     appTile.addView(iconView, LinearLayout.LayoutParams(dp(48), dp(48)))
-                    thumbnailExecutor.execute {
+                    if (appIconCache[app.packageName] == null) thumbnailExecutor.execute {
                         val drawable = try { packageManager.getApplicationIcon(app) } catch (_: Exception) { null }
-                        if (drawable != null) runOnUiThread { if (iconView.tag == app.packageName && iconView.parent != null) iconView.setImageDrawable(drawable) }
+                        if (drawable != null) {
+                            appIconCache[app.packageName] = drawable
+                            runOnUiThread {
+                                if (iconView.tag == app.packageName && iconView.parent != null) {
+                                    iconView.setImageDrawable(drawable)
+                                    iconView.background = null
+                                }
+                            }
+                        }
                     }
                     val appName = appLabels[app.packageName] ?: app.packageName
                     val appSize = runCatching {
@@ -1164,16 +1181,28 @@ class MainActivity : Activity() {
                         text = appSize; textSize = 9f; gravity = Gravity.CENTER
                         setTextColor(muted); setPadding(0, 0, 0, dp(2))
                     })
-                    appTile.addView(TextView(this).apply {
+                    val selectionLabel = TextView(this).apply {
                         text = if (selectedAppPackages.contains(app.packageName)) "✓ SELECTED" else "＋ SELECT"
                         textSize = 9f; letterSpacing = .04f; gravity = Gravity.CENTER
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
                         setTextColor(if (selectedAppPackages.contains(app.packageName)) 0xFF16A085.toInt() else 0xFF1684D9.toInt())
-                    })
+                    }
+                    appTile.addView(selectionLabel)
                     appTile.setOnClickListener {
                         animatePress(appTile)
-                        if (!selectedAppPackages.add(app.packageName)) selectedAppPackages.remove(app.packageName)
-                        populate(query)
+                        val nowSelected = if (selectedAppPackages.contains(app.packageName)) {
+                            selectedAppPackages.remove(app.packageName); false
+                        } else {
+                            selectedAppPackages.add(app.packageName); true
+                        }
+                        selectionLabel.text = if (nowSelected) "✓ SELECTED" else "＋ SELECT"
+                        selectionLabel.setTextColor(if (nowSelected) 0xFF16A085.toInt() else 0xFF1684D9.toInt())
+                        appTile.background = rounded(
+                            if (nowSelected) { if (darkMode) 0xFF174A3D.toInt() else 0xFFE4F5EF.toInt() }
+                            else if (darkMode) 0xFF142A40.toInt() else -1, 17
+                        )
+                        appSelectionButton?.visibility = if (selectedAppPackages.isEmpty()) View.GONE else View.VISIBLE
+                        appSelectionButton?.text = "SEND " + selectedAppPackages.size + " SELECTED APP(S)"
                     }
                     val params = android.widget.GridLayout.LayoutParams().apply {
                         width = 0; height = dp(137)
@@ -1181,11 +1210,7 @@ class MainActivity : Activity() {
                         setMargins(dp(4), dp(4), dp(4), dp(7))
                     }
                     grid.addView(appTile, params)
-                    appTile.alpha = 0f
-                    appTile.translationY = dp(8).toFloat()
-                    appTile.animate().alpha(1f).translationY(0f)
-                        .setStartDelay((tileIndex.toLong() * 14L).coerceAtMost(196L))
-                        .setDuration(190L).start()
+                    // Keep the grid stable while selecting apps; only the pressed tile animates.
                 }
                 section.addView(grid)
                 if (!expanded) grid.visibility = View.GONE
@@ -1209,16 +1234,8 @@ class MainActivity : Activity() {
                 }, bottom(8))
             }
             addAppSection("SYSTEM APPS", systemApps, 0xFF168FE5.toInt(), collapsible = query.isBlank())
-            if (selectedAppPackages.isNotEmpty()) {
-                list.addView(button("SEND ${selectedAppPackages.size} SELECTED APP(S)", 0xFF009D70.toInt()) {
-                    val chosen = installedApps.filter { selectedAppPackages.contains(it.packageName) }
-                    selectAppApks(chosen)
-                }, bottom(12))
-                list.addView(TextView(this).apply {
-                    text = "Tap an app again to remove it from your selection."
-                    textSize = 11f; setTextColor(muted); setPadding(dp(3), 0, dp(3), dp(8))
-                })
-            }
+            appSelectionButton?.text = "SEND " + selectedAppPackages.size + " SELECTED APP(S)"
+            appSelectionButton?.visibility = if (selectedAppPackages.isEmpty()) View.GONE else View.VISIBLE
         }
         search.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
