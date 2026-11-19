@@ -917,7 +917,7 @@ class MainActivity : Activity() {
                     }
                 }
                 section.addView(heading)
-                val grid = android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }
+                val grid = android.widget.GridLayout(this).apply { columnCount = 4; useDefaultMargins = false }
                 if (expanded) apps.forEachIndexed { tileIndex, app ->
                     val appTile = LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
