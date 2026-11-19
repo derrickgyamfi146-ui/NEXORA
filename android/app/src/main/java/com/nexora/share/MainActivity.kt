@@ -32,6 +32,7 @@ class MainActivity : Activity() {
     private val mediaRows = ArrayList<Pair<Uri, String>>()
     private var mediaSearch = ""
     private var mediaSort = "Newest"
+    private val mediaErrors = HashMap<String, String>()
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -241,8 +242,10 @@ class MainActivity : Activity() {
             "Videos" -> if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
             else -> if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_AUDIO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-        val missing = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isEmpty()) render() else requestPermissions(missing.toTypedArray(), REQUEST_MEDIA)
+        if (hasMediaPermission(kind)) render() else {
+            val missing = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+            requestPermissions(missing.toTypedArray(), REQUEST_MEDIA)
+        }
     }
 
     private fun renderMediaLibrary(kind: String, ink: Int, muted: Int, blue: Int) {
@@ -282,8 +285,14 @@ class MainActivity : Activity() {
         mediaList.removeAllViews()
         val cached = mediaCache[kind]
         if (cached == null) {
+            val error = mediaErrors[kind]
+            if (error != null) {
+                mediaList.addView(TextView(this).apply { text = "Could not load " + kind.lowercase() + ": " + error; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(8)) })
+                mediaList.addView(button("TRY AGAIN", blue) { mediaErrors.remove(kind); mediaCache.remove(kind); renderMediaRows(kind, ink, muted, blue) })
+                return
+            }
             if (mediaLoading.add(kind)) {
-                mediaList.addView(TextView(this).apply { text = "Loading…"; textSize = 13f; setTextColor(muted); setPadding(0, dp(16), 0, dp(16)) })
+                mediaList.addView(TextView(this).apply { text = "Loading your " + kind.lowercase() + "…"; textSize = 13f; setTextColor(muted); setPadding(0, dp(16), 0, dp(16)) })
                 Thread {
                     val loaded = ArrayList<Pair<Uri, String>>()
                     val collection = when (kind) {
@@ -304,10 +313,12 @@ class MainActivity : Activity() {
                                 loaded.add(Pair(android.content.ContentUris.withAppendedId(collection, id), name + " · " + readableSize(size)))
                             }
                         }
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        mediaErrors[kind] = e.localizedMessage ?: "Android could not read this media library."
+                    }
                     runOnUiThread {
                         mediaLoading.remove(kind)
-                        mediaCache[kind] = loaded
+                        if (mediaErrors.containsKey(kind)) mediaCache.remove(kind) else mediaCache[kind] = loaded
                         if (mediaCategory == kind && ::mediaList.isInitialized) renderMediaRows(kind, ink, muted, blue)
                     }
                 }.start()
@@ -406,6 +417,21 @@ class MainActivity : Activity() {
         } catch (e: Exception) {
             Toast.makeText(this, "Could not prepare this app: " + e.localizedMessage, Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun hasMediaPermission(kind: String): Boolean {
+        if (Build.VERSION.SDK_INT >= 34) {
+            val permission = if (kind == "Photos") Manifest.permission.READ_MEDIA_IMAGES else if (kind == "Videos") Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_MEDIA_AUDIO
+            if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) return true
+            if (kind == "Photos" || kind == "Videos") return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+            return false
+        }
+        val permission = when (kind) {
+            "Photos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
+            "Videos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
+            else -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun readableSize(bytes: Long): String {
@@ -523,8 +549,9 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_MEDIA) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) render()
-            else updateStatus("Media permission was not granted.")
+            val kind = mediaCategory
+            if (kind != null && hasMediaPermission(kind)) { mediaErrors.remove(kind); mediaCache.remove(kind); render() }
+            else updateStatus("Allow photo or media access so NEXORA can show your files here.")
             return
         }
         if (requestCode == REQUEST_NEARBY) {
