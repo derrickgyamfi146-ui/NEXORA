@@ -33,7 +33,7 @@ class MainActivity : Activity() {
     private var connectedEndpoint: String? = null
     private val discovered = LinkedHashMap<String, String>()
     private val openFiles = ConcurrentHashMap<Long, android.os.ParcelFileDescriptor>()
-    private val incomingNames = ConcurrentHashMap<Long, String>()
+    private val incomingFiles = ConcurrentHashMap<Long, Pair<Uri, String>>()
     private val serviceId = "com.nexora.share"
     private val strategy = Strategy.P2P_POINT_TO_POINT
 
@@ -317,7 +317,9 @@ class MainActivity : Activity() {
     private val payloadCallback = object : PayloadCallback() {
         override fun onPayloadReceived(endpointId: String, payload: Payload) {
             if (payload.type == Payload.Type.FILE) {
-                incomingNames[payload.id] = payload.asFile()?.uri?.lastPathSegment ?: "NEXORA-received-file"
+                val fileUri = payload.asFile().asUri()
+                val receivedName = queryDisplayName(fileUri) ?: "NEXORA-received-file"
+                incomingFiles[payload.id] = Pair(fileUri, receivedName)
             }
         }
 
@@ -332,21 +334,21 @@ class MainActivity : Activity() {
                     }
                     PayloadTransferUpdate.Status.SUCCESS -> {
                         openFiles.remove(update.payloadId)?.close()
-                        val payload = incomingNames.remove(update.payloadId)
-                        if (payload != null) {
-                            saveReceivedFile(update.payloadId, payload)
+                        val incoming = incomingFiles.remove(update.payloadId)
+                        if (incoming != null) {
+                            saveReceivedFile(incoming.first, incoming.second)
                         } else {
                             updateStatus("File sent successfully.")
                         }
                     }
                     PayloadTransferUpdate.Status.FAILURE -> {
                         openFiles.remove(update.payloadId)?.close()
-                        incomingNames.remove(update.payloadId)
+                        incomingFiles.remove(update.payloadId)
                         updateStatus("Transfer failed. Check both phones and try again.")
                     }
                     PayloadTransferUpdate.Status.CANCELED -> {
                         openFiles.remove(update.payloadId)?.close()
-                        incomingNames.remove(update.payloadId)
+                        incomingFiles.remove(update.payloadId)
                         updateStatus("Transfer canceled.")
                     }
                 }
@@ -354,13 +356,44 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun saveReceivedFile(payloadId: Long, fallbackName: String) {
-        val received = client // Keep the operation on the activity's resolver.
-        val filePayload = received
-        // The completed FILE payload is available from Nearby's content provider via its URI.
-        // The URI is retained by the SDK and is resolved by querying the received payload file.
-        updateStatus("File received. Preparing to save it to Downloads…")
-        Toast.makeText(this, "Transfer completed. Check Downloads.", Toast.LENGTH_LONG).show()
+    private fun saveReceivedFile(sourceUri: Uri, suggestedName: String) {
+        Thread {
+            try {
+                val safeName = suggestedName.substringAfterLast('/').ifBlank { "NEXORA-" + System.currentTimeMillis() }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val values = ContentValues().apply {
+                        put(MediaStore.Downloads.DISPLAY_NAME, safeName)
+                        put(MediaStore.Downloads.MIME_TYPE, contentResolver.getType(sourceUri) ?: "application/octet-stream")
+                        put(MediaStore.Downloads.IS_PENDING, 1)
+                    }
+                    val destination = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                        ?: throw IOException("Could not create the Downloads file")
+                    contentResolver.openInputStream(sourceUri).use { input ->
+                        if (input == null) throw IOException("Could not read received file")
+                        contentResolver.openOutputStream(destination).use { output ->
+                            if (output == null) throw IOException("Could not write to Downloads")
+                            input.copyTo(output, 1024 * 1024)
+                        }
+                    }
+                    values.clear()
+                    values.put(MediaStore.Downloads.IS_PENDING, 0)
+                    contentResolver.update(destination, values, null, null)
+                } else {
+                    val saved = java.io.File(filesDir, safeName)
+                    contentResolver.openInputStream(sourceUri).use { input ->
+                        if (input == null) throw IOException("Could not read received file")
+                        saved.outputStream().use { output -> input.copyTo(output, 1024 * 1024) }
+                    }
+                }
+                contentResolver.delete(sourceUri, null, null)
+                runOnUiThread {
+                    updateStatus("Received and saved: " + safeName)
+                    Toast.makeText(this, "Saved to Downloads: " + safeName, Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { updateStatus("Received, but saving failed: " + e.localizedMessage) }
+            }
+        }.start()
     }
 
     private fun updateStatus(message: String) {
