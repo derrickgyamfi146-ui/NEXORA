@@ -25,6 +25,7 @@ class MainActivity : Activity() {
     private var sharing: TransferKeepAliveService? = null
     private var bound = false
     private var activeTab = "Home"
+    private var latestStatus = "Ready. Choose Send or Receive to begin."
     private var darkMode = false
     private var mediaCategory: String? = null
     private lateinit var mediaList: LinearLayout
@@ -112,7 +113,7 @@ class MainActivity : Activity() {
         content.addView(TextView(this).apply { text = "Share anything.\nAt high speed."; textSize = 28f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(14)) })
         val statusCard = panel(card)
         statusCard.addView(label("TRANSFER STATUS", muted))
-        status = TextView(this).apply { text = "Ready. Choose Send or Receive to begin."; textSize = 14f; setTextColor(ink); setPadding(0, dp(8), 0, dp(4)) }
+        status = TextView(this).apply { text = latestStatus; textSize = 14f; setTextColor(ink); setPadding(0, dp(8), 0, dp(4)) }
         statusCard.addView(status); content.addView(statusCard, bottom(12))
         content.addView(label("QUICK ACTIONS", muted), bottom(8))
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -122,7 +123,7 @@ class MainActivity : Activity() {
         val devices = panel(card)
         devices.addView(label("NEARBY DEVICES", muted))
         devices.addView(TextView(this).apply { text = "Tap Find phones, then choose a device to connect."; textSize = 12f; setTextColor(muted); setPadding(0, dp(6), 0, dp(6)) })
-        peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }; devices.addView(peerList)
+        peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }; devices.addView(peerList); rebuildPeerList()
         devices.addView(button("FIND NEARBY PHONES", blue) {
             withNearbyPermissions { ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java)); discovered.clear(); rebuildPeerList(); sharing?.startFinding() ?: updateStatus("Starting service. Tap Find again.") }
         })
@@ -320,11 +321,11 @@ class MainActivity : Activity() {
     private fun bottom(margin: Int) = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(margin) }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
-    private fun updateStatus(message: String) { if (::status.isInitialized) status.text = message }
+    private fun updateStatus(message: String) { latestStatus = message; if (::status.isInitialized) status.text = message }
     private fun rebuildPeerList() {
         if (!::peerList.isInitialized) return
         peerList.removeAllViews()
-        if (discovered.isEmpty()) peerList.addView(TextView(this).apply { text = "Searching for nearby NEXORA phones…"; textSize = 11f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
+        if (discovered.isEmpty()) peerList.addView(TextView(this).apply { text = "No nearby phones yet. Tap Find nearby phones."; textSize = 11f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
         discovered.forEach { (id, name) -> peerList.addView(button("Connect to $name", 0xFF16A085.toInt()) { sharing?.connect(id, name) }, bottom(6)) }
     }
 
