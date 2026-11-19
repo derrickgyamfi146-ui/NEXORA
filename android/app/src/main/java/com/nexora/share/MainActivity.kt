@@ -795,16 +795,35 @@ class MainActivity : Activity() {
         val matching = cached.filter { it.second.contains(mediaSearch, ignoreCase = true) }
         val filtered = if (mediaSort == "Name A-Z") matching.sortedBy { it.second.lowercase() } else matching
         if (filtered.isEmpty()) mediaList.addView(TextView(this).apply { text = if (cached.isEmpty()) "No " + kind.lowercase() + " found." else "No matching files."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
+        val useGrid = kind == "Photos" || kind == "Videos"
+        val mediaGrid = if (useGrid) android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }.also { mediaList.addView(it) } else null
         filtered.take(mediaDisplayLimit).forEach { item ->
             val isSelected = selectedUris.contains(item.first)
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(5), dp(8), dp(5)); background = rounded(if (isSelected) 0xFFE4F5EF.toInt() else if (darkMode) 0xFF1C2940.toInt() else -1, 12) }
+            val row = LinearLayout(this).apply {
+                orientation = if (useGrid) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(6), dp(7), dp(6), dp(7))
+                background = rounded(if (isSelected) { if (darkMode) 0xFF174A3D.toInt() else 0xFFE4F5EF.toInt() } else if (darkMode) 0xFF1C2940.toInt() else -1, 12)
+            }
             val preview = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(if (darkMode) 0xFF263650.toInt() else 0xFFE8EDF5.toInt()) }
-            row.addView(preview, LinearLayout.LayoutParams(dp(66), dp(66)))
+            row.addView(preview, LinearLayout.LayoutParams(if (useGrid) dp(88) else dp(66), if (useGrid) dp(88) else dp(66)))
             if (kind == "Videos") preview.setOnClickListener { previewVideo(item.first, item.second) }
-            row.addView(TextView(this).apply { text = item.second; textSize = 12f; setTextColor(if (darkMode) -1 else 0xFF14213D.toInt()); setPadding(dp(10), 0, dp(8), 0) }, LinearLayout.LayoutParams(0, -2, 1f))
-            row.addView(TextView(this).apply { text = if (isSelected) "✓" else "+"; textSize = 22f; setTextColor(if (isSelected) 0xFF16A085.toInt() else blue) })
+            row.addView(TextView(this).apply {
+                text = item.second; textSize = if (useGrid) 9f else 12f; maxLines = if (useGrid) 2 else 3
+                gravity = if (useGrid) Gravity.CENTER else Gravity.START
+                setTextColor(if (darkMode) -1 else 0xFF14213D.toInt())
+                setPadding(if (useGrid) dp(2) else dp(10), dp(3), dp(2), 0)
+            }, if (useGrid) LinearLayout.LayoutParams(-1, dp(38)) else LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(TextView(this).apply { text = if (isSelected) "✓" else "+"; textSize = 18f; gravity = Gravity.CENTER; setTextColor(if (isSelected) 0xFF16A085.toInt() else blue) })
             row.setOnClickListener { if (selectedUris.contains(item.first)) selectedUris.remove(item.first) else selectedUris.add(item.first); renderMediaRows(kind, ink, muted, blue) }
-            mediaList.addView(row, bottom(6))
+            if (useGrid) {
+                val params = android.widget.GridLayout.LayoutParams().apply {
+                    width = 0; height = dp(148)
+                    columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(3), dp(3), dp(3), dp(5))
+                }
+                mediaGrid?.addView(row, params)
+            } else mediaList.addView(row, bottom(6))
             if (kind == "Photos" || kind == "Videos") {
                 preview.tag = item.first.toString()
                 val cachedThumb = thumbnailCache.get(item.first.toString())
