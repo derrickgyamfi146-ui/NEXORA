@@ -218,6 +218,7 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        receiveModeLabel = null
         transferStatusView = null
         transferProgressBar = null
         transferStepViews.clear()
@@ -428,10 +429,12 @@ class MainActivity : Activity() {
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             intArrayOf(0xFF103C35.toInt(), 0xFF15594A.toInt(), 0xFF183C45.toInt())
         ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0x6656E5B6) }
-        ready.addView(TextView(this).apply {
-            text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"; textSize = 10f; letterSpacing = .12f
+        receiveModeLabel = TextView(this).apply {
+            text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"
+            textSize = 10f; letterSpacing = .12f
             typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF83F0C9.toInt())
-        })
+        }
+        ready.addView(receiveModeLabel)
         ready.addView(TextView(this).apply {
             text = if (connectedPeers.isEmpty()) "Waiting for another phone to connect" else connectedPeers.size.toString() + " phone(s) connected"
             textSize = 18f; typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -1543,6 +1546,7 @@ class MainActivity : Activity() {
     private fun bottom(margin: Int) = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(margin) }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
+    private var receiveModeLabel: TextView? = null
     private var transferStatusView: TextView? = null
     private var transferProgressBar: android.widget.ProgressBar? = null
     private var transferStage = 0
@@ -1551,6 +1555,7 @@ class MainActivity : Activity() {
         latestStatus = message
         if (::status.isInitialized) status.text = message
         transferStatusView?.text = message
+        receiveModeLabel?.text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"
         val lower = message.lowercase()
         transferStage = when {
             lower.contains("queue finished") || lower.contains("all selected files") || lower.startsWith("sent:") || lower.contains("file sent") || lower.contains("received and saved") -> 5
