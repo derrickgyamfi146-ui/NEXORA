@@ -67,7 +67,68 @@ class MainActivity : Activity() {
         override fun onTransferProgress(message: String) { runOnUiThread { updateStatus(message) } }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); darkMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("dark_mode", false); render(); refreshReceivedFiles() }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        darkMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("dark_mode", false)
+        showLaunchSplash()
+    }
+
+    private fun showLaunchSplash() {
+        val background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(0xFF101B38.toInt())
+        }
+        val screen = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackground(background)
+        }
+        val mark = TextView(this).apply {
+            text = "N"
+            gravity = Gravity.CENTER
+            textSize = 54f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                cornerRadius = dp(30).toFloat()
+                setColor(0xFF4263EB.toInt())
+                setStroke(dp(2), 0xFF72E4FF.toInt())
+            }
+            elevation = dp(12).toFloat()
+        }
+        screen.addView(mark, LinearLayout.LayoutParams(dp(112), dp(112)))
+        screen.addView(TextView(this).apply {
+            text = "NEXORA"
+            textSize = 25f
+            letterSpacing = .18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(22), 0, dp(4))
+        })
+        screen.addView(TextView(this).apply {
+            text = "SHARE WITHOUT LIMITS"
+            textSize = 10f
+            letterSpacing = .16f
+            setTextColor(0xFFB9C9F5.toInt())
+            gravity = Gravity.CENTER
+        })
+        setContentView(screen)
+        mark.scaleX = .82f
+        mark.scaleY = .82f
+        mark.alpha = .35f
+        val pulse = android.animation.ObjectAnimator.ofPropertyValuesHolder(
+            mark,
+            android.animation.PropertyValuesHolder.ofFloat("scaleX", .82f, 1.08f, 1f),
+            android.animation.PropertyValuesHolder.ofFloat("scaleY", .82f, 1.08f, 1f),
+            android.animation.PropertyValuesHolder.ofFloat("alpha", .35f, 1f, .72f, 1f)
+        ).apply { duration = 720; interpolator = android.view.animation.AccelerateDecelerateInterpolator() }
+        pulse.start()
+        android.os.Handler(mainLooper).postDelayed({
+            render()
+            refreshReceivedFiles()
+        }, 850)
+    }
     override fun onStart() { super.onStart(); bindService(Intent(this, TransferKeepAliveService::class.java), serviceConnection, BIND_AUTO_CREATE) }
     override fun onStop() {
         if (bound) { sharing?.setListener(null); unbindService(serviceConnection); bound = false }
