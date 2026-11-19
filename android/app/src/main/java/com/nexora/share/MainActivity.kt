@@ -211,7 +211,7 @@ class MainActivity : Activity() {
         if (mediaCategory != null) { renderMediaLibrary(mediaCategory!!, ink, muted, blue); return }
         content.addView(TextView(this).apply { text = "Choose what to share"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(4)) })
         content.addView(TextView(this).apply { text = "Browse media on your phone or open the secure file picker."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(14)) })
-        listOf(Triple("Photos", "Browse images on this phone", "image"), Triple("Videos", "Browse video clips", "video"), Triple("Music", "Browse audio files", "audio"), Triple("Documents", "PDF, Word, ZIP and more", "documents"), Triple("All files", "Browse any file type", "all"), Triple("Apps", "App sharing availability", "apps")).forEach { item ->
+        listOf(Triple("Photos", "Browse images on this phone", "image"), Triple("Videos", "Browse video clips", "video"), Triple("Music", "Browse audio files", "audio"), Triple("Documents", "PDF, Word, ZIP and more", "documents"), Triple("All files", "Browse any file type", "all"), Triple("Apps", "Browse installed apps and share APKs", "apps")).forEach { item ->
             val tile = panel(card); tile.orientation = LinearLayout.HORIZONTAL; tile.gravity = Gravity.CENTER_VERTICAL
             val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             info.addView(TextView(this).apply { text = item.first; textSize = 16f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink) })
@@ -389,7 +389,7 @@ class MainActivity : Activity() {
                 details.addView(TextView(this).apply { text = packageManager.getApplicationLabel(app).toString(); textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink) })
                 details.addView(TextView(this).apply { text = app.packageName; textSize = 9f; setTextColor(muted) })
                 row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
-                row.addView(button("Select APK", blue) { selectAppApk(app) })
+                row.addView(button("Share APK", blue) { selectAppApk(app) })
                 list.addView(row, bottom(6))
             }
         }
