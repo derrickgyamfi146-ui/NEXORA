@@ -1,5 +1,9 @@
 name: NEXORA APK build
 
+permissions:
+  contents: read
+  actions: read
+
 on: push
 
 jobs:
@@ -42,6 +46,23 @@ jobs:
       - name: Show signing certificate
         run: keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep -E "SHA256:|SHA1:"
 
+      - name: Compare historical APK signing certificates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/nexora-old-44 /tmp/nexora-old-58
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/derrickgyamfi146-ui/NEXORA/actions/artifacts/14545343791/zip" -o /tmp/old44.zip
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/derrickgyamfi146-ui/NEXORA/actions/artifacts/14551870289/zip" -o /tmp/old58.zip
+          unzip -oq /tmp/old44.zip -d /tmp/nexora-old-44
+          unzip -oq /tmp/old58.zip -d /tmp/nexora-old-58
+          echo "CERTIFICATE FROM HISTORICAL 0.3.0 BUILD:"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs /tmp/nexora-old-44/app-debug.apk
+          echo "CERTIFICATE FROM HISTORICAL 0.4.0 BUILD:"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs /tmp/nexora-old-58/app-debug.apk
+          echo "CERTIFICATE FROM RESTORED SIGNING KEY:"
+          keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep "SHA256:"
+          echo "CERTIFICATE FROM THIS BUILD:"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk
       - name: Build APK
         run: gradle -p android :app:assembleDebug
 
