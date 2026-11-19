@@ -228,12 +228,12 @@ class MainActivity : Activity() {
         val card = if (darkMode) 0xFF142A40.toInt() else -1
         val ink = if (darkMode) -1 else 0xFF10243B.toInt()
         val muted = if (darkMode) 0xFFB1C6D8.toInt() else 0xFF63788C.toInt()
-        val blue = 0xFF176BDB.toInt()
+        val blue = 0xFF16BFA4.toInt()
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                if (darkMode) intArrayOf(0xFF071526.toInt(), 0xFF102B42.toInt()) else intArrayOf(0xFFF6F9FF.toInt(), 0xFFEAF3FC.toInt())
+                if (darkMode) intArrayOf(0xFF061522.toInt(), 0xFF0B2637.toInt(), 0xFF0A1D2C.toInt()) else intArrayOf(0xFFF5FAFB.toInt(), 0xFFE8F3F2.toInt())
             )
         }
         val libraryMode = activeTab in setOf("Home", "Media", "Files", "Sent", "Received", "Contacts")
@@ -241,7 +241,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(10), dp(14), dp(10))
-            setBackgroundColor(0xFF008F68.toInt())
+            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xFF071B2D.toInt(), 0xFF0C3046.toInt(), 0xFF075B52.toInt())).apply { setStroke(dp(1), 0x3349E7D1) }
         }
         val menuButton = TextView(this).apply {
             text = "☰"; textSize = 23f; gravity = Gravity.CENTER; setTextColor(-1)
@@ -260,7 +260,7 @@ class MainActivity : Activity() {
         if (libraryMode) {
             val tabs = android.widget.HorizontalScrollView(this).apply {
                 isHorizontalScrollBarEnabled = false
-                setBackgroundColor(if (darkMode) 0xFF10243A.toInt() else 0xFFE7F3EF.toInt())
+                setBackgroundColor(if (darkMode) 0xFF0B2433.toInt() else 0xFFE8F3F1.toInt())
             }
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -281,7 +281,7 @@ class MainActivity : Activity() {
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(if (selected) -1 else if (darkMode) 0xFFB8C9D8.toInt() else 0xFF356052.toInt())
                     setPadding(dp(13), dp(10), dp(13), dp(10))
-                    if (selected) background = rounded(0xFF00A878.toInt(), 18)
+                    if (selected) background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xFF087E70.toInt(), 0xFF10B99A.toInt())).apply { cornerRadius = dp(18).toFloat(); setStroke(dp(1), 0x665AF2D4) }
                 }
                 chip.setOnClickListener {
                     animatePress(chip)
@@ -342,7 +342,7 @@ class MainActivity : Activity() {
             val nav = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
                 setPadding(dp(5), dp(5), dp(5), dp(5))
-                setBackgroundColor(if (darkMode) 0xFF071526.toInt() else -1)
+                setBackgroundColor(if (darkMode) 0xFF061522.toInt() else -1)
             }
             listOf("Music", "Videos", "Connect", "Photos", "Social").forEach { item ->
                 val selected = when (item) {
@@ -357,7 +357,7 @@ class MainActivity : Activity() {
                     textSize = if (item == "Connect") 23f else 10f
                     gravity = Gravity.CENTER
                     typeface = if (selected) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
-                    setTextColor(if (selected) 0xFF00A878.toInt() else muted)
+                    setTextColor(if (selected) 0xFF35DCC0.toInt() else muted)
                     setPadding(dp(2), dp(5), dp(2), dp(5))
                     setOnClickListener {
                         animatePress(this)
@@ -388,7 +388,7 @@ class MainActivity : Activity() {
         }
         content.alpha = 0f
         content.translationY = dp(10).toFloat()
-        content.animate().alpha(1f).translationY(0f).setDuration(230).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        content.animate().alpha(1f).translationY(0f).setDuration(175).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
     }
 
     private fun showHome(card: Int, ink: Int, muted: Int, blue: Int) {
@@ -404,8 +404,8 @@ class MainActivity : Activity() {
         val connection = panel(card).apply {
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF092B4A.toInt(), 0xFF124D73.toInt(), 0xFF123A5D.toInt())
-            ).apply { cornerRadius = dp(25).toFloat(); setStroke(dp(1), 0x6648DFFF) }
+                intArrayOf(0xFF082B3B.toInt(), 0xFF075B59.toInt(), 0xFF103B50.toInt())
+            ).apply { cornerRadius = dp(25).toFloat(); setStroke(dp(1), 0x6658EBD0) }
             elevation = dp(8).toFloat()
         }
         connection.addView(TextView(this).apply {
@@ -502,7 +502,7 @@ class MainActivity : Activity() {
         val ready = panel(card)
         ready.background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf(0xFF103C35.toInt(), 0xFF15594A.toInt(), 0xFF183C45.toInt())
+            intArrayOf(0xFF073B39.toInt(), 0xFF08745F.toInt(), 0xFF123E4A.toInt())
         ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0x6656E5B6) }
         receiveModeLabel = TextView(this).apply {
             text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"
@@ -1783,18 +1783,27 @@ class MainActivity : Activity() {
                 val p = (phase + i / 3f) % 1f
                 paint.style = android.graphics.Paint.Style.STROKE
                 paint.strokeWidth = dp(1).toFloat()
-                paint.color = android.graphics.Color.argb(((1f - p) * 105).toInt(), 91, 224, 255)
+                paint.color = android.graphics.Color.argb(((1f - p) * 90).toInt(), 73, 231, 202)
                 canvas.drawCircle(cx, cy, max * (.25f + .75f * p), paint)
             }
+            paint.style = android.graphics.Paint.Style.STROKE
+            paint.strokeWidth = dp(2).toFloat()
+            paint.strokeCap = android.graphics.Paint.Cap.ROUND
+            paint.color = 0xFF61EBD1.toInt()
+            val mastTop = cy - dp(39)
+            canvas.drawLine(cx, mastTop, cx, cy + dp(28), paint)
+            canvas.drawLine(cx - dp(15), cy + dp(28), cx + dp(15), cy + dp(28), paint)
+            canvas.drawArc(cx - dp(20).toFloat(), mastTop - dp(20), cx + dp(20).toFloat(), mastTop + dp(20), 215f, 110f, false, paint)
+            canvas.drawArc(cx - dp(32).toFloat(), mastTop - dp(32), cx + dp(32).toFloat(), mastTop + dp(32), 215f, 110f, false, paint)
             paint.style = android.graphics.Paint.Style.FILL
-            paint.color = 0xFF35D8F4.toInt()
-            canvas.drawCircle(cx, cy, dp(7).toFloat(), paint)
-            paint.color = 0x5535D8F4
-            canvas.drawCircle(cx, cy, dp(17).toFloat(), paint)
-            paint.color = -1
+            paint.color = 0xFFB9FFF0.toInt()
+            canvas.drawCircle(cx, mastTop, dp(4).toFloat(), paint)
+            paint.color = 0xFF35D8C0.toInt()
+            canvas.drawCircle(cx, cy + dp(28), dp(4).toFloat(), paint)
+            paint.color = 0xFFDAFFF8.toInt()
             paint.textSize = dp(10).toFloat()
             paint.textAlign = android.graphics.Paint.Align.CENTER
-            canvas.drawText("NEXORA", cx, cy + dp(92), paint)
+            canvas.drawText("NEXORA  •  NEARBY", cx, cy + dp(58), paint)
         }
     }
 
