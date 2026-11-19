@@ -449,7 +449,7 @@ class MainActivity : Activity() {
                     actions.addView(button("Open", 0xFF4263EB.toInt()) {
                         try {
                             val isApk = mime == "application/vnd.android.package-archive" || name.endsWith(".apk", ignoreCase = true)
-                            val intent = if (isApk) Intent(Intent.ACTION_INSTALL_PACKAGE).setData(uri) else Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+                            val intent = if (isApk) Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType(uri, "application/vnd.android.package-archive") else Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
                             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             startActivity(intent)
                         } catch (_: Exception) { Toast.makeText(this@MainActivity, "Android could not open this file.", Toast.LENGTH_LONG).show() }
