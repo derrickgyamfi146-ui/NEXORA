@@ -1000,7 +1000,7 @@ class MainActivity : Activity() {
         } catch (e: Exception) { children.addView(TextView(this).apply { text = "Folder could not be opened: " + (e.localizedMessage ?: "unknown error"); textSize = 12f; setTextColor(muted) }) }
         section.addView(button("SEND ${selectedUris.size} SELECTED FILE(S)", 0xFF1689D5.toInt()) {
             if (selectedUris.isEmpty()) Toast.makeText(this, "Select files first.", Toast.LENGTH_SHORT).show()
-            else { activeTab = "Home"; render(); updateStatus("${selectedUris.size} file(s) selected. Tap Send to continue.") }
+            else { activeTab = "Send"; render(); updateStatus("${selectedUris.size} file(s) selected. Choose a nearby phone, then tap Send.") }
         }, bottom(5))
         content.addView(section, bottom(12))
     }
