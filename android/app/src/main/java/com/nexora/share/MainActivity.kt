@@ -763,7 +763,7 @@ class MainActivity : Activity() {
             appsLoading = true
             Thread {
                 val result = try {
-                    packageManager.getInstalledApplications(0).sortedBy { packageManager.getApplicationLabel(it).toString().lowercase() }
+                    packageManager.getInstalledApplications(0).onEach { app -> appLabels[app.packageName] = packageManager.getApplicationLabel(app).toString() }.sortedBy { appLabels[it.packageName]?.lowercase().orEmpty() }
                 } catch (_: Exception) { emptyList() }
                 runOnUiThread {
                     installedApps.clear()
@@ -791,6 +791,9 @@ class MainActivity : Activity() {
     private var appsLoaded = false
     private var appsLoading = false
     private val installedApps = ArrayList<android.content.pm.ApplicationInfo>()
+    private val appLabels = HashMap<String, String>()
+    private var systemAppsExpanded = false
+    private var appDisplayLimit = 60
 
     private fun renderAppsLibrary(ink: Int, muted: Int, blue: Int) {
         content.addView(TextView(this).apply { text = "Apps"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
@@ -817,7 +820,7 @@ class MainActivity : Activity() {
                 }
                 return
             }
-            val matches = installedApps.filter { packageManager.getApplicationLabel(it).toString().contains(query, true) || it.packageName.contains(query, true) }
+            val matches = installedApps.filter { (appLabels[it.packageName] ?: it.packageName).contains(query, true) || it.packageName.contains(query, true) }
             val userApps = matches.filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 }
             val systemApps = matches.filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 }
             if (matches.isEmpty()) {
@@ -826,16 +829,15 @@ class MainActivity : Activity() {
             }
             fun addAppSection(title: String, apps: List<android.content.pm.ApplicationInfo>, accent: Int, collapsible: Boolean = false) {
                 if (apps.isEmpty()) return
-                var expanded = !collapsible
+                var expanded = !collapsible || systemAppsExpanded
                 val section = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
                 val heading = TextView(this).apply {
                     text = title + "  ·  " + apps.size + if (collapsible) "   ⌄" else ""
                     textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(accent); setPadding(dp(3), dp(13), 0, dp(6))
                     if (collapsible) setOnClickListener {
-                        expanded = !expanded
-                        text = title + "  ·  " + apps.size + if (expanded) "   ⌃" else "   ⌄"
-                        section.getChildAt(1)?.visibility = if (expanded) View.VISIBLE else View.GONE
+                        systemAppsExpanded = !systemAppsExpanded
+                        populate(query)
                     }
                 }
                 section.addView(heading)
@@ -850,10 +852,15 @@ class MainActivity : Activity() {
                     }
                     val iconView = ImageView(this).apply {
                         scaleType = ImageView.ScaleType.FIT_CENTER
-                        try { setImageDrawable(packageManager.getApplicationIcon(app)) } catch (_: Exception) { setImageResource(android.R.drawable.sym_def_app_icon) }
+                        setImageResource(android.R.drawable.sym_def_app_icon)
+                        tag = app.packageName
                     }
                     appTile.addView(iconView, LinearLayout.LayoutParams(dp(48), dp(48)))
-                    val appName = packageManager.getApplicationLabel(app).toString()
+                    thumbnailExecutor.execute {
+                        val drawable = try { packageManager.getApplicationIcon(app) } catch (_: Exception) { null }
+                        if (drawable != null) runOnUiThread { if (iconView.tag == app.packageName && iconView.parent != null) iconView.setImageDrawable(drawable) }
+                    }
+                    val appName = appLabels[app.packageName] ?: app.packageName
                     appTile.addView(TextView(this).apply {
                         text = appName; textSize = 11f; maxLines = 2; gravity = Gravity.CENTER
                         typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(7), 0, dp(3))
@@ -883,7 +890,13 @@ class MainActivity : Activity() {
             val popularApps = popularPackages.mapNotNull { pkg -> userApps.firstOrNull { it.packageName == pkg } }.distinctBy { it.packageName }
             val featuredApps = (popularApps + userApps.filterNot { app -> popularApps.any { it.packageName == app.packageName } }).take(6)
             addAppSection(if (popularApps.isNotEmpty()) "POPULAR APPS" else "QUICK ACCESS", featuredApps, 0xFFE69A35.toInt())
-            addAppSection("LOCAL APPS", userApps, 0xFF7357E8.toInt())
+            addAppSection("LOCAL APPS", userApps.take(appDisplayLimit), 0xFF7357E8.toInt())
+            if (userApps.size > appDisplayLimit) {
+                list.addView(button("LOAD MORE APPS", blue) {
+                    appDisplayLimit = (appDisplayLimit + 60).coerceAtMost(userApps.size)
+                    populate(search.text.toString())
+                }, bottom(8))
+            }
             addAppSection("SYSTEM APPS", systemApps, 0xFF168FE5.toInt(), collapsible = query.isBlank())
         }
         search.addTextChangedListener(object : android.text.TextWatcher {
