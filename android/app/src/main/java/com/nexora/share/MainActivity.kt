@@ -842,7 +842,7 @@ class MainActivity : Activity() {
                 }
                 section.addView(heading)
                 val grid = android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }
-                apps.forEach { app ->
+                if (expanded) apps.forEach { app ->
                     val appTile = LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                         setPadding(dp(6), dp(12), dp(6), dp(10))
