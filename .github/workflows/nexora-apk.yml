@@ -30,18 +30,33 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Restore persistent signing key
-        uses: actions/cache@v4
+      - name: Restore original v1 signing key
+        id: legacy-signing
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: nexora-android-debug-signing-key-v1
+
+      - name: Restore v2 signing key if v1 is unavailable
+        id: current-signing
+        if: steps.legacy-signing.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v4
         with:
           path: ~/.android/debug.keystore
           key: nexora-android-debug-signing-key-v2
 
-      - name: Create signing key if missing
+      - name: Create signing key if no saved key exists
+        if: steps.legacy-signing.outputs.cache-hit != 'true' && steps.current-signing.outputs.cache-hit != 'true'
         run: |
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            mkdir -p "$HOME/.android"
-            keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          fi
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Save new signing key if no saved key exists
+        if: steps.legacy-signing.outputs.cache-hit != 'true' && steps.current-signing.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: nexora-android-debug-signing-key-v2
 
       - name: Show signing certificate
         run: keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep -E "SHA256:|SHA1:"
