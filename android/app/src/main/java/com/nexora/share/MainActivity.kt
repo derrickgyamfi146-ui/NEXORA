@@ -403,20 +403,75 @@ class MainActivity : Activity() {
 
     private fun selectAppApk(app: android.content.pm.ApplicationInfo) {
         try {
-            val source = java.io.File(app.sourceDir)
             val folder = java.io.File(cacheDir, "shared_apks").apply { mkdirs() }
-            val label = packageManager.getApplicationLabel(app).toString().replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
-            val apk = java.io.File(folder, label + ".apk")
-            source.copyTo(apk, overwrite = true)
-            val uri = androidx.core.content.FileProvider.getUriForFile(this, packageName + ".fileprovider", apk)
-            if (!selectedUris.contains(uri)) selectedUris.add(uri)
+            val batch = System.currentTimeMillis().toString()
+            val prefix = "NEXORA_APP_" + app.packageName + "_" + batch
+            val sources = ArrayList<java.io.File>()
+            sources.add(java.io.File(app.sourceDir))
+            app.splitSourceDirs?.forEach { sources.add(java.io.File(it)) }
+            sources.forEachIndexed { index, source ->
+                val suffix = if (index == 0) "_BASE.apk" else "_SPLIT_" + (index - 1) + ".apk"
+                val apk = java.io.File(folder, prefix + suffix)
+                source.copyTo(apk, overwrite = true)
+                val uri = androidx.core.content.FileProvider.getUriForFile(this, packageName + ".fileprovider", apk)
+                if (!selectedUris.contains(uri)) selectedUris.add(uri)
+            }
+            val label = packageManager.getApplicationLabel(app).toString()
+            val parts = sources.size
             activeTab = "Home"
             mediaCategory = null
             render()
-            updateStatus(label + " APK selected. Connect to a phone, then tap Send.")
+            updateStatus(label + ": " + parts + " APK part(s) selected. Connect to a phone, then tap Send.")
         } catch (e: Exception) {
             Toast.makeText(this, "Could not prepare this app: " + e.localizedMessage, Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun installReceivedApkGroup(prefix: String) {
+        if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+            val settings = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName))
+            startActivity(settings)
+            Toast.makeText(this, "Allow NEXORA to install apps, then return and tap Install again.", Toast.LENGTH_LONG).show()
+            return
+        }
+        Thread {
+            var sessionId = -1
+            try {
+                val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME)
+                val apkUris = ArrayList<Pair<Uri, String>>()
+                contentResolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, projection,
+                    MediaStore.MediaColumns.RELATIVE_PATH + " = ? AND " + MediaStore.MediaColumns.DISPLAY_NAME + " LIKE ?",
+                    arrayOf("Download/NEXORA/", prefix + "%"), MediaStore.MediaColumns.DISPLAY_NAME + " ASC")?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(0)
+                        val name = cursor.getString(1) ?: continue
+                        if (name.endsWith(".apk", true)) apkUris.add(Pair(android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id), name))
+                    }
+                }
+                if (apkUris.isEmpty()) throw java.io.IOException("The APK files could not be found.")
+                val params = android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+                sessionId = packageManager.packageInstaller.createSession(params)
+                packageManager.packageInstaller.openSession(sessionId).use { session ->
+                    apkUris.forEach { item ->
+                        val input = contentResolver.openInputStream(item.first) ?: throw java.io.IOException("Could not read " + item.second)
+                        input.use { stream ->
+                            session.openWrite(item.second, 0, -1).use { output ->
+                                stream.copyTo(output, 1024 * 1024)
+                                session.fsync(output)
+                            }
+                        }
+                    }
+                    val callback = Intent(this, InstallStatusReceiver::class.java).setAction("com.nexora.share.INSTALL_STATUS")
+                    val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
+                    val pending = PendingIntent.getBroadcast(this, sessionId, callback, pendingFlags)
+                    session.commit(pending.intentSender)
+                }
+                runOnUiThread { Toast.makeText(this, "Install request sent to Android.", Toast.LENGTH_LONG).show() }
+            } catch (e: Exception) {
+                if (sessionId >= 0) runCatching { packageManager.packageInstaller.abandonSession(sessionId) }
+                runOnUiThread { Toast.makeText(this, "Could not install APK: " + e.localizedMessage, Toast.LENGTH_LONG).show() }
+            }
+        }.start()
     }
 
     private fun hasMediaPermission(kind: String): Boolean {
@@ -607,10 +662,24 @@ class MainActivity : Activity() {
                     val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                     actions.addView(button("Open", 0xFF4263EB.toInt()) {
                         try {
+                            val isAppBundlePart = name.startsWith("NEXORA_APP_") && name.endsWith("_BASE.apk", true)
                             val isApk = mime == "application/vnd.android.package-archive" || name.endsWith(".apk", ignoreCase = true)
-                            val intent = if (isApk) Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType(uri, "application/vnd.android.package-archive") else Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
-                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            startActivity(intent)
+                            if (isAppBundlePart) {
+                                installReceivedApkGroup(name.removeSuffix("_BASE.apk") + "_")
+                            } else if (isApk) {
+                                if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName)))
+                                    Toast.makeText(this@MainActivity, "Allow NEXORA to install apps, then tap Open again.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType(uri, "application/vnd.android.package-archive")
+                                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    startActivity(intent)
+                                }
+                            } else {
+                                val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+                                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                startActivity(intent)
+                            }
                         } catch (_: Exception) { Toast.makeText(this@MainActivity, "Android could not open this file.", Toast.LENGTH_LONG).show() }
                     }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(4) })
                     actions.addView(button("Rename", 0xFF64748B.toInt()) {
