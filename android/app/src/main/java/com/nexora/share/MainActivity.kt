@@ -761,7 +761,7 @@ class MainActivity : Activity() {
         content.addView(live, bottom(12))
         val history = panel(card)
         history.addView(label("RECENTLY SENT", 0xFF7357E8.toInt()))
-        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\\n")?.filter { it.isNotBlank() } ?: emptyList()
+        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
         if (entries.isEmpty()) history.addView(TextView(this).apply { text = "Your sent files will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(5)) })
         else entries.take(30).forEach { entry -> history.addView(TextView(this).apply { text = "↗  " + entry; textSize = 12f; setTextColor(ink); setPadding(0, dp(7), 0, dp(7)) }) }
         content.addView(history, bottom(12))
