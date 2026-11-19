@@ -902,9 +902,56 @@ class MainActivity : Activity() {
         history.addView(label("RECENTLY SENT", 0xFF7357E8.toInt()))
         val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
         if (entries.isEmpty()) history.addView(TextView(this).apply { text = "Your sent files will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(5)) })
-        else entries.take(30).forEach { entry -> history.addView(TextView(this).apply { text = "↗  " + entry; textSize = 12f; setTextColor(ink); setPadding(0, dp(7), 0, dp(7)) }) }
+        else entries.take(30).forEach { entry -> history.addView(historyCard(entry, 0xFF16A58A.toInt(), ink), bottom(6)) }
         content.addView(history, bottom(12))
         content.addView(button("OPEN RECEIVED FILES", 0xFFE05C8A.toInt()) { activeTab = "Received"; render() })
+    }
+
+    private fun historyCard(entry: String, accent: Int, ink: Int): LinearLayout {
+        val timestamp = entry.substringBefore(" · ", "")
+        val filename = entry.substringAfter(" · ", entry)
+        val extension = filename.substringAfterLast('.', "").lowercase()
+        val glyph = when (extension) {
+            "jpg", "jpeg", "png", "webp", "gif" -> "▧"
+            "mp4", "mkv", "mov", "avi" -> "▷"
+            "mp3", "wav", "m4a", "aac" -> "♫"
+            "apk" -> "▦"
+            "pdf", "doc", "docx", "txt" -> "▤"
+            else -> "↗"
+        }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(9), dp(10), dp(9))
+            background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 14)
+        }
+        row.addView(TextView(this).apply {
+            text = glyph
+            textSize = 21f
+            gravity = Gravity.CENTER
+            setTextColor(accent)
+            background = rounded(if (darkMode) 0xFF29445B.toInt() else -1, 12)
+            setPadding(dp(9), dp(6), dp(9), dp(6))
+        })
+        val details = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), 0, 0, 0)
+        }
+        details.addView(TextView(this).apply {
+            text = filename
+            textSize = 12f
+            maxLines = 2
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink)
+        })
+        details.addView(TextView(this).apply {
+            text = timestamp
+            textSize = 10f
+            setTextColor(if (darkMode) 0xFFB1C6D8.toInt() else 0xFF63788C.toInt())
+            setPadding(0, dp(3), 0, 0)
+        })
+        row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+        return row
     }
 
     private fun showSent(card: Int, ink: Int, muted: Int) {
@@ -915,7 +962,7 @@ class MainActivity : Activity() {
         box.addView(list)
         val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
         if (entries.isEmpty()) list.addView(TextView(this).apply { text = "Files you send will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(8)) })
-        else entries.take(100).forEach { entry -> list.addView(TextView(this).apply { text = entry; textSize = 12f; setTextColor(ink); setPadding(0, dp(8), 0, dp(8)) }) }
+        else entries.take(100).forEach { entry -> list.addView(historyCard(entry, 0xFF7357E8.toInt(), ink), bottom(6)) }
         content.addView(box)
     }
 
