@@ -2,6 +2,7 @@ package com.nexora.share
 
 import android.Manifest
 import android.app.Activity
+import android.app.PendingIntent
 import android.content.*
 import android.content.pm.PackageManager
 import android.net.Uri
