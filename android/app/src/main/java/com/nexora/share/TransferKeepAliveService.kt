@@ -242,6 +242,7 @@ class TransferKeepAliveService : Service() {
                         openFiles.remove(activeId)?.close()
                         currentOutgoingPayloadId = null
                         sending = false
+                        outgoingFailed++
                         status("A receiving phone disconnected. Continuing with the queue…")
                         sendNextFile()
                     }
