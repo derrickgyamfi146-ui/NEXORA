@@ -381,7 +381,8 @@ class MainActivity : Activity() {
             "Transfers" -> showTransfers(card, ink, muted)
             "Send" -> showSend(card, ink, muted, blue)
             "Receive" -> showReceive(card, ink, muted)
-            "Settings" -> showSettings(card, ink, muted, blue)\n            "Contacts" -> showContacts(card, ink, muted)
+            "Settings" -> showSettings(card, ink, muted, blue)
+            "Contacts" -> showContacts(card, ink, muted)
         }
         content.alpha = 0f
         content.translationY = dp(10).toFloat()
