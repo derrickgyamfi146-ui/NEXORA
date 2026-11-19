@@ -44,6 +44,7 @@ class TransferKeepAliveService : Service() {
     private var discovering = false
     private val openFiles = ConcurrentHashMap<Long, android.os.ParcelFileDescriptor>()
     private val outgoingPayloadNames = ConcurrentHashMap<Long, String>()
+    private val outgoingPayloadSuccesses = ConcurrentHashMap.newKeySet<Long>()
     private val outgoingQueue = ArrayDeque<Uri>()
     private var sending = false
     private var outgoingSucceeded = 0
@@ -161,9 +162,11 @@ class TransferKeepAliveService : Service() {
                 lastProgressAt = transferStartedAt
                 status("Sending $name…")
                 pendingPayloadEndpoints[payload.id] = java.util.Collections.synchronizedSet(endpoints.toMutableSet())
+                outgoingPayloadSuccesses.remove(payload.id)
                 client.sendPayload(endpoints, payload).addOnFailureListener {
                     pendingPayloadEndpoints.remove(payload.id)
                     outgoingPayloadNames.remove(payload.id)
+                    outgoingPayloadSuccesses.remove(payload.id)
                     openFiles.remove(payload.id)?.close()
                     currentOutgoingPayloadId = null
                     sending = false
@@ -191,6 +194,7 @@ class TransferKeepAliveService : Service() {
         openFiles.values.forEach { runCatching { it.close() } }
         openFiles.clear()
         outgoingPayloadNames.clear()
+        outgoingPayloadSuccesses.clear()
         outgoingQueue.clear()
         sending = false
         currentOutgoingPayloadId = null
@@ -238,13 +242,7 @@ class TransferKeepAliveService : Service() {
                     pending.remove(endpointId)
                     if (pending.isEmpty()) {
                         pendingPayloadEndpoints.remove(activeId)
-                        outgoingPayloadNames.remove(activeId)
-                        openFiles.remove(activeId)?.close()
-                        currentOutgoingPayloadId = null
-                        sending = false
-                        outgoingFailed++
-                        status("A receiving phone disconnected. Continuing with the queue…")
-                        sendNextFile()
+                        finalizeOutgoingPayload(activeId, "A receiving phone disconnected.")
                     }
                 }
             }
@@ -283,18 +281,11 @@ class TransferKeepAliveService : Service() {
                     val pending = pendingPayloadEndpoints[update.payloadId]
                     if (pending != null) {
                         synchronized(pending) {
+                            outgoingPayloadSuccesses.add(update.payloadId)
                             pending.remove(endpointId)
                             if (pending.isEmpty()) {
                                 pendingPayloadEndpoints.remove(update.payloadId)
-                                openFiles.remove(update.payloadId)?.close()
-                                val sentName = outgoingPayloadNames.remove(update.payloadId) ?: "File"
-                                if (currentOutgoingPayloadId == update.payloadId) {
-                                    currentOutgoingPayloadId = null
-                                    sending = false
-                                    outgoingSucceeded++
-                                    status("Sent: $sentName")
-                                    sendNextFile()
-                                }
+                                finalizeOutgoingPayload(update.payloadId, "Transfer finished.")
                             }
                         }
                     } else {
@@ -310,15 +301,7 @@ class TransferKeepAliveService : Service() {
                             status("One phone could not receive the file.")
                             if (pending.isEmpty()) {
                                 pendingPayloadEndpoints.remove(update.payloadId)
-                                outgoingPayloadNames.remove(update.payloadId)
-                                openFiles.remove(update.payloadId)?.close()
-                                if (currentOutgoingPayloadId == update.payloadId) {
-                                    currentOutgoingPayloadId = null
-                                    sending = false
-                                    outgoingFailed++
-                                    status("Transfer failed for all remaining phones. Continuing the queue…")
-                                    sendNextFile()
-                                }
+                                finalizeOutgoingPayload(update.payloadId, "Transfer failed.")
                             }
                         }
                     } else {
@@ -335,19 +318,30 @@ class TransferKeepAliveService : Service() {
                             pending.remove(endpointId)
                             if (pending.isEmpty()) {
                                 pendingPayloadEndpoints.remove(update.payloadId)
-                                outgoingPayloadNames.remove(update.payloadId)
-                                openFiles.remove(update.payloadId)?.close()
-                                if (currentOutgoingPayloadId == update.payloadId) {
-                                    currentOutgoingPayloadId = null
-                                    sending = false
-                                    status("Transfer canceled. Continuing with the queue…")
-                                    sendNextFile()
-                                }
+                                finalizeOutgoingPayload(update.payloadId, "Transfer canceled.")
                             }
                         }
                     } else status("Transfer canceled.")
                 }
             }
+        }
+    }
+
+    private fun finalizeOutgoingPayload(payloadId: Long, fallbackMessage: String) {
+        val sentName = outgoingPayloadNames.remove(payloadId) ?: "File"
+        val hadSuccess = outgoingPayloadSuccesses.remove(payloadId)
+        openFiles.remove(payloadId)?.let { runCatching { it.close() } }
+        if (currentOutgoingPayloadId == payloadId) {
+            currentOutgoingPayloadId = null
+            sending = false
+            if (hadSuccess) {
+                outgoingSucceeded++
+                status("Sent: $sentName")
+            } else {
+                outgoingFailed++
+                status("$fallbackMessage Continuing with the queue…")
+            }
+            sendNextFile()
         }
     }
 
