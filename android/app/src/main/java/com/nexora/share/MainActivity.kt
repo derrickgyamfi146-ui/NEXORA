@@ -886,6 +886,7 @@ class MainActivity : Activity() {
     private var appsLoaded = false
     private var appsLoading = false
     private val installedApps = ArrayList<android.content.pm.ApplicationInfo>()
+    private val selectedAppPackages = LinkedHashSet<String>()
     private val appLabels = HashMap<String, String>()
     private var systemAppsExpanded = false
     private var appDisplayLimit = 20
@@ -941,7 +942,7 @@ class MainActivity : Activity() {
                     val appTile = LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                         setPadding(dp(6), dp(12), dp(6), dp(10))
-                        background = rounded(if (darkMode) 0xFF142A40.toInt() else -1, 17)
+                        background = rounded(if (selectedAppPackages.contains(app.packageName)) { if (darkMode) 0xFF174A3D.toInt() else 0xFFE4F5EF.toInt() } else if (darkMode) 0xFF142A40.toInt() else -1, 17)
                         elevation = dp(2).toFloat()
                         isClickable = true; isFocusable = true
                     }
@@ -961,10 +962,16 @@ class MainActivity : Activity() {
                         typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(7), 0, dp(3))
                     }, LinearLayout.LayoutParams(-1, dp(36)))
                     appTile.addView(TextView(this).apply {
-                        text = "SHARE"; textSize = 9f; letterSpacing = .08f; gravity = Gravity.CENTER
-                        typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF1684D9.toInt())
+                        text = if (selectedAppPackages.contains(app.packageName)) "✓ SELECTED" else "＋ SELECT"
+                        textSize = 9f; letterSpacing = .04f; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(if (selectedAppPackages.contains(app.packageName)) 0xFF16A085.toInt() else 0xFF1684D9.toInt())
                     })
-                    appTile.setOnClickListener { animatePress(appTile); selectAppApk(app) }
+                    appTile.setOnClickListener {
+                        animatePress(appTile)
+                        if (!selectedAppPackages.add(app.packageName)) selectedAppPackages.remove(app.packageName)
+                        populate(query)
+                    }
                     val params = android.widget.GridLayout.LayoutParams().apply {
                         width = 0; height = dp(125)
                         columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
@@ -998,6 +1005,16 @@ class MainActivity : Activity() {
                 }, bottom(8))
             }
             addAppSection("SYSTEM APPS", systemApps, 0xFF168FE5.toInt(), collapsible = query.isBlank())
+            if (selectedAppPackages.isNotEmpty()) {
+                list.addView(button("SEND ${selectedAppPackages.size} SELECTED APP(S)", 0xFF009D70.toInt()) {
+                    val chosen = installedApps.filter { selectedAppPackages.contains(it.packageName) }
+                    selectAppApks(chosen)
+                }, bottom(12))
+                list.addView(TextView(this).apply {
+                    text = "Tap an app again to remove it from your selection."
+                    textSize = 11f; setTextColor(muted); setPadding(dp(3), 0, dp(3), dp(8))
+                })
+            }
         }
         search.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -1007,29 +1024,37 @@ class MainActivity : Activity() {
         populate("")
     }
 
-    private fun selectAppApk(app: android.content.pm.ApplicationInfo) {
+    private fun selectAppApk(app: android.content.pm.ApplicationInfo) = selectAppApks(listOf(app))
+
+    private fun selectAppApks(apps: List<android.content.pm.ApplicationInfo>) {
+        if (apps.isEmpty()) return
         try {
             val folder = java.io.File(cacheDir, "shared_apks").apply { mkdirs() }
             val batch = System.currentTimeMillis().toString()
-            val prefix = "NEXORA_APP_" + app.packageName + "_" + batch
-            val sources = ArrayList<java.io.File>()
-            sources.add(java.io.File(app.sourceDir))
-            app.splitSourceDirs?.forEach { sources.add(java.io.File(it)) }
-            sources.forEachIndexed { index, source ->
-                val suffix = if (index == 0) "_BASE.apk" else "_SPLIT_" + (index - 1) + ".apk"
-                val apk = java.io.File(folder, prefix + suffix)
-                source.copyTo(apk, overwrite = true)
-                val uri = androidx.core.content.FileProvider.getUriForFile(this, packageName + ".fileprovider", apk)
-                if (!selectedUris.contains(uri)) selectedUris.add(uri)
+            var totalParts = 0
+            val labels = ArrayList<String>()
+            apps.forEach { app ->
+                val prefix = "NEXORA_APP_" + app.packageName + "_" + batch
+                val sources = ArrayList<java.io.File>()
+                sources.add(java.io.File(app.sourceDir))
+                app.splitSourceDirs?.forEach { sources.add(java.io.File(it)) }
+                sources.forEachIndexed { index, source ->
+                    val suffix = if (index == 0) "_BASE.apk" else "_SPLIT_" + (index - 1) + ".apk"
+                    val apk = java.io.File(folder, prefix + suffix)
+                    source.copyTo(apk, overwrite = true)
+                    val uri = androidx.core.content.FileProvider.getUriForFile(this, packageName + ".fileprovider", apk)
+                    if (!selectedUris.contains(uri)) selectedUris.add(uri)
+                    totalParts++
+                }
+                labels.add(packageManager.getApplicationLabel(app).toString())
             }
-            val label = packageManager.getApplicationLabel(app).toString()
-            val parts = sources.size
+            selectedAppPackages.clear()
             activeTab = "Send"
             mediaCategory = "Apps"
             render()
-            updateStatus(label + ": " + parts + " APK part(s) selected. Choose a nearby phone, then tap Send.")
+            updateStatus(labels.size.toString() + " app(s) selected (" + totalParts + " APK part(s)). Choose a nearby phone, then tap Send.")
         } catch (e: Exception) {
-            Toast.makeText(this, "Could not prepare this app: " + e.localizedMessage, Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Could not prepare selected apps: " + e.localizedMessage, Toast.LENGTH_LONG).show()
         }
     }
 
