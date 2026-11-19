@@ -752,7 +752,7 @@ class MainActivity : Activity() {
         }
         if (filtered.size > mediaDisplayLimit) {
             mediaList.addView(button("LOAD MORE  ·  ${filtered.size - mediaDisplayLimit} LEFT", blue) {
-                mediaDisplayLimit = (mediaDisplayLimit + 40).coerceAtMost(filtered.size)
+                mediaDisplayLimit = (mediaDisplayLimit + 20).coerceAtMost(filtered.size)
                 renderMediaRows(kind, ink, muted, blue)
             }, bottom(8))
         }
