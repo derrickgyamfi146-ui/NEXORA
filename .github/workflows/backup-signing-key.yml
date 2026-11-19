@@ -1,0 +1,65 @@
+name: NEXORA signing key backup
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore the existing NEXORA 0.6.0 signing key
+        id: signing
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: nexora-android-debug-signing-key-v2
+
+      - name: Verify the original key and encrypt a backup
+        if: steps.signing.outputs.cache-hit == 'true'
+        env:
+          BACKUP_PASSWORD: ${{ secrets.NEXORA_BACKUP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_PASSWORD" || { echo "NEXORA_BACKUP_PASSWORD secret is missing."; exit 1; }
+          test -f "$HOME/.android/debug.keystore" || { echo "Cached keystore file is missing."; exit 1; }
+
+          FINGERPRINT="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk -F': ' '/SHA256:/{print $2; exit}' | tr -d ':')"
+          EXPECTED="A42DC03C2D6ABF168618697BFE423F72D2E135752E39BC2A788D77B45426272E"
+          if [ "${FINGERPRINT^^}" != "$EXPECTED" ]; then
+            echo "The restored key does not match the expected NEXORA 0.6.0 certificate. Stopping."
+            exit 1
+          fi
+
+          mkdir -p backup
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 \
+            -in "$HOME/.android/debug.keystore" \
+            -out backup/NEXORA-signing-key.keystore.enc \
+            -pass env:BACKUP_PASSWORD
+
+          cat > backup/RESTORE-INSTRUCTIONS.txt <<'EOF'
+          NEXORA signing key backup
+          Certificate SHA-256: A42DC03C2D6ABF168618697BFE423F72D2E135752E39BC2A788D77B45426272E
+          Keystore filename after decryption: debug.keystore
+          Keystore alias: androiddebugkey
+          Keystore store password: android
+          Key password: android
+          Keep the decryption password separate from this backup.
+          Do not upload the decrypted keystore to a public repository or share it.
+          EOF
+
+      - name: Stop if the original cached key was not found
+        if: steps.signing.outputs.cache-hit != 'true'
+        run: |
+          echo "The original v2 signing key was not found in Actions cache. No new key was created."
+          exit 1
+
+      - name: Upload encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXORA-signing-key-encrypted-backup
+          path: backup/
+          if-no-files-found: error
+          retention-days: 30
