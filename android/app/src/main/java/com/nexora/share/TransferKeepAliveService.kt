@@ -289,7 +289,7 @@ class TransferKeepAliveService : Service() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     val values = ContentValues().apply {
                         put(MediaStore.Downloads.DISPLAY_NAME, safeName)
-                        put(MediaStore.Downloads.MIME_TYPE, contentResolver.getType(sourceUri) ?: "application/octet-stream")
+                        put(MediaStore.Downloads.MIME_TYPE, if (safeName.endsWith(".apk", true)) "application/vnd.android.package-archive" else (contentResolver.getType(sourceUri) ?: "application/octet-stream"))
                         put(MediaStore.Downloads.IS_PENDING, 1)
                         put(MediaStore.Downloads.RELATIVE_PATH, "Download/NEXORA/")
                     }
