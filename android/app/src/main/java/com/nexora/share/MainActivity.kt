@@ -55,7 +55,11 @@ class MainActivity : Activity() {
 
     private val serviceListener = object : TransferKeepAliveService.Listener {
         override fun onStatus(message: String) {
-            runOnUiThread { updateStatus(message); if (message.startsWith("Received and saved:")) refreshReceivedFiles() }
+            runOnUiThread {
+                if (message.startsWith("Sent: ")) rememberSentFileName(message.removePrefix("Sent: ").trim())
+                updateStatus(message)
+                if (message.startsWith("Received and saved:")) refreshReceivedFiles()
+            }
         }
         override fun onPeerFound(endpointId: String, name: String) {
             runOnUiThread {
@@ -377,7 +381,6 @@ class MainActivity : Activity() {
             if (selectedUris.isEmpty()) { activeTab = "Media"; render() }
             else if (sharing == null) updateStatus("NEXORA is preparing the sharing service. Try again in a moment.")
             else {
-                rememberSentFiles(selectedUris)
                 sharing?.sendFiles(ArrayList(selectedUris))
                 selectedUris.clear()
                 sendButton.text = "CONTINUE TO FILES"
@@ -1105,6 +1108,15 @@ class MainActivity : Activity() {
         if (entries.isEmpty()) list.addView(TextView(this).apply { text = "Files you send will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(8)) })
         else entries.take(100).forEach { entry -> list.addView(historyCard(entry, 0xFF7357E8.toInt(), ink), bottom(6)) }
         content.addView(box)
+    }
+
+    private fun rememberSentFileName(name: String) {
+        if (name.isBlank()) return
+        val prefs = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
+        val old = prefs.getString("sent_items", "") ?: ""
+        val stamp = java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val entry = stamp + " · " + name
+        prefs.edit().putString("sent_items", (listOf(entry) + old.split("\n").filter { it.isNotBlank() }).take(100).joinToString("\n")).apply()
     }
 
     private fun rememberSentFiles(uris: List<Uri>) {
