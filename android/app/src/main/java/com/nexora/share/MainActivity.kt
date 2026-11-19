@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.*
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.MediaStore
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -20,6 +21,8 @@ import androidx.core.content.ContextCompat
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var peerList: LinearLayout
+    private lateinit var receivedList: LinearLayout
+    private val selectedUris = ArrayList<Uri>()
     private lateinit var sendButton: Button
     private var sharing: TransferKeepAliveService? = null
     private var bound = false
@@ -39,7 +42,7 @@ class MainActivity : Activity() {
     }
 
     private val serviceListener = object : TransferKeepAliveService.Listener {
-        override fun onStatus(message: String) { runOnUiThread { updateStatus(message) } }
+        override fun onStatus(message: String) { runOnUiThread { updateStatus(message); if (message.startsWith("Received and saved:")) refreshReceivedFiles() } }
         override fun onPeerFound(endpointId: String, name: String) {
             runOnUiThread {
                 if (!discovered.containsKey(endpointId)) {
@@ -83,6 +86,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         buildScreen()
         updateStatus("Ready. Both phones need NEXORA installed.")
+        refreshReceivedFiles()
     }
 
     override fun onStart() {
@@ -217,6 +221,12 @@ class MainActivity : Activity() {
             setOnClickListener { openFilePicker() }
         }
         page.addView(sendButton, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 })
+
+        val receivedCard = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18, 16, 18, 12); background = rounded(-1, 18) }
+        receivedCard.addView(TextView(this).apply { text = "RECEIVED FILES"; textSize = 12f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(navy) }, matchWrap())
+        receivedList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 8, 0, 0) }
+        receivedCard.addView(receivedList, matchWrap())
+        page.addView(receivedCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
 
         val stopButton = Button(this).apply {
             text = "STOP / DISCONNECT"
@@ -355,6 +365,7 @@ class MainActivity : Activity() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
         startActivityForResult(intent, REQUEST_FILE)
@@ -363,12 +374,57 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated Android callback retained for broad device compatibility.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_FILE && resultCode == RESULT_OK) {
-            val uri: Uri = data?.data ?: return
-            sharing?.sendFile(uri) ?: updateStatus("NEXORA is reconnecting. Try selecting the file again.")
+        if (requestCode == REQUEST_FILE && resultCode == RESULT_OK && data != null) {
+            val chosen = LinkedHashSet<Uri>()
+            data.clipData?.let { clip -> for (i in 0 until clip.itemCount) chosen.add(clip.getItemAt(i).uri) }
+            data.data?.let { chosen.add(it) }
+            selectedUris.clear()
+            selectedUris.addAll(chosen)
+            if (selectedUris.isEmpty()) updateStatus("No files selected.")
+            else {
+                updateStatus(selectedUris.size.toString() + " file(s) selected. Connect, then tap Send.")
+                sendButton.text = "SEND " + selectedUris.size + " FILE(S)"
+                sendButton.isEnabled = sharing != null
+                sendButton.setOnClickListener {
+                    sharing?.sendFiles(ArrayList(selectedUris))
+                    selectedUris.clear()
+                    sendButton.isEnabled = false
+                    sendButton.text = "CHOOSE FILES TO SEND"
+                }
+            }
         }
     }
 
+    private fun refreshReceivedFiles() {
+        if (!::receivedList.isInitialized || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        receivedList.removeAllViews()
+        try {
+            val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE)
+            contentResolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, projection,
+                MediaStore.MediaColumns.RELATIVE_PATH + " = ?", arrayOf("Download/NEXORA/"),
+                MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
+                if (cursor.count == 0) addReceivedEmpty()
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    val name = cursor.getString(1) ?: "Received file"
+                    val mime = cursor.getString(2) ?: "*/*"
+                    val uri = android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
+                    receivedList.addView(Button(this).apply {
+                        text = "Open  ·  " + name
+                        isAllCaps = false
+                        setOnClickListener {
+                            try { startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
+                            catch (_: Exception) { Toast.makeText(this@MainActivity, "No app found to open this file.", Toast.LENGTH_SHORT).show() }
+                        }
+                    }, buttonParams())
+                }
+            } ?: addReceivedEmpty()
+        } catch (_: Exception) { addReceivedEmpty() }
+    }
+
+    private fun addReceivedEmpty() {
+        receivedList.addView(TextView(this).apply { text = "Received files will appear here when saved."; textSize = 12f; setTextColor(0xFF64748B.toInt()) }, matchWrap())
+    }
     private fun updateStatus(message: String) {
         if (::status.isInitialized) status.text = message
     }
