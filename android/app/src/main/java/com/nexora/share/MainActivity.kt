@@ -113,7 +113,8 @@ class MainActivity : Activity() {
         if (!savedTree.isNullOrBlank()) {
             runCatching {
                 selectedTreeUri = Uri.parse(savedTree)
-                currentTreeDocumentId = android.provider.DocumentsContract.getTreeDocumentId(selectedTreeUri!!)
+                val rootDocumentId = android.provider.DocumentsContract.getTreeDocumentId(selectedTreeUri!!)
+                currentTreeDocumentId = getSharedPreferences("nexora_file_manager", MODE_PRIVATE).getString("current_document_id", rootDocumentId)
             }.onFailure {
                 selectedTreeUri = null
                 currentTreeDocumentId = null
@@ -1073,7 +1074,9 @@ class MainActivity : Activity() {
         section.addView(label("CURRENT FOLDER", 0xFF16A58A.toInt()))
         section.addView(TextView(this).apply { text = documentId.substringAfterLast(':').ifBlank { "Phone folder" }; textSize = 12f; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
         if (treeDocumentStack.isNotEmpty()) section.addView(button("← PARENT FOLDER", 0xFF64748B.toInt()) {
-            currentTreeDocumentId = treeDocumentStack.removeAt(treeDocumentStack.lastIndex); render()
+            currentTreeDocumentId = treeDocumentStack.removeAt(treeDocumentStack.lastIndex)
+            getSharedPreferences("nexora_file_manager", MODE_PRIVATE).edit().putString("current_document_id", currentTreeDocumentId).apply()
+            render()
         }, bottom(6))
         section.addView(button(if (sortTreeBySize) "SORT: NAME A-Z" else "SORT: LARGEST FIRST", 0xFF7357E8.toInt()) {
             sortTreeBySize = !sortTreeBySize
@@ -1126,7 +1129,12 @@ class MainActivity : Activity() {
                     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(7), dp(8), dp(7), dp(8)); background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 12) }
                     row.addView(TextView(this).apply { text = (if (folder) "📁  " else "📄  ") + name + "\n" + size; textSize = 12f; setTextColor(ink) }, LinearLayout.LayoutParams(0, -2, 1f))
                     row.addView(button(if (folder) "OPEN" else "ADD", if (folder) 0xFF16A58A.toInt() else 0xFF168FE5.toInt()) {
-                        if (folder) { treeDocumentStack.add(currentTreeDocumentId ?: documentId); currentTreeDocumentId = childId; render() }
+                        if (folder) {
+                            treeDocumentStack.add(currentTreeDocumentId ?: documentId)
+                            currentTreeDocumentId = childId
+                            getSharedPreferences("nexora_file_manager", MODE_PRIVATE).edit().putString("current_document_id", childId).apply()
+                            render()
+                        }
                         else { if (!selectedUris.contains(itemUri)) selectedUris.add(itemUri); updateStatus("${selectedUris.size} file(s) selected."); Toast.makeText(this, "Added: $name", Toast.LENGTH_SHORT).show() }
                     })
                     children.addView(row, bottom(5))
