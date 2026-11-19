@@ -1880,11 +1880,18 @@ class MainActivity : Activity() {
         if (!::receivedList.isInitialized || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
         receivedList.removeAllViews()
         try {
-            val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE, MediaStore.MediaColumns.SIZE)
+            val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_ADDED)
             contentResolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, projection, MediaStore.MediaColumns.RELATIVE_PATH + " = ?", arrayOf("Download/NEXORA/"), MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
                 if (cursor.count == 0) addReceivedEmpty()
+                var previousDay = ""
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(0); val name = cursor.getString(1) ?: "Received file"
+                    val addedAt = cursor.getLong(4)
+                    val day = java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(addedAt * 1000L))
+                    if (day != previousDay) {
+                        previousDay = day
+                        receivedList.addView(TextView(this).apply { text = day; textSize = 12f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(if (darkMode) 0xFF8FE0C3.toInt() else 0xFF16856A.toInt()); setPadding(dp(3), dp(12), dp(3), dp(6)) })
+                    }
                     val mime = cursor.getString(2) ?: "*/*"; val size = readableSize(cursor.getLong(3))
                     val uri = android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
                     val row = LinearLayout(this).apply {
