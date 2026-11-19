@@ -612,6 +612,7 @@ class MainActivity : Activity() {
     private fun openMediaLibrary(kind: String) {
         mediaCategory = kind
         mediaSearch = ""
+        mediaDisplayLimit = 40
         val permissions = when (kind) {
             "Photos" -> if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_IMAGES) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
             "Videos" -> if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -666,6 +667,8 @@ class MainActivity : Activity() {
 
     private val mediaCache = HashMap<String, ArrayList<Pair<Uri, String>>>()
     private val mediaLoading = HashSet<String>()
+    // Render media in small batches to avoid creating hundreds of views on the UI thread.
+    private var mediaDisplayLimit = 40
 
     private fun renderMediaRows(kind: String, ink: Int, muted: Int, blue: Int) {
         if (!::mediaList.isInitialized) return
@@ -716,7 +719,7 @@ class MainActivity : Activity() {
         val matching = cached.filter { it.second.contains(mediaSearch, ignoreCase = true) }
         val filtered = if (mediaSort == "Name A-Z") matching.sortedBy { it.second.lowercase() } else matching
         if (filtered.isEmpty()) mediaList.addView(TextView(this).apply { text = if (cached.isEmpty()) "No " + kind.lowercase() + " found." else "No matching files."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
-        filtered.forEach { item ->
+        filtered.take(mediaDisplayLimit).forEach { item ->
             val isSelected = selectedUris.contains(item.first)
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(5), dp(8), dp(5)); background = rounded(if (isSelected) 0xFFE4F5EF.toInt() else if (darkMode) 0xFF1C2940.toInt() else -1, 12) }
             val preview = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(if (darkMode) 0xFF263650.toInt() else 0xFFE8EDF5.toInt()) }
@@ -746,6 +749,12 @@ class MainActivity : Activity() {
                     }
                 }
             } else { preview.setImageResource(android.R.drawable.ic_media_play); preview.scaleType = ImageView.ScaleType.CENTER }
+        }
+        if (filtered.size > mediaDisplayLimit) {
+            mediaList.addView(button("LOAD MORE  ·  ${filtered.size - mediaDisplayLimit} LEFT", blue) {
+                mediaDisplayLimit = (mediaDisplayLimit + 40).coerceAtMost(filtered.size)
+                renderMediaRows(kind, ink, muted, blue)
+            }, bottom(8))
         }
     }
 
