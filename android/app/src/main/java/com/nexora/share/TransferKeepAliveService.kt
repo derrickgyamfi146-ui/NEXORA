@@ -80,6 +80,7 @@ class TransferKeepAliveService : Service() {
             .addOnSuccessListener { status("Your phone is visible. On the other phone, tap Send.") }
             .addOnFailureListener {
                 advertising = false
+                releaseWakeLockIfIdle()
                 status("Could not become visible: ${it.localizedMessage}")
             }
     }
@@ -101,6 +102,7 @@ class TransferKeepAliveService : Service() {
             .addOnSuccessListener { status("Searching for nearby NEXORA phones…") }
             .addOnFailureListener {
                 discovering = false
+                releaseWakeLockIfIdle()
                 status("Could not search: ${it.localizedMessage}")
             }
     }
@@ -261,6 +263,7 @@ class TransferKeepAliveService : Service() {
             }
             listener?.onDisconnected(endpointId)
             status("A phone disconnected. ${connectedEndpoints.size} phone(s) remain connected.")
+            releaseWakeLockIfIdle()
         }
     }
 
@@ -447,6 +450,14 @@ class TransferKeepAliveService : Service() {
 
     private fun releaseTransferWakeLock() {
         transferWakeLock?.let { if (it.isHeld) it.release() }
+    }
+
+    @Synchronized
+    private fun releaseWakeLockIfIdle() {
+        val hasConnections = synchronized(connectedEndpoints) { connectedEndpoints.isNotEmpty() }
+        if (!advertising && !discovering && !sending && outgoingQueue.isEmpty() && !hasConnections) {
+            releaseTransferWakeLock()
+        }
     }
 
     private fun promoteToForeground() {
