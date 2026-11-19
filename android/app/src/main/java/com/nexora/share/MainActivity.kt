@@ -1017,6 +1017,33 @@ class MainActivity : Activity() {
     private var folderSearch = ""
 
     private fun showFiles(card: Int, ink: Int, muted: Int, blue: Int) {
+        // Keep the same media-library category strip visible while browsing Files.
+        val tabs = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val tabRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(3), 0, dp(10)) }
+        listOf("Apps", "Images", "Videos", "Music", "Files").forEach { tab ->
+            val tint = when(tab) { "Apps" -> 0xFF7357E8.toInt(); "Images" -> 0xFF168FE5.toInt(); "Videos" -> 0xFFE05C8A.toInt(); "Music" -> 0xFFE69A35.toInt(); else -> 0xFF16A58A.toInt() }
+            val selected = tab == "Files"
+            val chip = TextView(this).apply {
+                text = tab; textSize = 12f; gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(if (selected) -1 else tint)
+                setPadding(dp(16), dp(10), dp(16), dp(10))
+                background = rounded(if (selected) tint else if (darkMode) 0xFF20364E.toInt() else 0xFFEAF2FB.toInt(), 18)
+            }
+            chip.setOnClickListener {
+                animatePress(chip)
+                when (tab) {
+                    "Apps" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
+                    "Images" -> openMediaLibrary("Photos")
+                    "Videos" -> openMediaLibrary("Videos")
+                    "Music" -> openMediaLibrary("Music")
+                    "Files" -> { activeTab = "Files"; render() }
+                }
+            }
+            tabRow.addView(chip, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(7) })
+        }
+        tabs.addView(tabRow)
+        content.addView(tabs)
         content.addView(TextView(this).apply { text = "File manager"; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(5)) })
         content.addView(TextView(this).apply { text = "Find documents, downloads, APKs and large files."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(13)) })
         val storage = panel(card)
