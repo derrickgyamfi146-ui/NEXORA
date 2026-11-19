@@ -314,20 +314,14 @@ class MainActivity : Activity() {
                 typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
                 background = rounded(0xFF009D70.toInt(), 24); elevation = dp(10).toFloat()
                 setPadding(dp(12), 0, dp(12), 0)
-                setOnClickListener { animatePress(this); activeTab = "Send"; render() }
+                setOnClickListener { animatePress(this); openSendQr() }
             }
             val receiveFab = TextView(this).apply {
                 text = "⇩  RECEIVE"; textSize = 12f; gravity = Gravity.CENTER
                 typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
                 background = rounded(0xFF009D70.toInt(), 24); elevation = dp(10).toFloat()
                 setPadding(dp(12), 0, dp(12), 0)
-                setOnClickListener {
-                    animatePress(this); activeTab = "Receive"; render()
-                    withNearbyPermissions {
-                        ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, TransferKeepAliveService::class.java))
-                        sharing?.startReceiving() ?: updateStatus("Starting receive mode. Try again in a moment.")
-                    }
-                }
+                setOnClickListener { animatePress(this); scanQrCode() }
             }
             contentFrame.addView(sendFab, android.widget.FrameLayout.LayoutParams(dp(132), dp(43), Gravity.BOTTOM or Gravity.START).apply {
                 leftMargin = dp(16); bottomMargin = dp(14)
@@ -429,11 +423,9 @@ class MainActivity : Activity() {
         })
         content.addView(connection, bottom(14))
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(actionTile("↑", "SEND FILES", 0xFF1689D5.toInt()) { activeTab = "Media"; render() },
+        actions.addView(actionTile("↑", "SEND FILES", 0xFF1689D5.toInt()) { openSendQr() },
             LinearLayout.LayoutParams(0, dp(112), 1f).apply { rightMargin = dp(6) })
-        actions.addView(actionTile("↓", "RECEIVE", 0xFF18A887.toInt()) {
-            withNearbyPermissions { ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java)); sharing?.startReceiving() ?: updateStatus("Starting service. Try again.") }
-        }, LinearLayout.LayoutParams(0, dp(112), 1f).apply { leftMargin = dp(6) })
+        actions.addView(actionTile("↓", "RECEIVE", 0xFF18A887.toInt()) { scanQrCode() }, LinearLayout.LayoutParams(0, dp(112), 1f).apply { leftMargin = dp(6) })
         content.addView(actions, bottom(13))
         val qrActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         qrActions.addView(button("SCAN QR TO CONNECT", 0xFF7357E8.toInt()) { scanQrCode() },
@@ -629,6 +621,14 @@ class MainActivity : Activity() {
         })
         live.addView(button("OPEN TRANSFER CENTRE", 0xFF7357E8.toInt()) { activeTab = "Transfers"; render() })
         content.addView(live)
+    }
+
+    private fun openSendQr() {
+        withNearbyPermissions {
+            ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
+            sharing?.startReceiving() ?: updateStatus("Starting connection…")
+            showQrCode()
+        }
     }
 
     private fun showQrCode() {
@@ -831,12 +831,14 @@ class MainActivity : Activity() {
                     }
                     try {
                         val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_ADDED)
-                        contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC LIMIT 1500")?.use { cursor ->
+                        contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
                             val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                             val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                             val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
                             val dateCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
-                            while (cursor.moveToNext()) {
+                            var loadedCount = 0
+                            while (cursor.moveToNext() && loadedCount < 1500) {
+                                loadedCount++
                                 val id = cursor.getLong(idCol)
                                 val name = cursor.getString(nameCol) ?: "Media file"
                                 val size = cursor.getLong(sizeCol)
