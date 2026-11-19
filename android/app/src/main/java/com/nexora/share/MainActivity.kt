@@ -986,6 +986,7 @@ class MainActivity : Activity() {
     private var currentTreeDocumentId: String? = null
     private val treeDocumentStack = ArrayList<String>()
     private var sortTreeBySize = false
+    private var treeCategoryFilter: String? = null
     private var folderSearch = ""
 
     private fun showFiles(card: Int, ink: Int, muted: Int, blue: Int) {
@@ -1058,14 +1059,10 @@ class MainActivity : Activity() {
                 setPadding(dp(13), dp(15), dp(8), dp(15))
                 background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 13)
                 setOnClickListener {
-                    when (item.second) {
-                        "documents" -> openPickerTypes(arrayOf("application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/plain"))
-                        "ebooks" -> openPickerTypes(arrayOf("application/epub+zip", "application/x-mobipocket-ebook", "application/pdf"))
-                        "apks" -> openPicker("application/vnd.android.package-archive")
-                        "archives" -> openPickerTypes(arrayOf("application/zip", "application/x-rar-compressed", "application/x-7z-compressed", "application/x-tar", "application/gzip"))
-                        "big" -> { sortTreeBySize = true; openFolderTree() }
-                        else -> openPicker("*/*")
-                    }
+                    treeCategoryFilter = item.second
+                    folderSearch = ""
+                    if (item.second == "big") sortTreeBySize = true
+                    if (selectedTreeUri != null) render() else openFolderTree()
                 }
             }
             categoryGrid.addView(tile, android.widget.GridLayout.LayoutParams().apply {
@@ -1098,6 +1095,11 @@ class MainActivity : Activity() {
     private fun renderTreeContents(treeUri: Uri, documentId: String, ink: Int, muted: Int) {
         val section = panel(if (darkMode) 0xFF142A40.toInt() else -1)
         section.addView(label("CURRENT FOLDER", 0xFF16A58A.toInt()))
+        treeCategoryFilter?.let { filter ->
+            val categoryName = when (filter) { "documents" -> "DOCUMENTS"; "ebooks" -> "E-BOOKS"; "apks" -> "APKs"; "archives" -> "ARCHIVES"; "big" -> "BIG FILES (50 MB+)"; else -> filter.uppercase() }
+            section.addView(TextView(this).apply { text = "FILTER: $categoryName"; textSize = 10f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFFE69A35.toInt()); setPadding(0, dp(5), 0, dp(5)) })
+            section.addView(button("CLEAR CATEGORY FILTER", 0xFF64748B.toInt()) { treeCategoryFilter = null; sortTreeBySize = false; render() }, bottom(6))
+        }
         section.addView(TextView(this).apply { text = documentId.substringAfterLast(':').ifBlank { "Phone folder" }; textSize = 12f; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
         if (treeDocumentStack.isNotEmpty()) section.addView(button("← PARENT FOLDER", 0xFF64748B.toInt()) {
             currentTreeDocumentId = treeDocumentStack.removeAt(treeDocumentStack.lastIndex)
@@ -1148,9 +1150,20 @@ class MainActivity : Activity() {
                     val name = cursor.getString(nameIndex) ?: "Unnamed item"
                     if (folderSearch.isNotBlank() && !name.contains(folderSearch, ignoreCase = true)) continue
                     val mime = cursor.getString(mimeIndex) ?: "*/*"
-                    displayedCount++
-                    val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) readableSize(cursor.getLong(sizeIndex)) else "Folder"
+                    val sizeBytes = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex) else 0L
                     val folder = mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR
+                    val lowerName = name.lowercase()
+                    val categoryMatch = when (treeCategoryFilter) {
+                        "documents" -> mime.contains("pdf") || mime.contains("word") || mime.contains("excel") || mime.contains("powerpoint") || mime.startsWith("text/") || listOf(".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt").any { lowerName.endsWith(it) }
+                        "ebooks" -> mime.contains("epub") || mime.contains("mobipocket") || listOf(".epub", ".mobi", ".azw", ".azw3", ".pdf").any { lowerName.endsWith(it) }
+                        "apks" -> mime.contains("android.package-archive") || lowerName.endsWith(".apk")
+                        "archives" -> mime.contains("zip") || mime.contains("rar") || mime.contains("7z") || mime.contains("tar") || mime.contains("gzip") || listOf(".zip", ".rar", ".7z", ".tar", ".gz").any { lowerName.endsWith(it) }
+                        "big" -> sizeBytes >= 50L * 1024L * 1024L
+                        else -> true
+                    }
+                    if (!folder && !categoryMatch) continue
+                    displayedCount++
+                    val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) readableSize(sizeBytes) else "Folder"
                     val fileIcon = when {
                         folder -> "📁"
                         mime.startsWith("image/") -> "🖼️"
