@@ -1,3 +1,4 @@
+// NEXORA Android build configuration
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
