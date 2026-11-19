@@ -884,8 +884,9 @@ class MainActivity : Activity() {
         content.addView(TextView(this).apply { text = "Transfer centre"; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
         val live = panel(card)
         live.addView(label("LIVE TRANSFER STATUS", 0xFF16A58A.toInt()))
-        transferStatusView = TextView(this).apply { text = latestStatus; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(8), 0, dp(6)) }
-        live.addView(transferStatusView)
+        val statusLine = TextView(this).apply { text = latestStatus; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(8), 0, dp(6)) }
+        transferStatusView = statusLine
+        live.addView(statusLine)
         val stepRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         listOf("SELECT", "FIND", "CONNECT", "SEND", "DONE").forEachIndexed { index, labelText ->
             val step = TextView(this).apply {
@@ -902,13 +903,14 @@ class MainActivity : Activity() {
             stepRow.addView(step, LinearLayout.LayoutParams(0, dp(34), 1f).apply { leftMargin = dp(2); rightMargin = dp(2) })
         }
         live.addView(stepRow, bottom(9))
-        transferProgressBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+        val progressLine = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             progressTintList = android.content.res.ColorStateList.valueOf(0xFF16A58A.toInt())
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(if (darkMode) 0xFF29445B.toInt() else 0xFFE2EAF2.toInt())
             progress = Regex("(\\d{1,3})%").find(latestStatus)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: if (transferStage >= 5) 100 else 0
         }
-        live.addView(transferProgressBar, LinearLayout.LayoutParams(-1, dp(8)))
+        transferProgressBar = progressLine
+        live.addView(progressLine, LinearLayout.LayoutParams(-1, dp(8)))
         live.addView(button("BACK TO SHARING", 0xFF1689D5.toInt()) { activeTab = "Home"; render() })
         content.addView(live, bottom(12))
         val history = panel(card)
