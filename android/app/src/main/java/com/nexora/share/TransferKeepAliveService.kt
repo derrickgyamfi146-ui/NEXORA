@@ -104,6 +104,13 @@ class TransferKeepAliveService : Service() {
         status("Connection rejected.")
     }
 
+    fun sendFiles(uris: List<Uri>) {
+        if (uris.isEmpty()) { status("Choose at least one file."); return }
+        if (connectedEndpoint == null) { status("Connect to a phone first."); return }
+        status("Sending " + uris.size + " file(s)…")
+        uris.forEach { sendFile(it) }
+    }
+
     fun sendFile(uri: Uri) {
         val endpoint = connectedEndpoint
         if (endpoint == null) {
@@ -225,6 +232,7 @@ class TransferKeepAliveService : Service() {
                         put(MediaStore.Downloads.DISPLAY_NAME, safeName)
                         put(MediaStore.Downloads.MIME_TYPE, contentResolver.getType(sourceUri) ?: "application/octet-stream")
                         put(MediaStore.Downloads.IS_PENDING, 1)
+                        put(MediaStore.Downloads.RELATIVE_PATH, "Download/NEXORA/")
                     }
                     destination = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                         ?: throw IOException("Could not create the Downloads file")
