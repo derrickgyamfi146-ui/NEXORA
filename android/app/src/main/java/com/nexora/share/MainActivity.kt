@@ -1238,8 +1238,18 @@ class MainActivity : Activity() {
             } catch (e: Exception) { updateStatus("Folder access was not saved: " + (e.localizedMessage ?: "unknown error")) }
         } else if (requestCode == REQUEST_FILE && resultCode == RESULT_OK && data != null) {
             val chosen = LinkedHashSet<Uri>()
-            data.clipData?.let { clip -> for (i in 0 until clip.itemCount) chosen.add(clip.getItemAt(i).uri) }
-            data.data?.let { chosen.add(it) }
+            val grantFlags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            data.clipData?.let { clip ->
+                for (i in 0 until clip.itemCount) {
+                    val uri = clip.getItemAt(i).uri
+                    chosen.add(uri)
+                    runCatching { contentResolver.takePersistableUriPermission(uri, grantFlags) }
+                }
+            }
+            data.data?.let { uri ->
+                chosen.add(uri)
+                runCatching { contentResolver.takePersistableUriPermission(uri, grantFlags) }
+            }
             selectedUris.clear(); selectedUris.addAll(chosen)
             if (selectedUris.isEmpty()) updateStatus("No files selected.")
             else {
