@@ -1055,6 +1055,7 @@ class MainActivity : Activity() {
         section.addView(children)
         val childUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId)
         val projection = arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID, android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME, android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE, android.provider.DocumentsContract.Document.COLUMN_SIZE)
+        var displayedCount = 0
         try {
             contentResolver.query(childUri, projection, null, null,
                 if (sortTreeBySize) android.provider.DocumentsContract.Document.COLUMN_SIZE + " DESC" else android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME + " ASC")?.use { cursor ->
@@ -1069,6 +1070,7 @@ class MainActivity : Activity() {
                     val name = cursor.getString(nameIndex) ?: "Unnamed item"
                     if (folderSearch.isNotBlank() && !name.contains(folderSearch, ignoreCase = true)) continue
                     val mime = cursor.getString(mimeIndex) ?: "*/*"
+                    displayedCount++
                     val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) readableSize(cursor.getLong(sizeIndex)) else "Folder"
                     val folder = mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR
                     val itemUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
@@ -1081,6 +1083,12 @@ class MainActivity : Activity() {
                     children.addView(row, bottom(5))
                 }
             } ?: children.addView(TextView(this).apply { text = "Could not read this folder."; textSize = 12f; setTextColor(muted) })
+            if (displayedCount == 0 && folderSearch.isNotBlank()) children.addView(TextView(this).apply {
+                text = "No matching files or folders found."
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(dp(4), dp(12), dp(4), dp(12))
+            })
         } catch (e: Exception) { children.addView(TextView(this).apply { text = "Folder could not be opened: " + (e.localizedMessage ?: "unknown error"); textSize = 12f; setTextColor(muted) }) }
         section.addView(button("SEND ${selectedUris.size} SELECTED FILE(S)", 0xFF1689D5.toInt()) {
             if (selectedUris.isEmpty()) Toast.makeText(this, "Select files first.", Toast.LENGTH_SHORT).show()
@@ -1185,7 +1193,7 @@ class MainActivity : Activity() {
         historyTabs.addView(button("RECEIVED", 0xFF16A58A.toInt()) { activeTab = "Received"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(5) })
         content.addView(historyTabs, bottom(10))
         val box = panel(card)
-        box.addView(label("FILES SELECTED TO SEND", muted))
+        box.addView(label("SUCCESSFULLY SENT", muted))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(list)
         val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
