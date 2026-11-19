@@ -181,6 +181,8 @@ class MainActivity : Activity() {
 
     private fun render() {
         transferStatusView = null
+        transferProgressBar = null
+        transferStepViews.clear()
         val page = if (darkMode) 0xFF071526.toInt() else 0xFFF3F7FC.toInt()
         val card = if (darkMode) 0xFF142A40.toInt() else -1
         val ink = if (darkMode) -1 else 0xFF10243B.toInt()
@@ -871,6 +873,29 @@ class MainActivity : Activity() {
         live.addView(label("LIVE TRANSFER STATUS", 0xFF16A58A.toInt()))
         transferStatusView = TextView(this).apply { text = latestStatus; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(8), 0, dp(6)) }
         live.addView(transferStatusView)
+        val stepRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf("SELECT", "FIND", "CONNECT", "SEND", "DONE").forEachIndexed { index, labelText ->
+            val step = TextView(this).apply {
+                text = labelText
+                textSize = 8f
+                gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setPadding(dp(3), dp(8), dp(3), dp(8))
+                val tint = intArrayOf(0xFF7357E8.toInt(), 0xFF168FE5.toInt(), 0xFFE69A35.toInt(), 0xFFE05C8A.toInt(), 0xFF16A58A.toInt())[index]
+                background = rounded(if (index < transferStage) tint else if (darkMode) 0xFF29445B.toInt() else 0xFFE8EEF5.toInt(), 10)
+                setTextColor(if (index < transferStage) -1 else muted)
+            }
+            transferStepViews.add(step)
+            stepRow.addView(step, LinearLayout.LayoutParams(0, dp(34), 1f).apply { leftMargin = dp(2); rightMargin = dp(2) })
+        }
+        live.addView(stepRow, bottom(9))
+        transferProgressBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progressTintList = android.content.res.ColorStateList.valueOf(0xFF16A58A.toInt())
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(if (darkMode) 0xFF29445B.toInt() else 0xFFE2EAF2.toInt())
+            progress = Regex("(\\d{1,3})%").find(latestStatus)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: if (transferStage >= 5) 100 else 0
+        }
+        live.addView(transferProgressBar, LinearLayout.LayoutParams(-1, dp(8)))
         live.addView(button("BACK TO SHARING", 0xFF1689D5.toInt()) { activeTab = "Home"; render() })
         content.addView(live, bottom(12))
         val history = panel(card)
@@ -1020,10 +1045,33 @@ class MainActivity : Activity() {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private var transferStatusView: TextView? = null
+    private var transferProgressBar: android.widget.ProgressBar? = null
+    private var transferStage = 0
+    private val transferStepViews = ArrayList<TextView>()
     private fun updateStatus(message: String) {
         latestStatus = message
         if (::status.isInitialized) status.text = message
         transferStatusView?.text = message
+        val lower = message.lowercase()
+        transferStage = when {
+            lower.contains("all selected files") || lower.contains("file sent") || lower.contains("received and saved") -> 5
+            lower.contains("sending") || lower.contains("receiving") -> 4
+            lower.contains("connected") || lower.contains("requesting connection") -> 3
+            lower.contains("searching") || lower.contains("found ") || lower.contains("visible") -> 2
+            lower.contains("queued") || lower.contains("selected") -> 1
+            else -> transferStage
+        }
+        val colors = intArrayOf(0xFF7357E8.toInt(), 0xFF168FE5.toInt(), 0xFFE69A35.toInt(), 0xFFE05C8A.toInt(), 0xFF16A58A.toInt())
+        transferStepViews.forEachIndexed { index, view ->
+            view.background = rounded(if (index < transferStage) colors[index] else if (darkMode) 0xFF29445B.toInt() else 0xFFE8EEF5.toInt(), 10)
+            view.setTextColor(if (index < transferStage) -1 else if (darkMode) 0xFFB1C6D8.toInt() else 0xFF63788C.toInt())
+        }
+        val percent = Regex("(\\d{1,3})%").find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        if (percent != null) {
+            transferProgressBar?.let { bar ->
+                android.animation.ObjectAnimator.ofInt(bar, "progress", bar.progress, percent.coerceIn(0, 100)).apply { duration = 240; start() }
+            }
+        } else if (transferStage >= 5) transferProgressBar?.progress = 100
     }
     private fun rebuildPeerList() {
         if (!::peerList.isInitialized) return
