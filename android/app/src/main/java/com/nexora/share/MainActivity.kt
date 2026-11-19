@@ -641,39 +641,98 @@ class MainActivity : Activity() {
             )
             val bitmap = android.graphics.Bitmap.createBitmap(560, 560, android.graphics.Bitmap.Config.ARGB_8888)
             for (x in 0 until 560) for (y in 0 until 560) {
-                bitmap.setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+                bitmap.setPixel(x, y, if (matrix[x, y]) 0xFF008F68.toInt() else android.graphics.Color.WHITE)
             }
-            val body = LinearLayout(this).apply {
+
+            val page = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(dp(22), dp(18), dp(22), dp(22))
+                setBackgroundColor(0xFF101214.toInt())
+            }
+            val top = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            top.addView(TextView(this).apply {
+                text = "‹"
+                textSize = 34f
+                setTextColor(-1)
+                gravity = Gravity.CENTER
+                setOnClickListener { activeTab = "Send"; render() }
+            }, LinearLayout.LayoutParams(dp(42), dp(48)))
+            top.addView(TextView(this).apply {
+                text = "Connect"
+                textSize = 19f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(-1)
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            top.addView(TextView(this).apply {
+                text = "NEXORA"
+                textSize = 11f
+                letterSpacing = .08f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(0xFF55D9AE.toInt())
+            })
+            page.addView(top, LinearLayout.LayoutParams(-1, dp(52)))
+
+            val instruction = TextView(this).apply {
+                text = "Scan this code with the other phone to connect"
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setTextColor(0xFFD5D9D8.toInt())
+                setPadding(dp(8), dp(24), dp(8), dp(18))
+            }
+            page.addView(instruction)
+
+            val qrCard = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(dp(18), dp(12), dp(18), dp(12))
-                background = rounded(if (darkMode) 0xFF142A40.toInt() else -1, 18)
+                setPadding(dp(13), dp(13), dp(13), dp(13))
+                background = rounded(android.graphics.Color.WHITE, 10)
             }
-            val image = ImageView(this).apply {
+            qrCard.addView(ImageView(this).apply {
                 setImageBitmap(bitmap)
                 adjustViewBounds = true
-                setBackgroundColor(android.graphics.Color.WHITE)
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-            }
-            body.addView(image, LinearLayout.LayoutParams(dp(260), dp(260)))
-            body.addView(TextView(this).apply {
-                text = "Let another phone scan this code. Keep NEXORA open and choose Receive."
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }, LinearLayout.LayoutParams(dp(258), dp(258)))
+            qrCard.addView(TextView(this).apply {
+                text = "●  DIRECT • " + deviceName
+                textSize = 10f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(0xFF008F68.toInt())
+                gravity = Gravity.CENTER
+                setPadding(0, dp(9), 0, dp(2))
+            })
+            page.addView(qrCard, LinearLayout.LayoutParams(-2, -2))
+
+            page.addView(TextView(this).apply {
+                text = "Keep NEXORA open while the other phone scans your code."
                 textSize = 12f
                 gravity = Gravity.CENTER
-                setTextColor(if (darkMode) -1 else 0xFF14213D.toInt())
-                setPadding(0, dp(12), 0, 0)
+                setTextColor(0xFFB7C1C0.toInt())
+                setPadding(dp(12), dp(18), dp(12), dp(18))
             })
-            android.app.AlertDialog.Builder(this)
-                .setTitle("Your NEXORA QR code")
-                .setView(body)
-                .setPositiveButton("Start receiving") { _, _ ->
-                    withNearbyPermissions {
-                        ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
-                        sharing?.startReceiving() ?: updateStatus("Starting the sharing service. Tap Receive again in a moment.")
-                    }
+
+            val spacer = View(this)
+            page.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
+            page.addView(button("START RECEIVING", 0xFF009D70.toInt()) {
+                withNearbyPermissions {
+                    ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
+                    sharing?.startReceiving() ?: updateStatus("Starting the sharing service. Tap Receive again in a moment.")
                 }
-                .setNegativeButton("Close", null)
-                .show()
+            }, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(9) })
+            page.addView(button("CLOSE", 0xFF334155.toInt()) {
+                activeTab = "Send"
+                render()
+            }, LinearLayout.LayoutParams(-1, dp(44)))
+
+            val dialog = android.app.Dialog(this)
+            dialog.setContentView(page)
+            dialog.setCancelable(true)
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+            dialog.show()
+            dialog.window?.setLayout(-1, -1)
         } catch (e: Exception) {
             updateStatus("Could not create QR code: " + (e.localizedMessage ?: "unknown error"))
         }
