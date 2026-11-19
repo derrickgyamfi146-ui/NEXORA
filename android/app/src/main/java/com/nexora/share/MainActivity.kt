@@ -24,6 +24,7 @@ class MainActivity : Activity() {
     private lateinit var sendButton: Button
     private val selectedUris = ArrayList<Uri>()
     private val discovered = LinkedHashMap<String, String>()
+    private var pendingQrDeviceName: String? = null
     private var sharing: TransferKeepAliveService? = null
     private var bound = false
     private var activeTab = "Home"
@@ -55,7 +56,20 @@ class MainActivity : Activity() {
             runOnUiThread { updateStatus(message); if (message.startsWith("Received and saved:")) refreshReceivedFiles() }
         }
         override fun onPeerFound(endpointId: String, name: String) {
-            runOnUiThread { discovered[endpointId] = name; if (::peerList.isInitialized) rebuildPeerList() }
+            runOnUiThread {
+                discovered[endpointId] = name
+                if (::peerList.isInitialized) rebuildPeerList()
+                val wanted = pendingQrDeviceName
+                if (wanted != null && name.equals(wanted, ignoreCase = true)) {
+                    pendingQrDeviceName = null
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Connect to $name?")
+                        .setMessage("This phone matches the NEXORA QR code. Continue with a secure connection?")
+                        .setPositiveButton("Connect") { _, _ -> sharing?.connect(endpointId, name) }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
         }
         override fun onPeerLost(endpointId: String) {
             runOnUiThread { discovered.remove(endpointId); if (::peerList.isInitialized) rebuildPeerList() }
@@ -270,6 +284,12 @@ class MainActivity : Activity() {
             withNearbyPermissions { ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java)); sharing?.startReceiving() ?: updateStatus("Starting service. Try again.") }
         }, LinearLayout.LayoutParams(0, dp(112), 1f).apply { leftMargin = dp(6) })
         content.addView(actions, bottom(13))
+        val qrActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        qrActions.addView(button("SCAN QR TO CONNECT", 0xFF7357E8.toInt()) { scanQrCode() },
+            LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(5) })
+        qrActions.addView(button("SHOW MY QR", 0xFFE69A35.toInt()) { showQrCode() },
+            LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(5) })
+        content.addView(qrActions, bottom(13))
         val quickAccess = panel(card)
         quickAccess.addView(label("QUICK ACCESS", muted))
         val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -317,6 +337,67 @@ class MainActivity : Activity() {
         }
         content.addView(sendButton, bottom(8))
         content.addView(button("STOP SHARING", 0xFF62778A.toInt()) { sharing?.stopSharing(); discovered.clear(); rebuildPeerList(); updateStatus("Sharing stopped.") })
+    }
+
+    private fun showQrCode() {
+        val deviceName = (getSharedPreferences("nexora_preferences", MODE_PRIVATE)
+            .getString("device_name", Build.MODEL) ?: "Android device").trim().take(24)
+        val payload = "NEXORA|$deviceName"
+        try {
+            val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(
+                payload, com.google.zxing.BarcodeFormat.QR_CODE, 560, 560
+            )
+            val bitmap = android.graphics.Bitmap.createBitmap(560, 560, android.graphics.Bitmap.Config.ARGB_8888)
+            for (x in 0 until 560) for (y in 0 until 560) {
+                bitmap.setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }
+            val body = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(18), dp(12), dp(18), dp(12))
+                background = rounded(if (darkMode) 0xFF142A40.toInt() else -1, 18)
+            }
+            val image = ImageView(this).apply {
+                setImageBitmap(bitmap)
+                adjustViewBounds = true
+                setBackgroundColor(android.graphics.Color.WHITE)
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+            }
+            body.addView(image, LinearLayout.LayoutParams(dp(260), dp(260)))
+            body.addView(TextView(this).apply {
+                text = "Let another phone scan this code. Keep NEXORA open and choose Receive."
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTextColor(if (darkMode) -1 else 0xFF14213D.toInt())
+                setPadding(0, dp(12), 0, 0)
+            })
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Your NEXORA QR code")
+                .setView(body)
+                .setPositiveButton("Start receiving") { _, _ ->
+                    withNearbyPermissions {
+                        ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
+                        sharing?.startReceiving() ?: updateStatus("Starting the sharing service. Tap Receive again in a moment.")
+                    }
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        } catch (e: Exception) {
+            updateStatus("Could not create QR code: " + (e.localizedMessage ?: "unknown error"))
+        }
+    }
+
+    private fun scanQrCode() {
+        try {
+            com.google.zxing.integration.android.IntentIntegrator(this)
+                .setDesiredBarcodeFormats(com.google.zxing.integration.android.IntentIntegrator.QR_CODE)
+                .setPrompt("Scan the other phone's NEXORA QR code")
+                .setBeepEnabled(false)
+                .setOrientationLocked(false)
+                .initiateScan()
+        } catch (e: Exception) {
+            updateStatus("QR scanner is unavailable: " + (e.localizedMessage ?: "unknown error"))
+        }
     }
 
     private fun showMedia(card: Int, ink: Int, muted: Int, blue: Int) {
@@ -963,7 +1044,22 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated Android callback retained for broad device compatibility.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_TREE && resultCode == RESULT_OK && data?.data != null) {
+        if (requestCode == com.google.zxing.integration.android.IntentIntegrator.REQUEST_CODE) {
+            val scan = com.google.zxing.integration.android.IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
+            val contents = scan?.contents
+            if (!contents.isNullOrBlank()) {
+                val parts = contents.split("|", limit = 2)
+                if (parts.size == 2 && parts[0] == "NEXORA" && parts[1].isNotBlank()) {
+                    pendingQrDeviceName = parts[1]
+                    withNearbyPermissions {
+                        ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
+                        discovered.clear()
+                        sharing?.startFinding() ?: updateStatus("Starting discovery. Scan the QR again in a moment.")
+                        updateStatus("QR accepted. Looking for " + parts[1] + " nearby…")
+                    }
+                } else Toast.makeText(this, "That is not a NEXORA connection code.", Toast.LENGTH_LONG).show()
+            }
+        } else if (requestCode == REQUEST_TREE && resultCode == RESULT_OK && data?.data != null) {
             val uri = data.data!!
             try {
                 val flags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
