@@ -122,6 +122,18 @@ class MainActivity : Activity() {
             withNearbyPermissions { discovered.clear(); rebuildPeerList(); sharing?.startFinding() ?: updateStatus("Starting service. Tap Find again.") }
         })
         content.addView(devices, bottom(12))
+        sendButton = button(if (selectedUris.isEmpty()) "CHOOSE FILES TO SEND" else "SEND " + selectedUris.size + " SELECTED FILE(S)", blue) {
+            if (selectedUris.isEmpty()) { activeTab = "Media"; render() }
+            else if (sharing == null) updateStatus("Connect to a nearby phone first.")
+            else {
+                sharing?.sendFiles(ArrayList(selectedUris))
+                selectedUris.clear()
+                sendButton.isEnabled = false
+                sendButton.text = "CHOOSE FILES TO SEND"
+            }
+        }
+        sendButton.isEnabled = selectedUris.isNotEmpty()
+        content.addView(sendButton, bottom(10))
         content.addView(button("STOP / DISCONNECT", 0xFF718096.toInt()) { sharing?.stopSharing(); discovered.clear(); rebuildPeerList(); updateStatus("Sharing stopped.") })
     }
 
