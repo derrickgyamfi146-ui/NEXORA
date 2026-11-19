@@ -1,63 +1,276 @@
 package com.nexora.share
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Uri
+import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.provider.MediaStore
+import com.google.android.gms.nearby.Nearby
+import com.google.android.gms.nearby.connection.*
 import androidx.core.app.NotificationCompat
+import java.io.File
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 
 class TransferKeepAliveService : Service() {
-    override fun onCreate() {
-        super.onCreate()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "NEXORA transfers",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Keeps nearby file sharing active while NEXORA is in the background."
+    interface Listener {
+        fun onStatus(message: String)
+        fun onPeerFound(endpointId: String, name: String)
+        fun onPeerLost(endpointId: String)
+        fun onConnectionRequest(endpointId: String, name: String, digits: String)
+        fun onConnected(endpointId: String)
+        fun onDisconnected(endpointId: String)
+        fun onTransferProgress(message: String)
+    }
+
+    inner class LocalBinder : Binder() {
+        fun service(): TransferKeepAliveService = this@TransferKeepAliveService
+    }
+
+    private val binder = LocalBinder()
+    private val client by lazy { Nearby.getConnectionsClient(this) }
+    private var listener: Listener? = null
+    private var connectedEndpoint: String? = null
+    private val openFiles = ConcurrentHashMap<Long, android.os.ParcelFileDescriptor>()
+    private val incomingFiles = ConcurrentHashMap<Long, Pair<Uri, String>>()
+    private val serviceId = "com.nexora.share"
+    private val strategy = Strategy.P2P_POINT_TO_POINT
+
+    fun setListener(value: Listener?) { listener = value }
+
+    fun startReceiving() {
+        promoteToForeground()
+        val options = AdvertisingOptions.Builder().setStrategy(strategy).build()
+        client.startAdvertising(deviceName(), serviceId, connectionCallback, options)
+            .addOnSuccessListener { status("Ready to receive. Ask the other phone to tap Send.") }
+            .addOnFailureListener { status("Could not become visible: ${it.localizedMessage}") }
+    }
+
+    fun startFinding() {
+        promoteToForeground()
+        val options = DiscoveryOptions.Builder().setStrategy(strategy).build()
+        client.startDiscovery(serviceId, discoveryCallback, options)
+            .addOnSuccessListener { status("Searching… Select the phone when it appears.") }
+            .addOnFailureListener { status("Could not search: ${it.localizedMessage}") }
+    }
+
+    fun connect(endpointId: String, name: String) {
+        status("Requesting connection to $name…")
+        client.requestConnection(deviceName(), endpointId, connectionCallback)
+            .addOnFailureListener { status("Connection request failed: ${it.localizedMessage}") }
+    }
+
+    fun accept(endpointId: String) {
+        client.acceptConnection(endpointId, payloadCallback)
+            .addOnFailureListener { status("Could not accept connection: ${it.localizedMessage}") }
+    }
+
+    fun reject(endpointId: String) {
+        client.rejectConnection(endpointId)
+        status("Connection rejected.")
+    }
+
+    fun sendFile(uri: Uri) {
+        val endpoint = connectedEndpoint
+        if (endpoint == null) {
+            status("Connect to a phone first.")
+            return
+        }
+        try {
+            val descriptor = contentResolver.openFileDescriptor(uri, "r")
+                ?: throw IOException("Could not open this file")
+            val name = queryDisplayName(uri) ?: "NEXORA-file"
+            val payload = Payload.fromFile(descriptor)
+            payload.setFileName(name)
+            openFiles[payload.id] = descriptor
+            status("Sending $name…")
+            client.sendPayload(endpoint, payload).addOnFailureListener {
+                openFiles.remove(payload.id)?.close()
+                status("Send failed: ${it.localizedMessage}")
             }
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        } catch (e: Exception) {
+            status("Could not send file: ${e.localizedMessage}")
         }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
+    fun stopSharing() {
+        client.stopAdvertising()
+        client.stopDiscovery()
+        client.stopAllEndpoints()
+        connectedEndpoint = null
+        openFiles.values.forEach { runCatching { it.close() } }
+        openFiles.clear()
+        incomingFiles.clear()
+        stopForegroundCompat()
+        stopSelf()
+        status("Stopped. You can start again.")
+    }
+
+    private fun deviceName(): String = Build.MODEL?.take(24) ?: "Android device"
+
+    private val discoveryCallback = object : EndpointDiscoveryCallback() {
+        override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
+            listener?.onPeerFound(endpointId, info.endpointName)
+            status("Found ${info.endpointName}. Tap its button to connect.")
+        }
+        override fun onEndpointLost(endpointId: String) {
+            listener?.onPeerLost(endpointId)
+        }
+    }
+
+    private val connectionCallback = object : ConnectionLifecycleCallback() {
+        override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
+            listener?.onConnectionRequest(endpointId, info.endpointName, info.authenticationDigits)
+        }
+        override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
+            if (result.status.isSuccess) {
+                connectedEndpoint = endpointId
+                client.stopDiscovery()
+                client.stopAdvertising()
+                listener?.onConnected(endpointId)
+                status("Connected securely. Choose a file to send.")
             } else {
-                @Suppress("DEPRECATION")
-                stopForeground(true)
+                status("Connection was not completed. Try again.")
             }
-            stopSelf()
-            return START_NOT_STICKY
+        }
+        override fun onDisconnected(endpointId: String) {
+            if (connectedEndpoint == endpointId) connectedEndpoint = null
+            listener?.onDisconnected(endpointId)
+            status("Device disconnected.")
+        }
+    }
+
+    private val payloadCallback = object : PayloadCallback() {
+        override fun onPayloadReceived(endpointId: String, payload: Payload) {
+            if (payload.type == Payload.Type.FILE) {
+                val filePayload = payload.asFile() ?: return
+                val fileUri = filePayload.asUri() ?: return
+                incomingFiles[payload.id] = Pair(fileUri, queryDisplayName(fileUri) ?: "NEXORA-received-file")
+            }
         }
 
-        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {
+            when (update.status) {
+                PayloadTransferUpdate.Status.IN_PROGRESS -> {
+                    val total = update.totalBytes
+                    val done = update.bytesTransferred
+                    val percent = if (total > 0) (done * 100 / total).toInt() else 0
+                    listener?.onTransferProgress("Transferring… $percent%")
+                }
+                PayloadTransferUpdate.Status.SUCCESS -> {
+                    openFiles.remove(update.payloadId)?.close()
+                    val incoming = incomingFiles.remove(update.payloadId)
+                    if (incoming != null) saveReceivedFile(incoming.first, incoming.second)
+                    else status("File sent successfully.")
+                }
+                PayloadTransferUpdate.Status.FAILURE -> {
+                    openFiles.remove(update.payloadId)?.close()
+                    incomingFiles.remove(update.payloadId)
+                    status("Transfer failed. Check both phones and try again.")
+                }
+                PayloadTransferUpdate.Status.CANCELED -> {
+                    openFiles.remove(update.payloadId)?.close()
+                    incomingFiles.remove(update.payloadId)
+                    status("Transfer canceled.")
+                }
+            }
+        }
+    }
+
+    private fun saveReceivedFile(sourceUri: Uri, suggestedName: String) {
+        Thread {
+            var destination: Uri? = null
+            try {
+                val safeName = suggestedName.substringAfterLast('/').ifBlank { "NEXORA-${System.currentTimeMillis()}" }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val values = ContentValues().apply {
+                        put(MediaStore.Downloads.DISPLAY_NAME, safeName)
+                        put(MediaStore.Downloads.MIME_TYPE, contentResolver.getType(sourceUri) ?: "application/octet-stream")
+                        put(MediaStore.Downloads.IS_PENDING, 1)
+                    }
+                    destination = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                        ?: throw IOException("Could not create the Downloads file")
+                    contentResolver.openInputStream(sourceUri).use { input ->
+                        if (input == null) throw IOException("Could not read received file")
+                        contentResolver.openOutputStream(destination!!).use { output ->
+                            if (output == null) throw IOException("Could not write to Downloads")
+                            input.copyTo(output, 1024 * 1024)
+                        }
+                    }
+                    val ready = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+                    contentResolver.update(destination!!, ready, null, null)
+                } else {
+                    val saved = File(getExternalFilesDir(null) ?: filesDir, safeName)
+                    contentResolver.openInputStream(sourceUri).use { input ->
+                        if (input == null) throw IOException("Could not read received file")
+                        saved.outputStream().use { output -> input.copyTo(output, 1024 * 1024) }
+                    }
+                }
+                contentResolver.delete(sourceUri, null, null)
+                status("Received and saved: $safeName")
+            } catch (e: Exception) {
+                destination?.let { runCatching { contentResolver.delete(it, null, null) } }
+                status("Received, but saving failed: ${e.localizedMessage}")
+            }
+        }.start()
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) return cursor.getString(index)
+            }
+        }
+        return uri.lastPathSegment
+    }
+
+    private fun status(message: String) { listener?.onStatus(message) }
+
+    private fun promoteToForeground() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(CHANNEL_ID, "NEXORA transfers", NotificationManager.IMPORTANCE_LOW)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        }
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setContentTitle("NEXORA is active")
-            .setContentText("Nearby sharing is ready or a transfer is in progress.")
+            .setContentText("Nearby sharing is running. Transfers can continue in the background.")
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            )
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         } else {
             startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
+        else @Suppress("DEPRECATION") stopForeground(true)
+    }
+
+    override fun onBind(intent: Intent?): IBinder = binder
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopSharing()
+            return START_NOT_STICKY
         }
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onDestroy() {
+        openFiles.values.forEach { runCatching { it.close() } }
+        super.onDestroy()
+    }
 
     companion object {
         const val ACTION_STOP = "com.nexora.share.STOP_TRANSFER_SERVICE"
