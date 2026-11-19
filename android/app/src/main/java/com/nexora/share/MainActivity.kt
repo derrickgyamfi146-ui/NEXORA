@@ -1125,9 +1125,20 @@ class MainActivity : Activity() {
                     displayedCount++
                     val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) readableSize(cursor.getLong(sizeIndex)) else "Folder"
                     val folder = mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR
+                    val fileIcon = when {
+                        folder -> "📁"
+                        mime.startsWith("image/") -> "🖼️"
+                        mime.startsWith("video/") -> "🎬"
+                        mime.startsWith("audio/") -> "🎵"
+                        mime.contains("pdf") || name.endsWith(".pdf", true) -> "📕"
+                        name.endsWith(".apk", true) -> "📦"
+                        mime.contains("zip") || name.endsWith(".rar", true) || name.endsWith(".7z", true) -> "🗜️"
+                        mime.contains("text") || name.endsWith(".doc", true) || name.endsWith(".docx", true) -> "📝"
+                        else -> "📄"
+                    }
                     val itemUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
-                    val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(7), dp(8), dp(7), dp(8)); background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 12) }
-                    row.addView(TextView(this).apply { text = (if (folder) "📁  " else "📄  ") + name + "\n" + size; textSize = 12f; setTextColor(ink) }, LinearLayout.LayoutParams(0, -2, 1f))
+                    val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10), dp(10), dp(8), dp(10)); background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 13) }
+                    row.addView(TextView(this).apply { text = fileIcon + "  " + name + "\n" + size; textSize = 12f; setTextColor(ink); maxLines = 2 }, LinearLayout.LayoutParams(0, -2, 1f))
                     row.addView(button(if (folder) "OPEN" else "ADD", if (folder) 0xFF16A58A.toInt() else 0xFF168FE5.toInt()) {
                         if (folder) {
                             treeDocumentStack.add(currentTreeDocumentId ?: documentId)
