@@ -250,7 +250,7 @@ class MainActivity : Activity() {
             val selected = when (item) {
                 "Apps" -> activeTab == "Media"
                 "History" -> activeTab == "Sent" || activeTab == "Received"
-                "Send" -> activeTab == "Home"
+                "Send" -> activeTab == "Send"
                 "Receive" -> activeTab == "Home"
                 else -> activeTab == "Settings"
             }
@@ -265,7 +265,7 @@ class MainActivity : Activity() {
                     when (item) {
                         "Apps" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
                         "History" -> { activeTab = "Sent"; render() }
-                        "Send" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
+                        "Send" -> { activeTab = "Send"; render() }
                         "Receive" -> { activeTab = "Home"; render(); withNearbyPermissions { ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, TransferKeepAliveService::class.java)); sharing?.startReceiving() ?: updateStatus("Starting receive mode. Try again in a moment.") } }
                         else -> { activeTab = "Settings"; render() }
                     }
@@ -281,6 +281,7 @@ class MainActivity : Activity() {
             "Sent" -> showSent(card, ink, muted)
             "Received" -> showReceived(card, ink, muted)
             "Transfers" -> showTransfers(card, ink, muted)
+            "Send" -> showSend(card, ink, muted, blue)
             "Settings" -> showSettings(card, ink, muted, blue)
         }
         content.alpha = 0f
@@ -385,6 +386,86 @@ class MainActivity : Activity() {
         }
         content.addView(sendButton, bottom(8))
         content.addView(button("STOP SHARING", 0xFF62778A.toInt()) { sharing?.stopSharing(); discovered.clear(); connectedPeers.clear(); rebuildPeerList(); updateStatus("Sharing stopped.") })
+    }
+
+    private fun showSend(card: Int, ink: Int, muted: Int, blue: Int) {
+        content.addView(TextView(this).apply {
+            text = "Send files"; textSize = 25f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(5))
+        })
+        content.addView(TextView(this).apply {
+            text = "Choose first, then connect. NEXORA sends when a phone accepts."
+            textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(12))
+        })
+        val selection = panel(card)
+        selection.addView(label("YOUR SELECTION", 0xFF7357E8.toInt()))
+        selection.addView(TextView(this).apply {
+            text = if (selectedUris.isEmpty()) "No files selected yet." else selectedUris.size.toString() + " file(s) ready to send"
+            textSize = 16f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink); setPadding(0, dp(8), 0, dp(8))
+        })
+        selectedUris.take(8).forEach { uri ->
+            val name = runCatching {
+                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) c.getString(0) else null
+                }
+            }.getOrNull() ?: (uri.lastPathSegment ?: "Selected file")
+            selection.addView(TextView(this).apply {
+                text = "•  " + name; textSize = 12f; setTextColor(muted)
+                maxLines = 2; setPadding(0, dp(3), 0, dp(3))
+            })
+        }
+        if (selectedUris.size > 8) selection.addView(TextView(this).apply {
+            text = "and " + (selectedUris.size - 8) + " more…"; textSize = 11f; setTextColor(muted)
+        })
+        selection.addView(button("＋  CHOOSE MORE FILES", 0xFF7357E8.toInt()) { openPicker("*/*") }, bottom(7))
+        selection.addView(button("CLEAR SELECTION", 0xFF64748B.toInt()) { selectedUris.clear(); render() })
+        content.addView(selection, bottom(12))
+        val connect = panel(card)
+        connect.addView(label("CONNECT TO A PHONE", 0xFF168FE5.toInt()))
+        connect.addView(TextView(this).apply {
+            text = if (connectedPeers.isEmpty()) "No connected phones yet. Find nearby devices or scan a QR code." else connectedPeers.size.toString() + " phone(s) connected and ready."
+            textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink); setPadding(0, dp(8), 0, dp(10))
+        })
+        connect.addView(button("⌁  FIND NEARBY PHONES", 0xFF168FE5.toInt()) {
+            withNearbyPermissions {
+                ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, TransferKeepAliveService::class.java))
+                sharing?.startFinding() ?: updateStatus("NEXORA is starting. Tap Find nearby again in a moment.")
+                updateStatus("Searching for nearby phones…")
+            }
+        }, bottom(7))
+        val qrRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        qrRow.addView(button("SCAN QR", 0xFF7357E8.toInt()) { scanQrCode() },
+            LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
+        qrRow.addView(button("MY QR CODE", 0xFFE69A35.toInt()) { showQrCode() },
+            LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
+        connect.addView(qrRow)
+        peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        connect.addView(peerList, bottom(8))
+        rebuildPeerList()
+        content.addView(connect, bottom(12))
+        sendButton = button(if (selectedUris.isEmpty()) "CHOOSE FILES FIRST" else "SEND " + selectedUris.size + " FILE(S)", 0xFF16A58A.toInt()) {
+            if (selectedUris.isEmpty()) openPicker("*/*")
+            else if (sharing == null) updateStatus("NEXORA is preparing the sharing service. Try again in a moment.")
+            else {
+                rememberSentFiles(selectedUris)
+                sharing?.sendFiles(ArrayList(selectedUris))
+                selectedUris.clear()
+                updateStatus("Files queued. Connect to a phone and NEXORA will send automatically.")
+                render()
+            }
+        }
+        content.addView(sendButton, bottom(10))
+        val live = panel(card)
+        live.addView(label("LIVE TRANSFER", 0xFF16A58A.toInt()))
+        live.addView(TextView(this).apply {
+            text = latestStatus; textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink); setPadding(0, dp(8), 0, dp(4))
+        })
+        live.addView(button("OPEN TRANSFER CENTRE", 0xFF7357E8.toInt()) { activeTab = "Transfers"; render() })
+        content.addView(live)
     }
 
     private fun showQrCode() {
@@ -505,10 +586,7 @@ class MainActivity : Activity() {
         mediaList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(mediaList)
         renderMediaRows(kind, ink, muted, blue)
-        content.addView(button("SEND SELECTED FILES", blue) {
-            if (selectedUris.isEmpty()) updateStatus("Select at least one item first.")
-            else { activeTab = "Home"; render(); updateStatus(selectedUris.size.toString() + " item(s) ready. Connect to a phone, then tap Send.") }
-        }, bottom(10))
+        content.addView(button("CONTINUE TO SEND  ·  " + selectedUris.size + " SELECTED", blue) { activeTab = "Send"; render() }, bottom(10))
     }
 
     private val mediaCache = HashMap<String, ArrayList<Pair<Uri, String>>>()
@@ -1305,15 +1383,8 @@ class MainActivity : Activity() {
             selectedUris.clear(); selectedUris.addAll(chosen)
             if (selectedUris.isEmpty()) updateStatus("No files selected.")
             else {
-                activeTab = "Home"; render()
-                updateStatus("${selectedUris.size} file(s) selected. Connect to a phone, then send.")
-                sendButton.text = "SEND ${selectedUris.size} SELECTED FILE(S)"
-                sendButton.isEnabled = true
-                sendButton.setOnClickListener {
-                    rememberSentFiles(selectedUris)
-                    sharing?.sendFiles(ArrayList(selectedUris)); selectedUris.clear()
-                    sendButton.isEnabled = true; sendButton.text = "CHOOSE FILES TO SEND"
-                }
+                activeTab = "Send"; render()
+                updateStatus("${selectedUris.size} file(s) selected. Find a nearby phone or connect by QR.")
             }
         }
     }
