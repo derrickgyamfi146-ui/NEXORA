@@ -39,12 +39,14 @@ class TransferKeepAliveService : Service() {
     private var listener: Listener? = null
     private var lastStatusMessage = "NEXORA is ready."
     private val connectedEndpoints = LinkedHashSet<String>()
+    private val endpointNames = ConcurrentHashMap<String, String>()
     private val pendingPayloadEndpoints = ConcurrentHashMap<Long, MutableSet<String>>()
     private var advertising = false
     private var discovering = false
     private val openFiles = ConcurrentHashMap<Long, android.os.ParcelFileDescriptor>()
     private val outgoingPayloadNames = ConcurrentHashMap<Long, String>()
     private val outgoingPayloadSuccesses = ConcurrentHashMap.newKeySet<Long>()
+    private val outgoingEndpointProgress = ConcurrentHashMap<Long, ConcurrentHashMap<String, Int>>()
     private val outgoingQueue = ArrayDeque<Uri>()
     private var sending = false
     private var outgoingSucceeded = 0
@@ -163,10 +165,12 @@ class TransferKeepAliveService : Service() {
                 status("Sending $name…")
                 pendingPayloadEndpoints[payload.id] = java.util.Collections.synchronizedSet(endpoints.toMutableSet())
                 outgoingPayloadSuccesses.remove(payload.id)
+                outgoingEndpointProgress[payload.id] = ConcurrentHashMap<String, Int>().apply { endpoints.forEach { put(it, 0) } }
                 client.sendPayload(endpoints, payload).addOnFailureListener {
                     pendingPayloadEndpoints.remove(payload.id)
                     outgoingPayloadNames.remove(payload.id)
                     outgoingPayloadSuccesses.remove(payload.id)
+                    outgoingEndpointProgress.remove(payload.id)
                     openFiles.remove(payload.id)?.close()
                     currentOutgoingPayloadId = null
                     sending = false
@@ -195,6 +199,8 @@ class TransferKeepAliveService : Service() {
         openFiles.clear()
         outgoingPayloadNames.clear()
         outgoingPayloadSuccesses.clear()
+        outgoingEndpointProgress.clear()
+        endpointNames.clear()
         outgoingQueue.clear()
         sending = false
         currentOutgoingPayloadId = null
@@ -211,6 +217,7 @@ class TransferKeepAliveService : Service() {
 
     private val discoveryCallback = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
+            endpointNames[endpointId] = info.endpointName
             listener?.onPeerFound(endpointId, info.endpointName)
             status("Found ${info.endpointName}. Tap its button to connect.")
         }
@@ -221,6 +228,7 @@ class TransferKeepAliveService : Service() {
 
     private val connectionCallback = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
+            endpointNames[endpointId] = info.endpointName
             listener?.onConnectionRequest(endpointId, info.endpointName, info.authenticationDigits)
         }
         override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
@@ -239,6 +247,7 @@ class TransferKeepAliveService : Service() {
             if (activeId != null) {
                 val pending = pendingPayloadEndpoints[activeId]
                 if (pending != null) synchronized(pending) {
+                    outgoingEndpointProgress[activeId]?.set(endpointId, -1)
                     pending.remove(endpointId)
                     if (pending.isEmpty()) {
                         pendingPayloadEndpoints.remove(activeId)
@@ -271,7 +280,14 @@ class TransferKeepAliveService : Service() {
                         val elapsedSeconds = ((now - transferStartedAt).coerceAtLeast(1)) / 1000.0
                         val speed = if (elapsedSeconds > 0) (done / elapsedSeconds).toLong() else 0L
                         val remaining = if (speed > 0 && total > done) (total - done) / speed else 0L
-                        listener?.onTransferProgress("Sending… $percent% · ${formatBytes(speed)}/s · ${formatTime(remaining)} left")
+                        outgoingEndpointProgress[update.payloadId]?.set(endpointId, percent)
+                        val peerProgress = outgoingEndpointProgress[update.payloadId]?.entries
+                            ?.sortedBy { endpointNames[it.key] ?: it.key }
+                            ?.joinToString(" · ") { entry ->
+                                val peer = endpointNames[entry.key] ?: "Phone"
+                                peer + " " + if (entry.value < 0) "failed" else if (entry.value >= 100) "done" else entry.value.toString() + "%"
+                            }.orEmpty()
+                        listener?.onTransferProgress("Sending · $peerProgress · ${formatBytes(speed)}/s · ${formatTime(remaining)} left")
                         lastProgressAt = now
                     } else {
                         listener?.onTransferProgress("Receiving… $percent%")
@@ -282,6 +298,7 @@ class TransferKeepAliveService : Service() {
                     if (pending != null) {
                         synchronized(pending) {
                             outgoingPayloadSuccesses.add(update.payloadId)
+                            outgoingEndpointProgress[update.payloadId]?.set(endpointId, 100)
                             pending.remove(endpointId)
                             if (pending.isEmpty()) {
                                 pendingPayloadEndpoints.remove(update.payloadId)
@@ -297,6 +314,7 @@ class TransferKeepAliveService : Service() {
                     val pending = pendingPayloadEndpoints[update.payloadId]
                     if (pending != null) {
                         synchronized(pending) {
+                            outgoingEndpointProgress[update.payloadId]?.set(endpointId, -1)
                             pending.remove(endpointId)
                             status("One phone could not receive the file.")
                             if (pending.isEmpty()) {
@@ -315,6 +333,7 @@ class TransferKeepAliveService : Service() {
                     val pending = pendingPayloadEndpoints[update.payloadId]
                     if (pending != null) {
                         synchronized(pending) {
+                            outgoingEndpointProgress[update.payloadId]?.set(endpointId, -1)
                             pending.remove(endpointId)
                             if (pending.isEmpty()) {
                                 pendingPayloadEndpoints.remove(update.payloadId)
@@ -330,6 +349,7 @@ class TransferKeepAliveService : Service() {
     private fun finalizeOutgoingPayload(payloadId: Long, fallbackMessage: String) {
         val sentName = outgoingPayloadNames.remove(payloadId) ?: "File"
         val hadSuccess = outgoingPayloadSuccesses.remove(payloadId)
+        outgoingEndpointProgress.remove(payloadId)
         openFiles.remove(payloadId)?.let { runCatching { it.close() } }
         if (currentOutgoingPayloadId == payloadId) {
             currentOutgoingPayloadId = null
