@@ -1277,7 +1277,11 @@ class MainActivity : Activity() {
                     val id = cursor.getLong(0); val name = cursor.getString(1) ?: "Received file"
                     val mime = cursor.getString(2) ?: "*/*"; val size = readableSize(cursor.getLong(3))
                     val uri = android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
-                    val row = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, dp(8)) }
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(12), dp(10), dp(12), dp(10))
+                        background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 14)
+                    }
                     row.addView(TextView(this).apply { text = name + "\n" + size; textSize = 12f; setTextColor(if (darkMode) -1 else 0xFF14213D.toInt()) })
                     val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                     val isAppBundleBase = name.startsWith("NEXORA_APP_") && name.endsWith("_BASE.apk", true)
