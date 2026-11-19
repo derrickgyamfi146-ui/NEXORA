@@ -46,6 +46,8 @@ class TransferKeepAliveService : Service() {
     private val outgoingPayloadNames = ConcurrentHashMap<Long, String>()
     private val outgoingQueue = ArrayDeque<Uri>()
     private var sending = false
+    private var outgoingSucceeded = 0
+    private var outgoingFailed = 0
     private var currentOutgoingPayloadId: Long? = null
     private var transferStartedAt = 0L
     private var lastProgressAt = 0L
@@ -116,6 +118,10 @@ class TransferKeepAliveService : Service() {
     @Synchronized
     fun sendFiles(uris: List<Uri>) {
         if (uris.isEmpty()) { status("Choose at least one file."); return }
+        if (!sending && outgoingQueue.isEmpty()) {
+            outgoingSucceeded = 0
+            outgoingFailed = 0
+        }
         outgoingQueue.addAll(uris)
         status("${outgoingQueue.size} file(s) queued. Starting transfer…")
         sendNextFile()
@@ -135,7 +141,7 @@ class TransferKeepAliveService : Service() {
             if (uri == null) {
                 sending = false
                 currentOutgoingPayloadId = null
-                status("All selected files have been sent.")
+                status("Transfer queue finished: $outgoingSucceeded sent, $outgoingFailed not sent.")
                 return
             }
             var descriptor: android.os.ParcelFileDescriptor? = null
@@ -161,12 +167,14 @@ class TransferKeepAliveService : Service() {
                     openFiles.remove(payload.id)?.close()
                     currentOutgoingPayloadId = null
                     sending = false
+                    outgoingFailed++
                     status("Could not start $name: ${it.localizedMessage}. Trying the next file…")
                     sendNextFile()
                 }
                 return
             } catch (e: Exception) {
                 runCatching { descriptor?.close() }
+                outgoingFailed++
                 status("Could not send this file: ${e.localizedMessage}. Skipping to the next file…")
             }
         }
@@ -282,6 +290,7 @@ class TransferKeepAliveService : Service() {
                                 if (currentOutgoingPayloadId == update.payloadId) {
                                     currentOutgoingPayloadId = null
                                     sending = false
+                                    outgoingSucceeded++
                                     status("Sent: $sentName")
                                     sendNextFile()
                                 }
@@ -305,6 +314,7 @@ class TransferKeepAliveService : Service() {
                                 if (currentOutgoingPayloadId == update.payloadId) {
                                     currentOutgoingPayloadId = null
                                     sending = false
+                                    outgoingFailed++
                                     status("Transfer failed for all remaining phones. Continuing the queue…")
                                     sendNextFile()
                                 }
