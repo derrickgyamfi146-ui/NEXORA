@@ -65,7 +65,7 @@ class MainActivity : Activity() {
         override fun onTransferProgress(message: String) { runOnUiThread { updateStatus(message) } }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); render(); refreshReceivedFiles() }
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); darkMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("dark_mode", false); render(); refreshReceivedFiles() }
     override fun onStart() { super.onStart(); bindService(Intent(this, TransferKeepAliveService::class.java), serviceConnection, BIND_AUTO_CREATE) }
     override fun onStop() {
         if (bound) { sharing?.setListener(null); unbindService(serviceConnection); bound = false }
@@ -173,13 +173,13 @@ class MainActivity : Activity() {
     private fun openMediaLibrary(kind: String) {
         mediaCategory = kind
         mediaSearch = ""
-        val permission = when (kind) {
-            "Photos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
-            "Videos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
-            else -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+        val permissions = when (kind) {
+            "Photos" -> if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_IMAGES) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            "Videos" -> if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            else -> if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_AUDIO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) render()
-        else requestPermissions(arrayOf(permission), REQUEST_MEDIA)
+        val missing = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isEmpty()) render() else requestPermissions(missing.toTypedArray(), REQUEST_MEDIA)
     }
 
     private fun renderMediaLibrary(kind: String, ink: Int, muted: Int, blue: Int) {
@@ -200,7 +200,7 @@ class MainActivity : Activity() {
         mediaList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(mediaList)
         renderMediaRows(kind, ink, muted, blue)
-        content.addView(button("SEND SELECTED (" + selectedUris.size + ")", blue) {
+        content.addView(button("SEND SELECTED FILES", blue) {
             if (selectedUris.isEmpty()) updateStatus("Select at least one item first.")
             else { activeTab = "Home"; render(); updateStatus(selectedUris.size.toString() + " item(s) ready. Connect to a phone, then tap Send.") }
         }, bottom(10))
@@ -271,7 +271,7 @@ class MainActivity : Activity() {
     private fun showSettings(card: Int, ink: Int, muted: Int, blue: Int) {
         content.addView(TextView(this).apply { text = "Preferences"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
         val appearance = panel(card); appearance.addView(label("APPEARANCE", muted))
-        appearance.addView(button(if (darkMode) "Switch to light theme" else "Switch to dark theme", blue) { darkMode = !darkMode; render() })
+        appearance.addView(button(if (darkMode) "Switch to light theme" else "Switch to dark theme", blue) { darkMode = !darkMode; getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply(); render() })
         content.addView(appearance, bottom(10))
         val prefs = panel(card); prefs.addView(label("TRANSFER & STORAGE", muted))
         listOf("Save location\nDownload/NEXORA", "Connection\nNearby Connections", "Transfer mode\nDirect device-to-device", "Mobile data\nNot required for local transfers", "Privacy\nFiles are selected by you").forEach { value ->
