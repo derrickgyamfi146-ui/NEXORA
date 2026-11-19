@@ -37,6 +37,7 @@ class TransferKeepAliveService : Service() {
     private val binder = LocalBinder()
     private val client by lazy { Nearby.getConnectionsClient(this) }
     private var listener: Listener? = null
+    private var lastStatusMessage = "NEXORA is ready."
     private var connectedEndpoint: String? = null
     private var advertising = false
     private var discovering = false
@@ -50,7 +51,7 @@ class TransferKeepAliveService : Service() {
     private val serviceId = "com.nexora.share"
     private val strategy = Strategy.P2P_POINT_TO_POINT
 
-    fun setListener(value: Listener?) { listener = value }
+    fun setListener(value: Listener?) { listener = value; value?.onStatus(lastStatusMessage) }
 
     @Synchronized
     fun startReceiving() {
@@ -345,7 +346,7 @@ class TransferKeepAliveService : Service() {
         return uri.lastPathSegment
     }
 
-    private fun status(message: String) { listener?.onStatus(message) }
+    private fun status(message: String) { lastStatusMessage = message; listener?.onStatus(message) }
 
     private fun promoteToForeground() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
