@@ -206,11 +206,26 @@ class MainActivity : Activity() {
         header.addView(TextView(this).apply {
             text = "●  PRIVATE & LOCAL"; textSize = 9f; letterSpacing = .05f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(if (darkMode) 0xFF72E4C0.toInt() else 0xFF168A70.toInt())
         })
-        header.addView(button("⇧ Transfers", 0xFF7357E8.toInt()) { activeTab = "Transfers"; render() },
-            LinearLayout.LayoutParams(-2, dp(38)).apply { leftMargin = dp(8) })
         root.addView(header)
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(17), dp(8), dp(17), dp(18)) }
-        root.addView(ScrollView(this).apply { isFillViewport = true; clipToPadding = false; addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        val contentFrame = android.widget.FrameLayout(this)
+        contentFrame.addView(ScrollView(this).apply { isFillViewport = true; clipToPadding = false; addView(content) },
+            android.widget.FrameLayout.LayoutParams(-1, -1))
+        val transferFab = TextView(this).apply {
+            text = "⇧"
+            textSize = 24f
+            gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1)
+            background = rounded(0xFF7357E8.toInt(), 28)
+            elevation = dp(10).toFloat()
+            contentDescription = "Open transfer centre"
+            setOnClickListener { animatePress(this); activeTab = "Transfers"; render() }
+        }
+        contentFrame.addView(transferFab, android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.END).apply {
+            rightMargin = dp(18); bottomMargin = dp(16)
+        })
+        root.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
         val nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(5), dp(6), dp(5), dp(6))
             background = rounded(if (darkMode) 0xFF10243A.toInt() else 0xFFFFFFFF.toInt(), 20); elevation = dp(9).toFloat()
@@ -761,6 +776,7 @@ class MainActivity : Activity() {
     private var selectedTreeUri: Uri? = null
     private var currentTreeDocumentId: String? = null
     private val treeDocumentStack = ArrayList<String>()
+    private var sortTreeBySize = false
 
     private fun showFiles(card: Int, ink: Int, muted: Int, blue: Int) {
         content.addView(TextView(this).apply { text = "File manager"; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(5)) })
@@ -807,12 +823,17 @@ class MainActivity : Activity() {
         if (treeDocumentStack.isNotEmpty()) section.addView(button("← PARENT FOLDER", 0xFF64748B.toInt()) {
             currentTreeDocumentId = treeDocumentStack.removeAt(treeDocumentStack.lastIndex); render()
         }, bottom(6))
+        section.addView(button(if (sortTreeBySize) "SORT: NAME A-Z" else "SORT: LARGEST FIRST", 0xFF7357E8.toInt()) {
+            sortTreeBySize = !sortTreeBySize
+            render()
+        }, bottom(7))
         val children = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         section.addView(children)
         val childUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId)
         val projection = arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID, android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME, android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE, android.provider.DocumentsContract.Document.COLUMN_SIZE)
         try {
-            contentResolver.query(childUri, projection, null, null, android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME + " ASC")?.use { cursor ->
+            contentResolver.query(childUri, projection, null, null,
+                if (sortTreeBySize) android.provider.DocumentsContract.Document.COLUMN_SIZE + " DESC" else android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME + " ASC")?.use { cursor ->
                 if (cursor.count == 0) children.addView(TextView(this).apply { text = "This folder is empty."; textSize = 12f; setTextColor(muted); setPadding(0, dp(10), 0, dp(10)) })
                 while (cursor.moveToNext()) {
                     val idIndex = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID)
