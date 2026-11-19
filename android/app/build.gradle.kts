@@ -14,7 +14,7 @@ android {
         applicationId = "com.nexora.share"
         minSdk = 24
         targetSdk = 35
-        versionCode = 60
+        versionCode = 61
         versionName = "0.6.6"
     }
 
