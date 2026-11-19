@@ -1190,8 +1190,8 @@ class MainActivity : Activity() {
                     children.addView(row, bottom(5))
                 }
             } ?: children.addView(TextView(this).apply { text = "Could not read this folder."; textSize = 12f; setTextColor(muted) })
-            if (displayedCount == 0 && folderSearch.isNotBlank()) children.addView(TextView(this).apply {
-                text = "No matching files or folders found."
+            if (displayedCount == 0 && (folderSearch.isNotBlank() || treeCategoryFilter != null)) children.addView(TextView(this).apply {
+                text = "No files match the current search or category in this folder."
                 textSize = 12f
                 setTextColor(muted)
                 setPadding(dp(4), dp(12), dp(4), dp(12))
