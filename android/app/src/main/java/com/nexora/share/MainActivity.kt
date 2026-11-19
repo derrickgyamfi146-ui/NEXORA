@@ -453,7 +453,6 @@ class MainActivity : Activity() {
             if (selectedUris.isEmpty()) openPicker("*/*")
             else if (sharing == null) updateStatus("NEXORA is preparing the sharing service. Try again in a moment.")
             else {
-                rememberSentFiles(selectedUris)
                 sharing?.sendFiles(ArrayList(selectedUris))
                 selectedUris.clear()
                 updateStatus("Files queued. Connect to a phone and NEXORA will send automatically.")
@@ -1258,7 +1257,7 @@ class MainActivity : Activity() {
         transferStatusView?.text = message
         val lower = message.lowercase()
         transferStage = when {
-            lower.contains("all selected files") || lower.contains("file sent") || lower.contains("received and saved") -> 5
+            lower.contains("all selected files") || lower.startsWith("sent:") || lower.contains("file sent") || lower.contains("received and saved") -> 5
             lower.contains("sending") || lower.contains("receiving") -> 4
             lower.contains("connected") || lower.contains("requesting connection") -> 3
             lower.contains("searching") || lower.contains("found ") || lower.contains("visible") -> 2
