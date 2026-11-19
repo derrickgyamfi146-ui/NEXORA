@@ -663,12 +663,16 @@ class MainActivity : Activity() {
                     val row = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, dp(8)) }
                     row.addView(TextView(this).apply { text = name + "\n" + size; textSize = 12f; setTextColor(if (darkMode) -1 else 0xFF14213D.toInt()) })
                     val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                    actions.addView(button("Open", 0xFF4263EB.toInt()) {
+                    val isAppBundleBase = name.startsWith("NEXORA_APP_") && name.endsWith("_BASE.apk", true)
+                    val isAppBundleSplit = name.startsWith("NEXORA_APP_") && name.contains("_SPLIT_") && name.endsWith(".apk", true)
+                    val openLabel = if (isAppBundleBase) "Install app" else if (isAppBundleSplit) "App part" else "Open"
+                    actions.addView(button(openLabel, 0xFF4263EB.toInt()) {
                         try {
-                            val isAppBundlePart = name.startsWith("NEXORA_APP_") && name.endsWith("_BASE.apk", true)
                             val isApk = mime == "application/vnd.android.package-archive" || name.endsWith(".apk", ignoreCase = true)
-                            if (isAppBundlePart) {
+                            if (isAppBundleBase) {
                                 installReceivedApkGroup(name.removeSuffix("_BASE.apk") + "_")
+                            } else if (isAppBundleSplit) {
+                                Toast.makeText(this@MainActivity, "This is one part of an app. Tap Install app on its BASE file.", Toast.LENGTH_LONG).show()
                             } else if (isApk) {
                                 if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
                                     startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName)))
