@@ -1254,7 +1254,7 @@ nxEl("nxSend").onclick = async function(){
       nxRenderTransferDrawer();
       nxRenderHistory();
       nxChannel.send(JSON.stringify({type:"file-start",id,name:file.name,size:file.size,mime:file.type}));
-      const chunkSize=65536;
+      const chunkSize=48 * 1024;
       const started=Date.now();
       let sent=0;
       for(let offset=0;offset<file.size;offset+=chunkSize){
