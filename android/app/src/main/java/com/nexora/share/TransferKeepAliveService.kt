@@ -213,6 +213,21 @@ class TransferKeepAliveService : Service() {
         }
         override fun onDisconnected(endpointId: String) {
             synchronized(connectedEndpoints) { connectedEndpoints.remove(endpointId) }
+            val activeId = currentOutgoingPayloadId
+            if (activeId != null) {
+                val pending = pendingPayloadEndpoints[activeId]
+                if (pending != null) synchronized(pending) {
+                    pending.remove(endpointId)
+                    if (pending.isEmpty()) {
+                        pendingPayloadEndpoints.remove(activeId)
+                        openFiles.remove(activeId)?.close()
+                        currentOutgoingPayloadId = null
+                        sending = false
+                        status("A receiving phone disconnected. Continuing with the queue…")
+                        sendNextFile()
+                    }
+                }
+            }
             listener?.onDisconnected(endpointId)
             status("A phone disconnected. ${connectedEndpoints.size} phone(s) remain connected.")
         }
