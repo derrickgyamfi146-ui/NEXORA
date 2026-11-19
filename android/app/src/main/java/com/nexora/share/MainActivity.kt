@@ -374,7 +374,7 @@ class MainActivity : Activity() {
                     val mime = cursor.getString(2) ?: "*/*"; val size = readableSize(cursor.getLong(3))
                     val uri = android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
                     val row = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, dp(8)) }
-                    row.addView(TextView(this).apply { text = name + "\\n" + size; textSize = 12f; setTextColor(if (darkMode) -1 else 0xFF14213D.toInt()) })
+                    row.addView(TextView(this).apply { text = name + "\n" + size; textSize = 12f; setTextColor(if (darkMode) -1 else 0xFF14213D.toInt()) })
                     val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                     actions.addView(button("Open", 0xFF4263EB.toInt()) {
                         try { startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
