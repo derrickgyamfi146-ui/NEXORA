@@ -33,6 +33,11 @@ class MainActivity : Activity() {
     private var latestStatus = "Ready. Choose Send or Receive to begin."
     private var darkMode = false
     private var mediaCategory: String? = null
+    private var pendingSelectedSend = false
+    private var highSpeedMode = false
+    private var pendingServiceAction: ((TransferKeepAliveService) -> Unit)? = null
+    private var appSelectionButton: Button? = null
+    private val appIconCache = java.util.concurrent.ConcurrentHashMap<String, android.graphics.drawable.Drawable>()
     private lateinit var mediaList: LinearLayout
     private var mediaContinueButton: Button? = null
     private val mediaRows = ArrayList<Triple<Uri, String, Long>>()
@@ -50,6 +55,9 @@ class MainActivity : Activity() {
             bound = sharing != null
             sharing?.setListener(serviceListener)
             if (::sendButton.isInitialized) sendButton.isEnabled = true
+            val pending = pendingServiceAction
+            pendingServiceAction = null
+            if (pending != null && sharing != null) pending(sharing!!)
         }
         override fun onServiceDisconnected(name: ComponentName?) { sharing = null; bound = false }
     }
@@ -92,6 +100,15 @@ class MainActivity : Activity() {
                 connectedPeers.add(endpointId)
                 if (::peerList.isInitialized) rebuildPeerList()
                 if (::sendButton.isInitialized) sendButton.isEnabled = true
+                if (pendingSelectedSend && selectedUris.isNotEmpty()) {
+                    pendingSelectedSend = false
+                    val outgoing = ArrayList(selectedUris)
+                    rememberOutgoingUris(outgoing)
+                    sharing?.sendFiles(outgoing)
+                    selectedUris.clear()
+                    updateStatus("Connected. Sending your selected files…")
+                    if (::root.isInitialized) render()
+                }
             }
         }
         override fun onDisconnected(endpointId: String) {
@@ -107,6 +124,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         darkMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("dark_mode", true)
+        highSpeedMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("high_speed_mode", false)
         val savedTree = getSharedPreferences("nexora_file_manager", MODE_PRIVATE).getString("tree_uri", null)
         if (!savedTree.isNullOrBlank()) {
             runCatching {
@@ -178,9 +196,9 @@ class MainActivity : Activity() {
         val animations = ArrayList<android.animation.Animator>()
         letterViews.forEachIndexed { index, view ->
             animations.add(android.animation.ObjectAnimator.ofFloat(view, "translationY", -dp(72).toFloat(), 0f).apply {
-                duration = 520
-                startDelay = index * 105L
-                interpolator = android.view.animation.BounceInterpolator()
+                duration = 360
+                startDelay = index * 55L
+                interpolator = android.view.animation.DecelerateInterpolator()
             })
             animations.add(android.animation.ObjectAnimator.ofFloat(view, "alpha", 0f, 1f).apply {
                 duration = 260
@@ -194,16 +212,41 @@ class MainActivity : Activity() {
         set.playTogether(animations)
         set.start()
         android.os.Handler(mainLooper).postDelayed({
-            val flash = View(this).apply { setBackgroundColor(0xFFE9FCFF.toInt()); alpha = 0f }
-            screen.addView(flash, LinearLayout.LayoutParams(-1, -1))
-            flash.animate().alpha(1f).setDuration(110).withEndAction {
-                render()
-                refreshReceivedFiles()
-                root.alpha = 0f
-                root.animate().alpha(1f).setDuration(260).start()
-            }.start()
-        }, 2200)
+            render()
+            refreshReceivedFiles()
+            root.alpha = 0f
+            root.translationY = dp(6).toFloat()
+            root.animate().alpha(1f).translationY(0f).setDuration(220)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        }, 2500)
     }
+    private fun showExitConfirmation() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Exit NEXORA?")
+            .setMessage("Do you really want to leave NEXORA?")
+            .setNegativeButton("Stay", null)
+            .setPositiveButton("Continue") { _, _ ->
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Are you sure?")
+                    .setMessage("Close the app now?")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Exit") { _, _ -> finish() }
+                    .show()
+            }
+            .show()
+    }
+
+    override fun onBackPressed() {
+        when {
+            activeTab == "Settings" || activeTab == "Transfers" || activeTab == "Send" || activeTab == "Receive" || activeTab == "Files" || activeTab == "Sent" || activeTab == "Received" || activeTab == "Contacts" -> {
+                activeTab = "Home"; mediaCategory = "Apps"; render()
+            }
+            activeTab == "Media" && mediaCategory != "Apps" -> { mediaCategory = "Apps"; render() }
+            activeTab == "Media" -> { activeTab = "Home"; render() }
+            else -> showExitConfirmation()
+        }
+    }
+
     override fun onDestroy() {
         thumbnailExecutor.shutdownNow()
         super.onDestroy()
@@ -242,9 +285,16 @@ class MainActivity : Activity() {
         }
         val menuButton = TextView(this).apply {
             text = "☰"; textSize = 23f; gravity = Gravity.CENTER; setTextColor(-1)
-            setOnClickListener { showXenderMenu() }
+            contentDescription = "Open menu"
+            setOnClickListener { animatePress(this); showXenderMenu() }
         }
         header.addView(menuButton, LinearLayout.LayoutParams(dp(42), dp(42)))
+        val homeButton = TextView(this).apply {
+            text = "⌂"; textSize = 27f; gravity = Gravity.CENTER; setTextColor(0xFFFFD66B.toInt())
+            contentDescription = "Go to home"
+            setOnClickListener { animatePress(this); activeTab = "Home"; mediaCategory = "Apps"; render() }
+        }
+        header.addView(homeButton, LinearLayout.LayoutParams(dp(42), dp(42)))
         header.addView(TextView(this).apply {
             text = "NEXORA"; textSize = 21f; letterSpacing = .04f
             typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
@@ -512,10 +562,13 @@ class MainActivity : Activity() {
         ready.addView(TextView(this).apply {
             text = latestStatus; textSize = 12f; setTextColor(0xFFD4EDE5.toInt()); setPadding(0, 0, 0, dp(13))
         })
-        ready.addView(button("↓   START RECEIVING", 0xFF16A58A.toInt()) {
+        ready.addView(button("↓   START RECEIVING", 0xFF0B9B75.toInt()) {
             withNearbyPermissions {
-                ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, TransferKeepAliveService::class.java))
-                sharing?.startReceiving() ?: updateStatus("NEXORA is starting. Tap Start receiving again in a moment.")
+                runWithSharingService { service ->
+                    service.setHighSpeedMode(highSpeedMode)
+                    service.startReceiving()
+                    Toast.makeText(this@MainActivity, "This phone is ready to receive.", Toast.LENGTH_SHORT).show()
+                }
             }
         })
         content.addView(ready, bottom(13))
@@ -538,7 +591,13 @@ class MainActivity : Activity() {
         devices.addView(peerList)
         rebuildPeerList()
         content.addView(devices, bottom(13))
-        content.addView(button("OPEN TRANSFER CENTRE", 0xFF7357E8.toInt()) { activeTab = "Transfers"; render() }, bottom(8))
+        content.addView(button("HIGH-SPEED MODE  ·  " + if (highSpeedMode) "ON" else "OFF", 0xFFB38A2E.toInt()) {
+            highSpeedMode = !highSpeedMode
+            getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("high_speed_mode", highSpeedMode).apply()
+            runWithSharingService { it.setHighSpeedMode(highSpeedMode) }
+            render()
+        }, bottom(8))
+        content.addView(button("BACK TO HOME", 0xFF4C46A8.toInt()) { activeTab = "Home"; render() }, bottom(8))
         content.addView(button("STOP RECEIVING", 0xFF64748B.toInt()) {
             sharing?.stopSharing()
             discovered.clear(); connectedPeers.clear()
@@ -548,93 +607,67 @@ class MainActivity : Activity() {
     }
     private fun showSend(card: Int, ink: Int, muted: Int, blue: Int) {
         content.addView(TextView(this).apply {
-            text = "Send files"; textSize = 25f
+            text = "Ready to send"; textSize = 25f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(5))
-        })
-        content.addView(TextView(this).apply {
-            text = "Choose first, then connect. NEXORA sends when a phone accepts."
-            textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(12))
+            setTextColor(ink); setPadding(dp(2), dp(12), dp(2), dp(6))
         })
         val selection = panel(card)
-        selection.addView(label("YOUR SELECTION", 0xFF7357E8.toInt()))
+        selection.addView(label("SELECTED ITEMS", 0xFFFFD66B.toInt()))
         selection.addView(TextView(this).apply {
-            text = if (selectedUris.isEmpty()) "No files selected yet." else selectedUris.size.toString() + " file(s) ready to send"
-            textSize = 16f; typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(ink); setPadding(0, dp(8), 0, dp(8))
+            text = selectedUris.size.toString() + " item(s) ready"; textSize = 18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink)
+            setPadding(0, dp(8), 0, dp(8))
         })
-        selectedUris.take(8).forEach { uri ->
+        selectedUris.take(6).forEach { uri ->
             val name = runCatching {
-                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-                    if (c.moveToFirst()) c.getString(0) else null
+                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cur ->
+                    if (cur.moveToFirst()) cur.getString(0) else null
                 }
-            }.getOrNull() ?: (uri.lastPathSegment ?: "Selected file")
-            selection.addView(TextView(this).apply {
-                text = "•  " + name; textSize = 12f; setTextColor(muted)
-                maxLines = 2; setPadding(0, dp(3), 0, dp(3))
-            })
+            }.getOrNull() ?: (uri.lastPathSegment ?: "Selected item")
+            selection.addView(TextView(this).apply { text = "•  " + name; textSize = 12f; setTextColor(muted); maxLines = 1 })
         }
-        if (selectedUris.size > 8) selection.addView(TextView(this).apply {
-            text = "and " + (selectedUris.size - 8) + " more…"; textSize = 11f; setTextColor(muted)
-        })
-        selection.addView(button("＋  CHOOSE MORE FILES", 0xFF7357E8.toInt()) { openPicker("*/*") }, bottom(7))
-        selection.addView(button("CLEAR SELECTION", 0xFF64748B.toInt()) { selectedUris.clear(); render() })
-        content.addView(selection, bottom(12))
-        val connect = panel(card)
-        connect.addView(label("CONNECT TO A PHONE", 0xFF168FE5.toInt()))
-        connect.addView(TextView(this).apply {
-            text = if (connectedPeers.isEmpty()) "No connected phones yet. Find nearby devices or scan a QR code." else connectedPeers.size.toString() + " phone(s) connected and ready."
-            textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(ink); setPadding(0, dp(8), 0, dp(10))
-        })
-        connect.addView(button("⌁  FIND NEARBY PHONES", 0xFF168FE5.toInt()) {
-            withNearbyPermissions {
-                ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, TransferKeepAliveService::class.java))
-                sharing?.startFinding() ?: updateStatus("NEXORA is starting. Tap Find nearby again in a moment.")
-                updateStatus("Searching for nearby phones…")
-            }
-        }, bottom(7))
-        val qrRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        qrRow.addView(button("SCAN QR", 0xFF7357E8.toInt()) { scanQrCode() },
-            LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
-        qrRow.addView(button("MY QR CODE", 0xFFE69A35.toInt()) { showQrCode() },
-            LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
-        connect.addView(qrRow)
-        peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        connect.addView(peerList, bottom(8))
-        rebuildPeerList()
-        content.addView(connect, bottom(12))
-        sendButton = button(if (selectedUris.isEmpty()) "CHOOSE FILES FIRST" else "SEND " + selectedUris.size + " FILE(S)", 0xFF16A58A.toInt()) {
-            if (selectedUris.isEmpty()) openPicker("*/*")
-            else if (sharing == null) updateStatus("NEXORA is preparing the sharing service. Try again in a moment.")
-            else {
-                sharing?.sendFiles(ArrayList(selectedUris))
-                selectedUris.clear()
-                updateStatus("Files queued. Connect to a phone and NEXORA will send automatically.")
-                render()
-            }
+        content.addView(selection, bottom(14))
+        content.addView(button("CONNECT & SEND", 0xFF0B9B75.toInt()) {
+            if (selectedUris.isEmpty()) openPicker("*/*") else beginSendSelected()
+        }, bottom(8))
+        content.addView(button("CHOOSE MORE FILES", 0xFF4C46A8.toInt()) { openPicker("*/*") }, bottom(8))
+        content.addView(button("BACK TO HOME", 0xFFB38A2E.toInt()) { activeTab = "Home"; mediaCategory = "Apps"; render() })
+    }
+
+    private fun beginSendSelected() {
+        if (selectedUris.isEmpty()) { Toast.makeText(this, "Select something to send first.", Toast.LENGTH_SHORT).show(); return }
+        rememberOutgoingUris(ArrayList(selectedUris))
+        pendingSelectedSend = true
+        openSendQr()
+    }
+
+    private fun runWithSharingService(action: (TransferKeepAliveService) -> Unit) {
+        val current = sharing
+        if (current != null) { action(current); return }
+        pendingServiceAction = action
+        try {
+            ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
+            if (!bound) bindService(Intent(this, TransferKeepAliveService::class.java), serviceConnection, BIND_AUTO_CREATE)
+            updateStatus("Preparing nearby connection…")
+        } catch (e: Exception) {
+            pendingServiceAction = null
+            updateStatus("Could not start the sharing service: " + (e.localizedMessage ?: "unknown error"))
         }
-        content.addView(sendButton, bottom(10))
-        val live = panel(card)
-        live.addView(label("LIVE TRANSFER", 0xFF16A58A.toInt()))
-        live.addView(TextView(this).apply {
-            text = latestStatus; textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(ink); setPadding(0, dp(8), 0, dp(4))
-        })
-        live.addView(button("OPEN TRANSFER CENTRE", 0xFF7357E8.toInt()) { activeTab = "Transfers"; render() })
-        content.addView(live)
     }
 
     private fun openSendQr() {
         withNearbyPermissions {
-            ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
-            sharing?.startReceiving() ?: updateStatus("Starting connection…")
-            showQrCode()
+            runWithSharingService { service ->
+                service.setHighSpeedMode(highSpeedMode)
+                service.startReceiving()
+                showQrCode()
+            }
         }
     }
 
     private fun showQrCode() {
         val returnTab = activeTab
+        val dialog = android.app.Dialog(this)
         val deviceName = (getSharedPreferences("nexora_preferences", MODE_PRIVATE)
             .getString("device_name", Build.MODEL) ?: "Android device").trim().take(24)
         val payload = "NEXORA|$deviceName"
@@ -662,7 +695,7 @@ class MainActivity : Activity() {
                 textSize = 34f
                 setTextColor(-1)
                 gravity = Gravity.CENTER
-                setOnClickListener { activeTab = returnTab; render() }
+                setOnClickListener { dialog.dismiss(); activeTab = returnTab; render() }
             }, LinearLayout.LayoutParams(dp(42), dp(48)))
             top.addView(TextView(this).apply {
                 text = "Connect"
@@ -714,23 +747,42 @@ class MainActivity : Activity() {
                 textSize = 12f
                 gravity = Gravity.CENTER
                 setTextColor(0xFFB7C1C0.toInt())
-                setPadding(dp(12), dp(18), dp(12), dp(18))
+                setPadding(dp(12), dp(18), dp(12), dp(10))
             })
+            val speedMode = TextView(this).apply {
+                text = if (highSpeedMode) "⚡  HIGH-SPEED MODE  ·  ON" else "⚡  HIGH-SPEED MODE  ·  OFF"
+                textSize = 12f; gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(0xFFFFD66B.toInt())
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = rounded(0xFF26384A.toInt(), 14)
+                setOnClickListener {
+                    highSpeedMode = !highSpeedMode
+                    getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("high_speed_mode", highSpeedMode).apply()
+                    text = if (highSpeedMode) "⚡  HIGH-SPEED MODE  ·  ON" else "⚡  HIGH-SPEED MODE  ·  OFF"
+                    runWithSharingService { it.setHighSpeedMode(highSpeedMode) }
+                    Toast.makeText(this@MainActivity, if (highSpeedMode) "Enable high-speed mode on both phones." else "Standard compatibility mode selected.", Toast.LENGTH_LONG).show()
+                    animatePress(this)
+                }
+            }
+            page.addView(speedMode, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(7) })
 
             val spacer = View(this)
             page.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
-            page.addView(button("START RECEIVING", 0xFF009D70.toInt()) {
+            page.addView(button("START RECEIVING", 0xFF0B9B75.toInt()) {
                 withNearbyPermissions {
-                    ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
-                    sharing?.startReceiving() ?: updateStatus("Starting the sharing service. Tap Receive again in a moment.")
+                    runWithSharingService { service ->
+                        service.setHighSpeedMode(highSpeedMode)
+                        service.startReceiving()
+                        Toast.makeText(this@MainActivity, "This phone is ready to receive.", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(9) })
-            page.addView(button("CLOSE", 0xFF334155.toInt()) {
+            page.addView(button("CLOSE", 0xFF4C46A8.toInt()) {
+                dialog.dismiss()
                 activeTab = returnTab
                 render()
             }, LinearLayout.LayoutParams(-1, dp(44)))
-
-            val dialog = android.app.Dialog(this)
             dialog.setContentView(page)
             dialog.setCancelable(true)
             dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -786,6 +838,7 @@ class MainActivity : Activity() {
 
     private fun scanQrCode() {
         try {
+            Toast.makeText(this, "Opening NEXORA scanner…", Toast.LENGTH_SHORT).show()
             com.google.zxing.integration.android.IntentIntegrator(this)
                 .setDesiredBarcodeFormats(com.google.zxing.integration.android.IntentIntegrator.QR_CODE)
                 .setPrompt("Align the NEXORA QR code inside the square")
@@ -794,7 +847,8 @@ class MainActivity : Activity() {
                 .setOrientationLocked(true)
                 .initiateScan()
         } catch (e: Exception) {
-            updateStatus("QR scanner is unavailable: " + (e.localizedMessage ?: "unknown error"))
+            updateStatus("QR scanner could not open: " + (e.localizedMessage ?: "unknown error"))
+            Toast.makeText(this, "Scanner could not open. Check camera permission.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -846,7 +900,11 @@ class MainActivity : Activity() {
         mediaList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(mediaList)
         renderMediaRows(kind, ink, muted, blue)
-        mediaContinueButton = button("CONTINUE TO SEND  ·  " + selectedUris.size + " SELECTED", blue) { activeTab = "Send"; render() }
+        mediaContinueButton = button("SEND SELECTED  ·  " + selectedUris.size, 0xFF0B9B75.toInt()) {
+            if (selectedUris.isEmpty()) Toast.makeText(this, "Select at least one file first.", Toast.LENGTH_SHORT).show()
+            else beginSendSelected()
+        }
+        mediaContinueButton?.isEnabled = selectedUris.isNotEmpty()
         content.addView(mediaContinueButton, bottom(10))
     }
 
@@ -871,13 +929,16 @@ class MainActivity : Activity() {
                 Thread {
                     val loaded = ArrayList<Triple<Uri, String, Long>>()
                     val collection = when (kind) {
-                        "Photos" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-                        "Videos" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                        "Photos" -> if (Build.VERSION.SDK_INT >= 29) MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL) else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                        "Videos" -> if (Build.VERSION.SDK_INT >= 29) MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL) else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                        "Music" -> if (Build.VERSION.SDK_INT >= 29) MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL) else MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
                         else -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
                     }
                     try {
                         val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_ADDED)
-                        contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
+                        val cursor = contentResolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_ADDED + " DESC")
+                            ?: throw java.io.IOException("Android did not return a media list. Check media access and try again.")
+                        cursor.use {
                             val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                             val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                             val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
@@ -945,7 +1006,8 @@ class MainActivity : Activity() {
             row.addView(TextView(this).apply { text = if (isSelected) "✓" else "+"; textSize = 18f; gravity = Gravity.CENTER; setTextColor(if (isSelected) 0xFF16A085.toInt() else blue) })
             row.setOnClickListener {
                 if (selectedUris.contains(item.first)) selectedUris.remove(item.first) else selectedUris.add(item.first)
-                mediaContinueButton?.text = "CONTINUE TO SEND  ·  " + selectedUris.size + " SELECTED"
+                mediaContinueButton?.text = "SEND SELECTED  ·  " + selectedUris.size
+                mediaContinueButton?.isEnabled = selectedUris.isNotEmpty()
                 renderMediaRows(kind, ink, muted, blue)
             }
             if (useGrid) {
@@ -1584,8 +1646,10 @@ class MainActivity : Activity() {
     }
 
     private fun historyCard(entry: String, accent: Int, ink: Int): LinearLayout {
-        val timestamp = entry.substringBefore(" · ", "")
-        val filename = entry.substringAfter(" · ", entry)
+        val parts = entry.split(" · ", limit = 3)
+        val timestamp = parts.getOrNull(0).orEmpty()
+        val filename = parts.getOrNull(1) ?: entry
+        val fileUri = parts.getOrNull(2)?.let { runCatching { Uri.parse(it) }.getOrNull() }
         val extension = filename.substringAfterLast('.', "").lowercase()
         val glyph = when (extension) {
             "jpg", "jpeg", "png", "webp", "gif" -> "▧"
@@ -1601,14 +1665,43 @@ class MainActivity : Activity() {
             setPadding(dp(10), dp(9), dp(10), dp(9))
             background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 14)
         }
-        row.addView(TextView(this).apply {
-            text = glyph
-            textSize = 21f
-            gravity = Gravity.CENTER
-            setTextColor(accent)
-            background = rounded(if (darkMode) 0xFF29445B.toInt() else -1, 12)
-            setPadding(dp(9), dp(6), dp(9), dp(6))
-        })
+        val preview = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackground(rounded(if (darkMode) 0xFF29445B.toInt() else 0xFFE7EEF7.toInt(), 12))
+            setPadding(dp(5), dp(5), dp(5), dp(5))
+            contentDescription = filename
+        }
+        preview.setImageResource(android.R.drawable.ic_menu_gallery)
+        row.addView(preview, LinearLayout.LayoutParams(dp(52), dp(52)))
+        if (fileUri != null) {
+            thumbnailExecutor.execute {
+                var drawable: android.graphics.drawable.Drawable? = null
+                var bitmap: android.graphics.Bitmap? = null
+                try {
+                    if (filename.endsWith(".apk", true)) {
+                        val folder = java.io.File(cacheDir, "history_icons").apply { mkdirs() }
+                        val temp = java.io.File(folder, filename.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+                        contentResolver.openInputStream(fileUri)?.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
+                        val info = packageManager.getPackageArchiveInfo(temp.absolutePath, 0)
+                        val appInfo = info?.applicationInfo
+                        if (appInfo != null) {
+                            appInfo.sourceDir = temp.absolutePath
+                            appInfo.publicSourceDir = temp.absolutePath
+                            drawable = packageManager.getApplicationIcon(appInfo)
+                        }
+                    } else if (Build.VERSION.SDK_INT >= 29) {
+                        bitmap = contentResolver.loadThumbnail(fileUri, android.util.Size(96, 96), null)
+                    }
+                } catch (_: Exception) {}
+                runOnUiThread {
+                    if (preview.parent != null) {
+                        if (drawable != null) preview.setImageDrawable(drawable)
+                        else if (bitmap != null) preview.setImageBitmap(bitmap)
+                        else preview.setImageResource(if (filename.endsWith(".apk", true)) android.R.drawable.sym_def_app_icon else android.R.drawable.ic_menu_gallery)
+                    }
+                }
+            }
+        }
         val details = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), 0, 0, 0)
@@ -1646,12 +1739,27 @@ class MainActivity : Activity() {
         content.addView(box)
     }
 
+    private fun rememberOutgoingUris(uris: List<Uri>) {
+        val prefs = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
+        val edit = prefs.edit()
+        uris.forEach { uri ->
+            val name = runCatching {
+                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cur ->
+                    if (cur.moveToFirst()) cur.getString(0) else null
+                }
+            }.getOrNull() ?: (uri.lastPathSegment ?: "Shared file")
+            edit.putString("sent_uri_" + name.hashCode(), uri.toString())
+        }
+        edit.apply()
+    }
+
     private fun rememberSentFileName(name: String) {
         if (name.isBlank()) return
         val prefs = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
         val old = prefs.getString("sent_items", "") ?: ""
         val stamp = java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
-        val entry = stamp + " · " + name
+        val uri = prefs.getString("sent_uri_" + name.hashCode(), null)
+        val entry = stamp + " · " + name + (uri?.let { " · " + it } ?: "")
         prefs.edit().putString("sent_items", (listOf(entry) + old.split("\n").filter { it.isNotBlank() }).take(100).joinToString("\n")).apply()
     }
 
@@ -1750,8 +1858,12 @@ class MainActivity : Activity() {
             })
             sheet.addView(row, LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(7) })
         }
+        val goHome = button("⌂  HOME", 0xFFB38A2E.toInt()) {
+            dialog.dismiss(); activeTab = "Home"; mediaCategory = "Apps"; render()
+        }
+        sheet.addView(goHome, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(5) })
         val close = button("CLOSE", 0xFF168A83.toInt()) { dialog.dismiss() }
-        sheet.addView(close, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(5) })
+        sheet.addView(close, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(5) })
         dialog.setContentView(sheet)
         dialog.setCancelable(true)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -1841,9 +1953,16 @@ class MainActivity : Activity() {
     }
 
     private fun showSettings(card: Int, ink: Int, muted: Int, blue: Int) {
+        content.addView(button("‹  BACK TO HOME", 0xFF4C46A8.toInt()) { activeTab = "Home"; render() }, bottom(8))
         content.addView(TextView(this).apply { text = "Preferences"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
         val appearance = panel(card); appearance.addView(label("APPEARANCE", muted))
         appearance.addView(button(if (darkMode) "Switch to light theme" else "Switch to dark theme", blue) { darkMode = !darkMode; getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply(); render() })
+        appearance.addView(button("HIGH-SPEED MODE  ·  " + if (highSpeedMode) "ON" else "OFF", 0xFFB38A2E.toInt()) {
+            highSpeedMode = !highSpeedMode
+            getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("high_speed_mode", highSpeedMode).apply()
+            runWithSharingService { it.setHighSpeedMode(highSpeedMode) }
+            render()
+        }, bottom(8))
         content.addView(appearance, bottom(10))
         val prefs = panel(card); prefs.addView(label("TRANSFER & STORAGE", muted))
         listOf("Save location\nDownload/NEXORA", "Connection\nNearby Connections", "Transfer mode\nDirect device-to-device", "Mobile data\nNot required for local transfers", "Privacy\nFiles are selected by you").forEach { value ->
@@ -2132,10 +2251,12 @@ class MainActivity : Activity() {
                 if (parts.size == 2 && parts[0] == "NEXORA" && parts[1].isNotBlank()) {
                     pendingQrDeviceName = parts[1]
                     withNearbyPermissions {
-                        ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
                         discovered.clear()
-                        sharing?.startFinding() ?: updateStatus("Starting discovery. Scan the QR again in a moment.")
-                        updateStatus("QR accepted. Looking for " + parts[1] + " nearby…")
+                        runWithSharingService { service ->
+                            service.setHighSpeedMode(highSpeedMode)
+                            service.startFinding()
+                            updateStatus("QR accepted. Looking for " + parts[1] + " nearby…")
+                        }
                     }
                 } else Toast.makeText(this, "That is not a NEXORA connection code.", Toast.LENGTH_LONG).show()
             }
