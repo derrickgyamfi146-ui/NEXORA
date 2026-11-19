@@ -681,7 +681,7 @@ class MainActivity : Activity() {
                 appTile.addView(iconView, LinearLayout.LayoutParams(dp(48), dp(48)))
                 val appName = packageManager.getApplicationLabel(app).toString()
                 appTile.addView(TextView(this).apply {
-                    text = appName; textSize = 10f; maxLines = 2; gravity = Gravity.CENTER
+                    text = appName; textSize = 11f; maxLines = 2; gravity = Gravity.CENTER
                     typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(7), 0, dp(3))
                 }, LinearLayout.LayoutParams(-1, dp(36)))
                 appTile.addView(TextView(this).apply {
@@ -698,7 +698,8 @@ class MainActivity : Activity() {
             }
             list.addView(grid)
             }
-            addAppSection("POPULAR & LOCAL APPS", userApps, 0xFF7357E8.toInt())
+            addAppSection("QUICK ACCESS", userApps.take(6), 0xFFE69A35.toInt())
+            addAppSection("LOCAL APPS", userApps, 0xFF7357E8.toInt())
             addAppSection("SYSTEM APPS", systemApps, 0xFF168FE5.toInt())
         }
         search.addTextChangedListener(object : android.text.TextWatcher {
@@ -1013,7 +1014,11 @@ class MainActivity : Activity() {
     }
 
     private fun showSent(card: Int, ink: Int, muted: Int) {
-        content.addView(TextView(this).apply { text = "Sent activity"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
+        content.addView(TextView(this).apply { text = "History"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
+        val historyTabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        historyTabs.addView(button("SENT", if (activeTab == "Sent") 0xFF7357E8.toInt() else 0xFF334155.toInt()) { activeTab = "Sent"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(5) })
+        historyTabs.addView(button("RECEIVED", 0xFF16A58A.toInt()) { activeTab = "Received"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(5) })
+        content.addView(historyTabs, bottom(10))
         val box = panel(card)
         box.addView(label("FILES SELECTED TO SEND", muted))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -1036,7 +1041,11 @@ class MainActivity : Activity() {
         prefs.edit().putString("sent_items", (names + old.split("\n").filter { it.isNotBlank() }).take(100).joinToString("\n")).apply()
     }
     private fun showReceived(card: Int, ink: Int, muted: Int) {
-        content.addView(TextView(this).apply { text = "Received files"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
+        content.addView(TextView(this).apply { text = "History"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
+        val historyTabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        historyTabs.addView(button("SENT", 0xFF7357E8.toInt()) { activeTab = "Sent"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(5) })
+        historyTabs.addView(button("RECEIVED", 0xFF16A58A.toInt()) { activeTab = "Received"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(5) })
+        content.addView(historyTabs, bottom(10))
         val box = panel(card); box.addView(label("SAVED ON THIS PHONE", muted))
         receivedList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }; box.addView(receivedList)
         content.addView(box); refreshReceivedFiles()
