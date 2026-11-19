@@ -278,6 +278,19 @@ class MainActivity : Activity() {
             prefs.addView(TextView(this).apply { text = value; textSize = 12f; setTextColor(ink); setPadding(0, dp(10), 0, dp(4)) })
         }
         content.addView(prefs, bottom(10))
+        val currentName = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getString("device_name", Build.MODEL) ?: "Android device"
+        content.addView(button("Device name: " + currentName + "  ·  Change", blue) {
+            val field = EditText(this@MainActivity).apply { setText(currentName); setSelection(text.length); hint = "Phone name" }
+            android.app.AlertDialog.Builder(this@MainActivity).setTitle("Set NEXORA device name").setView(field)
+                .setPositiveButton("Save") { _, _ ->
+                    val value = field.text.toString().trim()
+                    if (value.isNotBlank()) {
+                        getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putString("device_name", value.take(24)).apply()
+                        Toast.makeText(this@MainActivity, "Device name saved. Restart discovery to use it.", Toast.LENGTH_LONG).show()
+                        render()
+                    }
+                }.setNegativeButton("Cancel", null).show()
+        }, bottom(10))
         content.addView(TextView(this).apply { text = "NEXORA • Version 0.1.0\nAdvanced features depend on Android permissions and device support."; textSize = 11f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(dp(8), dp(12), dp(8), dp(12)) })
     }
 
