@@ -2335,7 +2335,50 @@ class MainActivity : Activity() {
                         setPadding(dp(12), dp(10), dp(12), dp(10))
                         background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 14)
                     }
-                    row.addView(TextView(this).apply { text = name + "\n" + size; textSize = 12f; setTextColor(if (darkMode) -1 else 0xFF14213D.toInt()) })
+                    val fileHeading = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+                    val filePreview = ImageView(this).apply {
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        setBackground(rounded(if (darkMode) 0xFF29445B.toInt() else 0xFFE7EEF7.toInt(), 11))
+                        setImageResource(if (name.endsWith(".apk", true)) android.R.drawable.sym_def_app_icon else android.R.drawable.ic_menu_gallery)
+                    }
+                    fileHeading.addView(filePreview, LinearLayout.LayoutParams(dp(54), dp(54)))
+                    fileHeading.addView(TextView(this).apply {
+                        text = name + "\n" + size
+                        textSize = 12f
+                        maxLines = 2
+                        setTextColor(if (darkMode) -1 else 0xFF14213D.toInt())
+                        setPadding(dp(10), 0, 0, 0)
+                    }, LinearLayout.LayoutParams(0, -2, 1f))
+                    row.addView(fileHeading)
+                    thumbnailExecutor.execute {
+                        var icon: android.graphics.drawable.Drawable? = null
+                        var thumb: android.graphics.Bitmap? = null
+                        try {
+                            if (name.endsWith(".apk", true)) {
+                                val folder = java.io.File(cacheDir, "received_history_icons").apply { mkdirs() }
+                                val temp = java.io.File(folder, name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+                                contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
+                                val info = packageManager.getPackageArchiveInfo(temp.absolutePath, 0)
+                                val appInfo = info?.applicationInfo
+                                if (appInfo != null) {
+                                    appInfo.sourceDir = temp.absolutePath
+                                    appInfo.publicSourceDir = temp.absolutePath
+                                    icon = packageManager.getApplicationIcon(appInfo)
+                                }
+                            } else if (Build.VERSION.SDK_INT >= 29) {
+                                thumb = contentResolver.loadThumbnail(uri, android.util.Size(96, 96), null)
+                            }
+                        } catch (_: Exception) {}
+                        runOnUiThread {
+                            if (filePreview.parent != null) {
+                                if (icon != null) filePreview.setImageDrawable(icon)
+                                else if (thumb != null) filePreview.setImageBitmap(thumb)
+                            }
+                        }
+                    }
                     val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                     val isAppBundleBase = name.startsWith("NEXORA_APP_") && name.endsWith("_BASE.apk", true)
                     val isAppBundleSplit = name.startsWith("NEXORA_APP_") && name.contains("_SPLIT_") && name.endsWith(".apk", true)
