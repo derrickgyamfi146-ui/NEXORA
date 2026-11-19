@@ -25,6 +25,7 @@ class MainActivity : Activity() {
     private val selectedUris = ArrayList<Uri>()
     private val discovered = LinkedHashMap<String, String>()
     private var pendingQrDeviceName: String? = null
+    private var pendingNearbyAction: (() -> Unit)? = null
     private var sharing: TransferKeepAliveService? = null
     private var bound = false
     private var activeTab = "Home"
@@ -1016,7 +1017,10 @@ class MainActivity : Activity() {
         else if (Build.VERSION.SDK_INT >= 29) needed += Manifest.permission.ACCESS_FINE_LOCATION
         else needed += Manifest.permission.ACCESS_COARSE_LOCATION
         val missing = needed.distinct().filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isEmpty()) action() else requestPermissions(missing.toTypedArray(), REQUEST_NEARBY)
+        if (missing.isEmpty()) action() else {
+            pendingNearbyAction = action
+            requestPermissions(missing.toTypedArray(), REQUEST_NEARBY)
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -1028,8 +1032,15 @@ class MainActivity : Activity() {
             return
         }
         if (requestCode == REQUEST_NEARBY) {
-            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) Toast.makeText(this, "Permissions granted. Tap Send or Receive again.", Toast.LENGTH_LONG).show()
-            else updateStatus("Nearby permissions are needed to connect to phones.")
+            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                val resume = pendingNearbyAction
+                pendingNearbyAction = null
+                if (resume != null) resume()
+                else Toast.makeText(this, "Permissions granted.", Toast.LENGTH_SHORT).show()
+            } else {
+                pendingNearbyAction = null
+                updateStatus("Nearby permissions are needed to connect to phones.")
+            }
         }
     }
 
