@@ -178,7 +178,10 @@ class TransferKeepAliveService : Service() {
         status("Stopped. You can start again.")
     }
 
-    private fun deviceName(): String = Build.MODEL?.take(24) ?: "Android device"
+    private fun deviceName(): String {
+        val configured = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getString("device_name", null)?.trim()
+        return configured?.takeIf { it.isNotEmpty() }?.take(24) ?: (Build.MODEL ?: "Android device").take(24)
+    }
 
     private val discoveryCallback = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
