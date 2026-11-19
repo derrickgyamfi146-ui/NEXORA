@@ -134,12 +134,20 @@ class MainActivity : Activity() {
                 intArrayOf(0xFF071526.toInt(), 0xFF102B4B.toInt(), 0xFF10204A.toInt())
             )
         }
-        val glow = View(this).apply {
+        val glow = TextView(this).apply {
+            text = "✦"
+            textSize = 72f
+            gravity = Gravity.CENTER
+            setTextColor(0xFF72F1FF.toInt())
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(0x3328D7FF)
+                setStroke(dp(1), 0x5572F1FF)
             }
             alpha = 0f
+            scaleX = .72f
+            scaleY = .72f
+            elevation = dp(8).toFloat()
         }
         screen.addView(glow, LinearLayout.LayoutParams(dp(230), dp(230)))
         val letters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
@@ -181,7 +189,9 @@ class MainActivity : Activity() {
                 startDelay = index * 105L
             })
         }
-        animations.add(android.animation.ObjectAnimator.ofFloat(glow, "alpha", 0f, .9f, .25f, .8f).apply { duration = 1050; startDelay = 450 })
+        animations.add(android.animation.ObjectAnimator.ofFloat(glow, "alpha", 0f, 1f, .35f, 1f, .55f).apply { duration = 1550; startDelay = 220 })
+        animations.add(android.animation.ObjectAnimator.ofFloat(glow, "scaleX", .72f, 1f, .9f, 1f).apply { duration = 1550; startDelay = 220; interpolator = android.view.animation.OvershootInterpolator() })
+        animations.add(android.animation.ObjectAnimator.ofFloat(glow, "scaleY", .72f, 1f, .9f, 1f).apply { duration = 1550; startDelay = 220; interpolator = android.view.animation.OvershootInterpolator() })
         animations.add(android.animation.ObjectAnimator.ofFloat(subtitle, "alpha", 0f, 1f).apply { duration = 420; startDelay = 850 })
         set.playTogether(animations)
         set.start()
@@ -194,7 +204,7 @@ class MainActivity : Activity() {
                 root.alpha = 0f
                 root.animate().alpha(1f).setDuration(260).start()
             }.start()
-        }, 1500)
+        }, 2200)
     }
     override fun onDestroy() {
         thumbnailExecutor.shutdownNow()
