@@ -100,67 +100,201 @@ class MainActivity : Activity() {
     }
 
     private fun buildScreen() {
+        val navy = 0xFF101B3D.toInt()
+        val blue = 0xFF4263EB.toInt()
+        val muted = 0xFF64748B.toInt()
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 28, 24, 24)
-            setBackgroundColor(0xFFF5F7FB.toInt())
+            setPadding(22, 28, 22, 28)
+            setBackgroundColor(0xFFF4F6FC.toInt())
         }
+
+        page.addView(TextView(this).apply {
+            text = "N"
+            textSize = 25f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(-1)
+            background = rounded(blue, 18)
+        }, LinearLayout.LayoutParams(58, 58).apply { gravity = Gravity.CENTER_HORIZONTAL })
+
         page.addView(TextView(this).apply {
             text = "NEXORA"
-            textSize = 30f
-            setTextColor(0xFF172554.toInt())
+            textSize = 29f
+            letterSpacing = 0.08f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(navy)
             gravity = Gravity.CENTER
+            setPadding(0, 12, 0, 2)
         }, matchWrap())
         page.addView(TextView(this).apply {
-            text = "SHARE WITHOUT LIMITS"
-            textSize = 12f
-            letterSpacing = 0.16f
-            setTextColor(0xFF64748B.toInt())
+            text = "MOVE FILES. NO CABLES. NO LIMITS."
+            textSize = 10f
+            letterSpacing = 0.12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(muted)
             gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 22)
+        }, matchWrap())
+
+        val statusCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18, 16, 18, 16)
+            background = rounded(-1, 18)
+            elevation = 2f
+        }
+        statusCard.addView(TextView(this).apply {
+            text = "CONNECTION STATUS"
+            textSize = 10f
+            letterSpacing = 0.1f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(muted)
         }, matchWrap())
         status = TextView(this).apply {
-            textSize = 15f
-            setTextColor(0xFF0F172A.toInt())
-            gravity = Gravity.CENTER
-            setPadding(0, 28, 0, 20)
+            text = "Ready to share"
+            textSize = 16f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(navy)
+            setPadding(0, 8, 0, 2)
         }
-        page.addView(status, matchWrap())
-        page.addView(Button(this).apply {
-            text = "Receive files · Make my phone visible"
-            setOnClickListener { withNearbyPermissions { startReceiving() } }
-        }, buttonParams())
-        page.addView(Button(this).apply {
-            text = "Send files · Find nearby phones"
-            setOnClickListener { withNearbyPermissions { startFinding() } }
-        }, buttonParams())
+        statusCard.addView(status, matchWrap())
+        page.addView(statusCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 18 })
+
+        page.addView(TextView(this).apply {
+            text = "WHAT WOULD YOU LIKE TO DO?"
+            textSize = 11f
+            letterSpacing = 0.08f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(muted)
+            setPadding(2, 0, 0, 8)
+        }, matchWrap())
+
+        val receiveCard = actionCard(
+            "↓", "RECEIVE FILES", "Make this phone visible to the sender",
+            "MAKE PHONE VISIBLE", blue
+        ) { withNearbyPermissions { startReceiving() } }
+        page.addView(receiveCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
+
+        val sendCard = actionCard(
+            "↑", "SEND FILES", "Find another phone running NEXORA",
+            "FIND NEARBY PHONES", navy
+        ) { withNearbyPermissions { startFinding() } }
+        page.addView(sendCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 18 })
+
+        val devicesCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18, 16, 18, 12)
+            background = rounded(-1, 18)
+        }
+        devicesCard.addView(TextView(this).apply {
+            text = "NEARBY DEVICES"
+            textSize = 12f
+            letterSpacing = 0.08f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(navy)
+        }, matchWrap())
+        devicesCard.addView(TextView(this).apply {
+            text = "Phones you discover will appear here. Tap a phone to connect."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, 6, 0, 4)
+        }, matchWrap())
         peerList = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 16, 0, 8)
+            setPadding(0, 6, 0, 0)
         }
-        page.addView(peerList, matchWrap())
+        devicesCard.addView(peerList, matchWrap())
+        page.addView(devicesCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
+
         sendButton = Button(this).apply {
-            text = "Choose a file to send"
+            text = "CHOOSE FILE TO SEND"
             isEnabled = false
+            setTextColor(-1)
+            textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            background = rounded(blue, 14)
+            setPadding(12, 12, 12, 12)
             setOnClickListener { openFilePicker() }
         }
-        page.addView(sendButton, buttonParams())
-        page.addView(Button(this).apply {
-            text = "Stop searching / disconnect"
+        page.addView(sendButton, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 })
+
+        val stopButton = Button(this).apply {
+            text = "STOP / DISCONNECT"
+            textSize = 12f
+            setTextColor(navy)
+            background = rounded(0xFFE3E9F7.toInt(), 14)
             setOnClickListener {
                 sharing?.stopSharing()
                 discovered.clear()
                 peerList.removeAllViews()
                 sendButton.isEnabled = false
             }
-        }, buttonParams())
+        }
+        page.addView(stopButton, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 16 })
+
         page.addView(TextView(this).apply {
-            text = "Tip: Keep both phones nearby. Compare the security code before accepting a connection."
+            text = "HOW IT WORKS\n1. One phone taps Receive.\n2. The other phone taps Send.\n3. Select the phone, compare the security code, then choose a file."
+            textSize = 12f
+            setTextColor(muted)
+            setLineSpacing(4f, 1f)
+            setPadding(4, 4, 4, 8)
+        }, matchWrap())
+
+        setContentView(ScrollView(this).apply {
+            isFillViewport = true
+            addView(page)
+        })
+    }
+
+    private fun actionCard(
+        symbol: String,
+        heading: String,
+        description: String,
+        buttonText: String,
+        accent: Int,
+        action: () -> Unit
+    ): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18, 16, 18, 16)
+            background = rounded(-1, 18)
+            elevation = 2f
+        }
+        card.addView(TextView(this).apply {
+            text = symbol
+            textSize = 25f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(accent)
+        }, matchWrap())
+        card.addView(TextView(this).apply {
+            text = heading
+            textSize = 17f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(0xFF101B3D.toInt())
+            setPadding(0, 4, 0, 2)
+        }, matchWrap())
+        card.addView(TextView(this).apply {
+            text = description
             textSize = 12f
             setTextColor(0xFF64748B.toInt())
-            gravity = Gravity.CENTER
-            setPadding(0, 24, 0, 0)
+            setPadding(0, 0, 0, 12)
         }, matchWrap())
-        setContentView(ScrollView(this).apply { addView(page) })
+        card.addView(Button(this).apply {
+            text = buttonText
+            textSize = 12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1)
+            background = rounded(accent, 12)
+            setOnClickListener { action() }
+        }, LinearLayout.LayoutParams(-1, -2))
+        return card
+    }
+
+    private fun rounded(color: Int, radiusDp: Int): android.graphics.drawable.GradientDrawable {
+        return android.graphics.drawable.GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = radiusDp * resources.displayMetrics.density
+        }
     }
 
     private fun startReceiving() {
