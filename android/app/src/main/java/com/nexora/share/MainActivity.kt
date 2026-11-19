@@ -109,6 +109,16 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         darkMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("dark_mode", true)
+        val savedTree = getSharedPreferences("nexora_file_manager", MODE_PRIVATE).getString("tree_uri", null)
+        if (!savedTree.isNullOrBlank()) {
+            runCatching {
+                selectedTreeUri = Uri.parse(savedTree)
+                currentTreeDocumentId = android.provider.DocumentsContract.getTreeDocumentId(selectedTreeUri!!)
+            }.onFailure {
+                selectedTreeUri = null
+                currentTreeDocumentId = null
+            }
+        }
         preloadLibraries()
         showLaunchSplash()
     }
@@ -974,6 +984,36 @@ class MainActivity : Activity() {
             storage.addView(TextView(this).apply { text = "NEXORA temporary cache: " + readableSize(cacheBytes); textSize = 11f; setTextColor(muted); setPadding(0, dp(7), 0, 0) })
         } catch (_: Exception) { storage.addView(TextView(this).apply { text = "Storage information is unavailable."; setTextColor(muted); textSize = 12f }) }
         content.addView(storage, bottom(12))
+        val removableVolumes = runCatching {
+            getExternalFilesDirs(null).filterNotNull().filter { android.os.Environment.isExternalStorageRemovable(it) }
+                .distinctBy { it.absolutePath.substringBefore("/Android/") }
+        }.getOrDefault(emptyList())
+        val sdPanel = panel(card)
+        sdPanel.addView(label("SD CARD STORAGE", 0xFF7357E8.toInt()))
+        if (removableVolumes.isEmpty()) {
+            sdPanel.addView(TextView(this).apply {
+                text = "No removable SD card detected."
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(7), 0, dp(2))
+            })
+        } else {
+            removableVolumes.forEachIndexed { index, volume ->
+                runCatching {
+                    val stat = android.os.StatFs(volume.absolutePath)
+                    val total = stat.totalBytes
+                    val free = stat.availableBytes
+                    val used = (total - free).coerceAtLeast(0L)
+                    sdPanel.addView(TextView(this).apply {
+                        text = "SD card " + (index + 1) + " · " + readableSize(used) + " used · " + readableSize(free) + " free"
+                        textSize = 12f
+                        setTextColor(ink)
+                        setPadding(0, dp(7), 0, dp(5))
+                    })
+                }
+            }
+        }
+        content.addView(sdPanel, bottom(12))
         val categoryPanel = panel(card)
         categoryPanel.addView(label("BROWSE BY CATEGORY", muted))
         val categoryGrid = android.widget.GridLayout(this).apply { columnCount = 2 }
@@ -1487,6 +1527,7 @@ class MainActivity : Activity() {
                 val flags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                 contentResolver.takePersistableUriPermission(uri, flags)
                 selectedTreeUri = uri
+                getSharedPreferences("nexora_file_manager", MODE_PRIVATE).edit().putString("tree_uri", uri.toString()).apply()
                 currentTreeDocumentId = android.provider.DocumentsContract.getTreeDocumentId(uri)
                 treeDocumentStack.clear()
                 activeTab = "Files"
