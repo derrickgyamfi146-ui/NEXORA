@@ -632,6 +632,7 @@ class MainActivity : Activity() {
     }
 
     private fun showQrCode() {
+        val returnTab = activeTab
         val deviceName = (getSharedPreferences("nexora_preferences", MODE_PRIVATE)
             .getString("device_name", Build.MODEL) ?: "Android device").trim().take(24)
         val payload = "NEXORA|$deviceName"
@@ -659,7 +660,7 @@ class MainActivity : Activity() {
                 textSize = 34f
                 setTextColor(-1)
                 gravity = Gravity.CENTER
-                setOnClickListener { activeTab = "Send"; render() }
+                setOnClickListener { activeTab = returnTab; render() }
             }, LinearLayout.LayoutParams(dp(42), dp(48)))
             top.addView(TextView(this).apply {
                 text = "Connect"
@@ -723,7 +724,7 @@ class MainActivity : Activity() {
                 }
             }, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(9) })
             page.addView(button("CLOSE", 0xFF334155.toInt()) {
-                activeTab = "Send"
+                activeTab = returnTab
                 render()
             }, LinearLayout.LayoutParams(-1, dp(44)))
 
