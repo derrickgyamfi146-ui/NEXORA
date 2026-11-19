@@ -873,9 +873,9 @@ class MainActivity : Activity() {
             )
             val popularApps = popularPackages.mapNotNull { pkg -> userApps.firstOrNull { it.packageName == pkg } }.distinctBy { it.packageName }
             val featuredApps = (popularApps + userApps.filterNot { app -> popularApps.any { it.packageName == app.packageName } }).take(6)
-            addAppSection("POPULAR APPS", featuredApps, 0xFFE69A35.toInt())
+            addAppSection(if (popularApps.isNotEmpty()) "POPULAR APPS" else "QUICK ACCESS", featuredApps, 0xFFE69A35.toInt())
             addAppSection("LOCAL APPS", userApps, 0xFF7357E8.toInt())
-            addAppSection("SYSTEM APPS", systemApps, 0xFF168FE5.toInt(), collapsible = true)
+            addAppSection("SYSTEM APPS", systemApps, 0xFF168FE5.toInt(), collapsible = query.isBlank())
         }
         search.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
