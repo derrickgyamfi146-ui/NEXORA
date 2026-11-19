@@ -140,10 +140,11 @@ class TransferKeepAliveService : Service() {
             }
             var descriptor: android.os.ParcelFileDescriptor? = null
             try {
-                descriptor = contentResolver.openFileDescriptor(uri, "r")
+                val openedDescriptor = contentResolver.openFileDescriptor(uri, "r")
                     ?: throw IOException("Could not open this file")
+                descriptor = openedDescriptor
                 val name = queryDisplayName(uri) ?: "NEXORA-file"
-                val payload = Payload.fromFile(descriptor)
+                val payload = Payload.fromFile(openedDescriptor)
                 payload.setFileName(name)
                 openFiles[payload.id] = descriptor
                 descriptor = null // Ownership moves to openFiles until the transfer finishes.
