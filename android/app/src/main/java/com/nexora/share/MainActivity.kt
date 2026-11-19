@@ -255,7 +255,7 @@ class MainActivity : Activity() {
                 "Apps" -> activeTab == "Media"
                 "History" -> activeTab == "Sent" || activeTab == "Received"
                 "Send" -> activeTab == "Send"
-                "Receive" -> activeTab == "Home"
+                "Receive" -> activeTab == "Receive"
                 else -> activeTab == "Settings"
             }
             nav.addView(TextView(this).apply {
@@ -270,7 +270,7 @@ class MainActivity : Activity() {
                         "Apps" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
                         "History" -> { activeTab = "Sent"; render() }
                         "Send" -> { activeTab = "Send"; render() }
-                        "Receive" -> { activeTab = "Home"; render(); withNearbyPermissions { ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, TransferKeepAliveService::class.java)); sharing?.startReceiving() ?: updateStatus("Starting receive mode. Try again in a moment.") } }
+                        "Receive" -> { activeTab = "Receive"; render(); withNearbyPermissions { ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, TransferKeepAliveService::class.java)); sharing?.startReceiving() ?: updateStatus("Starting receive mode. Try again in a moment.") } }
                         else -> { activeTab = "Settings"; render() }
                     }
                 }
@@ -286,6 +286,7 @@ class MainActivity : Activity() {
             "Received" -> showReceived(card, ink, muted)
             "Transfers" -> showTransfers(card, ink, muted)
             "Send" -> showSend(card, ink, muted, blue)
+            "Receive" -> showReceive(card, ink, muted)
             "Settings" -> showSettings(card, ink, muted, blue)
         }
         content.alpha = 0f
@@ -391,6 +392,67 @@ class MainActivity : Activity() {
         content.addView(button("STOP SHARING", 0xFF62778A.toInt()) { sharing?.stopSharing(); discovered.clear(); connectedPeers.clear(); rebuildPeerList(); updateStatus("Sharing stopped.") })
     }
 
+    private fun showReceive(card: Int, ink: Int, muted: Int) {
+        content.addView(TextView(this).apply {
+            text = "Receive files"; textSize = 26f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(4))
+        })
+        content.addView(TextView(this).apply {
+            text = "Make this phone visible so nearby NEXORA users can send to you."
+            textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(14))
+        })
+        val ready = panel(card)
+        ready.background = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xFF103C35.toInt(), 0xFF15594A.toInt(), 0xFF183C45.toInt())
+        ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0x6656E5B6) }
+        ready.addView(TextView(this).apply {
+            text = "●  RECEIVING MODE"; textSize = 10f; letterSpacing = .12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF83F0C9.toInt())
+        })
+        ready.addView(TextView(this).apply {
+            text = if (connectedPeers.isEmpty()) "Waiting for another phone to connect" else connectedPeers.size.toString() + " phone(s) connected"
+            textSize = 18f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1); setPadding(0, dp(14), 0, dp(8))
+        })
+        ready.addView(TextView(this).apply {
+            text = latestStatus; textSize = 12f; setTextColor(0xFFD4EDE5.toInt()); setPadding(0, 0, 0, dp(13))
+        })
+        ready.addView(button("↓   START RECEIVING", 0xFF16A58A.toInt()) {
+            withNearbyPermissions {
+                ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, TransferKeepAliveService::class.java))
+                sharing?.startReceiving() ?: updateStatus("NEXORA is starting. Tap Start receiving again in a moment.")
+            }
+        })
+        content.addView(ready, bottom(13))
+        val qr = panel(card)
+        qr.addView(label("CONNECT WITH QR", 0xFF7357E8.toInt()))
+        qr.addView(TextView(this).apply {
+            text = "Show your code to the sender, or scan their code to find their phone."
+            textSize = 12f; setTextColor(muted); setPadding(0, dp(7), 0, dp(10))
+        })
+        val qrRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        qrRow.addView(button("MY QR CODE", 0xFFE69A35.toInt()) { showQrCode() },
+            LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(5) })
+        qrRow.addView(button("SCAN QR", 0xFF7357E8.toInt()) { scanQrCode() },
+            LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(5) })
+        qr.addView(qrRow)
+        content.addView(qr, bottom(13))
+        val devices = panel(card)
+        devices.addView(label("CONNECTED PHONES", 0xFF168FE5.toInt()))
+        peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        devices.addView(peerList)
+        rebuildPeerList()
+        content.addView(devices, bottom(13))
+        content.addView(button("OPEN TRANSFER CENTRE", 0xFF7357E8.toInt()) { activeTab = "Transfers"; render() }, bottom(8))
+        content.addView(button("STOP RECEIVING", 0xFF64748B.toInt()) {
+            sharing?.stopSharing()
+            discovered.clear(); connectedPeers.clear()
+            updateStatus("Receiving stopped.")
+            render()
+        })
+    }
     private fun showSend(card: Int, ink: Int, muted: Int, blue: Int) {
         content.addView(TextView(this).apply {
             text = "Send files"; textSize = 25f
