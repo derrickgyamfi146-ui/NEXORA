@@ -996,6 +996,7 @@ class MainActivity : Activity() {
                         "ebooks" -> openPickerTypes(arrayOf("application/epub+zip", "application/x-mobipocket-ebook", "application/pdf"))
                         "apks" -> openPicker("application/vnd.android.package-archive")
                         "archives" -> openPickerTypes(arrayOf("application/zip", "application/x-rar-compressed", "application/x-7z-compressed", "application/x-tar", "application/gzip"))
+                        "big" -> { sortTreeBySize = true; openFolderTree() }
                         else -> openPicker("*/*")
                     }
                 }
