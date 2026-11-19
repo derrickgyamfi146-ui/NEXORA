@@ -612,7 +612,7 @@ class MainActivity : Activity() {
     private fun openMediaLibrary(kind: String) {
         mediaCategory = kind
         mediaSearch = ""
-        mediaDisplayLimit = 40
+        mediaDisplayLimit = 20
         val permissions = when (kind) {
             "Photos" -> if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_IMAGES) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
             "Videos" -> if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -793,7 +793,7 @@ class MainActivity : Activity() {
     private val installedApps = ArrayList<android.content.pm.ApplicationInfo>()
     private val appLabels = HashMap<String, String>()
     private var systemAppsExpanded = false
-    private var appDisplayLimit = 60
+    private var appDisplayLimit = 20
 
     private fun renderAppsLibrary(ink: Int, muted: Int, blue: Int) {
         content.addView(TextView(this).apply { text = "Apps"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
@@ -842,7 +842,7 @@ class MainActivity : Activity() {
                 }
                 section.addView(heading)
                 val grid = android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }
-                if (expanded) apps.forEach { app ->
+                if (expanded) apps.forEachIndexed { tileIndex, app ->
                     val appTile = LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                         setPadding(dp(6), dp(12), dp(6), dp(10))
@@ -876,6 +876,11 @@ class MainActivity : Activity() {
                         setMargins(dp(4), dp(4), dp(4), dp(7))
                     }
                     grid.addView(appTile, params)
+                    appTile.alpha = 0f
+                    appTile.translationY = dp(8).toFloat()
+                    appTile.animate().alpha(1f).translationY(0f)
+                        .setStartDelay((tileIndex.toLong() * 14L).coerceAtMost(196L))
+                        .setDuration(190L).start()
                 }
                 section.addView(grid)
                 if (!expanded) grid.visibility = View.GONE
@@ -893,7 +898,7 @@ class MainActivity : Activity() {
             addAppSection("LOCAL APPS", userApps.take(appDisplayLimit), 0xFF7357E8.toInt())
             if (userApps.size > appDisplayLimit) {
                 list.addView(button("LOAD MORE APPS", blue) {
-                    appDisplayLimit = (appDisplayLimit + 60).coerceAtMost(userApps.size)
+                    appDisplayLimit = (appDisplayLimit + 20).coerceAtMost(userApps.size)
                     populate(search.text.toString())
                 }, bottom(8))
             }
