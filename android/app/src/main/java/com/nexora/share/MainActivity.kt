@@ -1546,7 +1546,7 @@ class MainActivity : Activity() {
                                 folder.mkdirs()
                                 val file = java.io.File(folder, "Contact-$id.vcf")
                                 fun vcfEscape(value: String) = value.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
-                                file.writeText("BEGIN:VCARD\\r\\nVERSION:3.0\\r\\nFN:${vcfEscape(name)}\\r\\nTEL;TYPE=CELL:${vcfEscape(number)}\\r\\nEND:VCARD\\r\\n")
+                                file.writeText("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:${vcfEscape(name)}\r\nTEL;TYPE=CELL:${vcfEscape(number)}\r\nEND:VCARD\r\n")
                                 val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "$packageName.fileprovider", file)
                                 if (!selectedUris.contains(uri)) selectedUris.add(uri)
                                 Toast.makeText(this@MainActivity, "Contact card added to Send.", Toast.LENGTH_SHORT).show()
@@ -1765,6 +1765,11 @@ class MainActivity : Activity() {
             val kind = mediaCategory
             if (kind != null && hasMediaPermission(kind)) { mediaErrors.remove(kind); mediaCache.remove(kind); render() }
             else updateStatus("Allow photo or media access so NEXORA can show your files here.")
+            return
+        }
+        if (requestCode == 303) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) render()
+            else updateStatus("Contact access was not granted.")
             return
         }
         if (requestCode == REQUEST_NEARBY) {
