@@ -300,7 +300,7 @@ class MainActivity : Activity() {
         box.addView(label("FILES SELECTED TO SEND", muted))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(list)
-        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\\n")?.filter { it.isNotBlank() } ?: emptyList()
+        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
         if (entries.isEmpty()) list.addView(TextView(this).apply { text = "Files you send will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(8)) })
         else entries.take(100).forEach { entry -> list.addView(TextView(this).apply { text = entry; textSize = 12f; setTextColor(ink); setPadding(0, dp(8), 0, dp(8)) }) }
         content.addView(box)
@@ -315,7 +315,7 @@ class MainActivity : Activity() {
             try { contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) name = c.getString(0) ?: name } } catch (_: Exception) {}
             stamp + " · " + name
         }
-        prefs.edit().putString("sent_items", (names + old.split("\\n").filter { it.isNotBlank() }).take(100).joinToString("\\n")).apply()
+        prefs.edit().putString("sent_items", (names + old.split("\n").filter { it.isNotBlank() }).take(100).joinToString("\n")).apply()
     }
     private fun showReceived(card: Int, ink: Int, muted: Int) {
         content.addView(TextView(this).apply { text = "Received files"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
