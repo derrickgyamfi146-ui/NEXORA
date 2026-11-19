@@ -1325,6 +1325,71 @@ nxRenderTransferDrawer=function(){
 };
 nxRenderHistory();
 
+
+
+/* Interim Android-browser improvements: reduce UI work and keep screen awake while foregrounded. */
+let nxScreenWakeLock=null;
+let nxTransferShouldStayAwake=false;
+let nxLastVisualUpdate=0;
+let nxDrawerRenderTimer=null;
+const nxUnthrottledProgress=nxSetLiveProgress;
+nxSetLiveProgress=function(label,percent,meta){
+  const now=Date.now();
+  if(now-nxLastVisualUpdate<180 && percent!==100) return;
+  nxLastVisualUpdate=now;
+  nxUnthrottledProgress(label,percent,meta);
+};
+const nxUnthrottledDrawerRender=nxRenderTransferDrawer;
+nxRenderTransferDrawer=function(){
+  if(nxDrawerRenderTimer) return;
+  nxDrawerRenderTimer=setTimeout(()=>{
+    nxDrawerRenderTimer=null;
+    nxUnthrottledDrawerRender();
+  },180);
+};
+async function nxAcquireScreenWakeLock(){
+  if(!nxTransferShouldStayAwake || !("wakeLock" in navigator) || document.visibilityState!=="visible") return;
+  try{
+    if(!nxScreenWakeLock || nxScreenWakeLock.released){
+      nxScreenWakeLock=await navigator.wakeLock.request("screen");
+      nxScreenWakeLock.addEventListener("release",()=>{nxScreenWakeLock=null;});
+    }
+  }catch(error){
+    /* Android/browser may deny wake lock; transfers still work while the page stays active. */
+  }
+}
+async function nxSetTransferAwake(active){
+  nxTransferShouldStayAwake=active;
+  if(active) await nxAcquireScreenWakeLock();
+  else if(nxScreenWakeLock){
+    try{await nxScreenWakeLock.release();}catch(error){}
+    nxScreenWakeLock=null;
+  }
+}
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible" && nxTransferShouldStayAwake) nxAcquireScreenWakeLock();
+});
+const nxOriginalStartTransfer=nxEl("nxSend").onclick;
+nxEl("nxSend").onclick=async function(){
+  await nxSetTransferAwake(true);
+  try{return await nxOriginalStartTransfer.call(this);}
+  finally{await nxSetTransferAwake(false);}
+};
+const nxOriginalSetupChannel=nxSetupChannel;
+nxSetupChannel=function(channel){
+  nxOriginalSetupChannel(channel);
+  channel.on("data",data=>{
+    if(typeof data==="string"){
+      try{
+        const message=JSON.parse(data);
+        if(message.type==="file-start") nxSetTransferAwake(true);
+        if(message.type==="file-end" || message.type==="file-cancel") nxSetTransferAwake(false);
+      }catch(error){}
+    }
+  });
+  channel.on("close",()=>nxSetTransferAwake(false));
+};
+
 </script>
 </body>
 </html>
