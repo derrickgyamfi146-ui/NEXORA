@@ -710,16 +710,6 @@ class MainActivity : Activity() {
     }
 
     private fun renderMediaLibrary(kind: String, ink: Int, muted: Int, blue: Int) {
-        val tabs = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val tabRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(3), 0, dp(10)) }
-        listOf("Apps", "Images", "Videos", "Music", "Files").forEach { tab ->
-            val selected = (if (kind == "Photos") "Images" else kind) == tab
-            val tint = when(tab) { "Apps" -> 0xFF7357E8.toInt(); "Images" -> 0xFF168FE5.toInt(); "Videos" -> 0xFFE05C8A.toInt(); "Music" -> 0xFFE69A35.toInt(); else -> 0xFF16A58A.toInt() }
-            val chip = TextView(this).apply { text = tab; textSize = 12f; gravity = Gravity.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(if (selected) -1 else tint); setPadding(dp(16), dp(10), dp(16), dp(10)); background = rounded(if (selected) tint else if (darkMode) 0xFF20364E.toInt() else 0xFFEAF2FB.toInt(), 18) }
-            chip.setOnClickListener { animatePress(chip); mediaCategory = when(tab) { "Images" -> "Photos"; else -> tab }; if (tab == "Files") { activeTab = "Files"; render() } else if (tab == "Images" || tab == "Videos" || tab == "Music") openMediaLibrary(mediaCategory!!) else render() }
-            tabRow.addView(chip, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(7) })
-        }
-        tabs.addView(tabRow); content.addView(tabs)
         if (kind == "Apps") { renderAppsLibrary(ink, muted, blue); return }
         if (kind == "Files") {
             content.addView(TextView(this).apply { text = "Browse any folder or file on your phone."; textSize = 13f; setTextColor(muted); setPadding(0, dp(12), 0, dp(10)) })
@@ -1102,33 +1092,6 @@ class MainActivity : Activity() {
     private var folderSearch = ""
 
     private fun showFiles(card: Int, ink: Int, muted: Int, blue: Int) {
-        // Keep the same media-library category strip visible while browsing Files.
-        val tabs = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val tabRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(3), 0, dp(10)) }
-        listOf("Apps", "Images", "Videos", "Music", "Files").forEach { tab ->
-            val tint = when(tab) { "Apps" -> 0xFF7357E8.toInt(); "Images" -> 0xFF168FE5.toInt(); "Videos" -> 0xFFE05C8A.toInt(); "Music" -> 0xFFE69A35.toInt(); else -> 0xFF16A58A.toInt() }
-            val selected = tab == "Files"
-            val chip = TextView(this).apply {
-                text = tab; textSize = 12f; gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(if (selected) -1 else tint)
-                setPadding(dp(16), dp(10), dp(16), dp(10))
-                background = rounded(if (selected) tint else if (darkMode) 0xFF20364E.toInt() else 0xFFEAF2FB.toInt(), 18)
-            }
-            chip.setOnClickListener {
-                animatePress(chip)
-                when (tab) {
-                    "Apps" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
-                    "Images" -> openMediaLibrary("Photos")
-                    "Videos" -> openMediaLibrary("Videos")
-                    "Music" -> openMediaLibrary("Music")
-                    "Files" -> { activeTab = "Files"; render() }
-                }
-            }
-            tabRow.addView(chip, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(7) })
-        }
-        tabs.addView(tabRow)
-        content.addView(tabs)
         content.addView(TextView(this).apply { text = "File manager"; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(5)) })
         content.addView(TextView(this).apply { text = "Find documents, downloads, APKs and large files."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(13)) })
         val storage = panel(card)
@@ -1509,6 +1472,104 @@ class MainActivity : Activity() {
         val box = panel(card); box.addView(label("SAVED ON THIS PHONE", muted))
         receivedList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }; box.addView(receivedList)
         content.addView(box); refreshReceivedFiles()
+    }
+
+
+    private fun showXenderMenu() {
+        val items = arrayOf("Language", "Settings", "Rate Us", "Help & Feedback", "About", "Status & Updates")
+        android.app.AlertDialog.Builder(this)
+            .setTitle("NEXORA  ·  " + (Build.MODEL ?: "This phone"))
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> android.app.AlertDialog.Builder(this).setTitle("Language")
+                        .setItems(arrayOf("English")) { _, _ -> Toast.makeText(this, "English is selected.", Toast.LENGTH_SHORT).show() }.show()
+                    1 -> { activeTab = "Settings"; render() }
+                    2 -> Toast.makeText(this, "Thank you for supporting NEXORA.", Toast.LENGTH_SHORT).show()
+                    3 -> android.app.AlertDialog.Builder(this).setTitle("Help & Feedback")
+                        .setMessage("For transfer problems, keep both phones nearby, enable Wi-Fi and Bluetooth, and allow nearby-device permissions.")
+                        .setPositiveButton("OK", null).show()
+                    4 -> android.app.AlertDialog.Builder(this).setTitle("About NEXORA")
+                        .setMessage("NEXORA is a local file-sharing app for Android. Transfers use nearby device connections.")
+                        .setPositiveButton("OK", null).show()
+                    5 -> Toast.makeText(this, "You are using the current installed NEXORA build.", Toast.LENGTH_SHORT).show()
+                }
+            }.show()
+    }
+
+    private fun showContacts(card: Int, ink: Int, muted: Int) {
+        content.addView(TextView(this).apply {
+            text = "Contacts"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink); setPadding(0, dp(8), 0, dp(8))
+        })
+        content.addView(TextView(this).apply {
+            text = "Choose a contact to prepare a shareable contact card."
+            textSize = 12f; setTextColor(muted); setPadding(0, 0, 0, dp(12))
+        })
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+            content.addView(button("ALLOW CONTACT ACCESS", 0xFF009D70.toInt()) {
+                requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), 303)
+            })
+            return
+        }
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(list)
+        var count = 0
+        try {
+            val projection = arrayOf(
+                android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+            )
+            contentResolver.query(
+                android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                projection, null, null,
+                android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " COLLATE NOCASE ASC"
+            )?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
+                val nameCol = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numberCol = cursor.getColumnIndexOrThrow(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
+                val seen = HashSet<String>()
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idCol)
+                    val name = cursor.getString(nameCol) ?: "Unnamed contact"
+                    val number = cursor.getString(numberCol) ?: ""
+                    if (!seen.add("$id:$number")) continue
+                    count++
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(13), dp(11), dp(13), dp(11))
+                        background = rounded(if (darkMode) 0xFF142A40.toInt() else -1, 12)
+                        isClickable = true
+                        setOnClickListener {
+                            try {
+                                val folder = java.io.File(cacheDir, "shared_contacts")
+                                folder.mkdirs()
+                                val file = java.io.File(folder, "Contact-$id.vcf")
+                                fun vcfEscape(value: String) = value.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+                                file.writeText("BEGIN:VCARD\\r\\nVERSION:3.0\\r\\nFN:${vcfEscape(name)}\\r\\nTEL;TYPE=CELL:${vcfEscape(number)}\\r\\nEND:VCARD\\r\\n")
+                                val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "$packageName.fileprovider", file)
+                                if (!selectedUris.contains(uri)) selectedUris.add(uri)
+                                Toast.makeText(this@MainActivity, "Contact card added to Send.", Toast.LENGTH_SHORT).show()
+                                activeTab = "Send"
+                                render()
+                            } catch (e: Exception) {
+                                updateStatus("Could not prepare this contact: " + (e.localizedMessage ?: "unknown error"))
+                            }
+                        }
+                    }
+                    row.addView(TextView(this).apply {
+                        text = name; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink)
+                    })
+                    row.addView(TextView(this).apply {
+                        text = number; textSize = 12f; setTextColor(muted); setPadding(0, dp(3), 0, 0)
+                    })
+                    list.addView(row, bottom(6))
+                }
+            }
+        } catch (e: Exception) {
+            list.addView(TextView(this).apply { text = "Could not read contacts: " + (e.localizedMessage ?: "unknown error"); setTextColor(muted) })
+        }
+        if (count == 0) list.addView(TextView(this).apply { text = "No phone contacts found."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
     }
 
     private fun showSettings(card: Int, ink: Int, muted: Int, blue: Int) {
