@@ -73,6 +73,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         darkMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("dark_mode", false)
+        preloadLibraries()
         showLaunchSplash()
     }
 
@@ -285,46 +286,8 @@ class MainActivity : Activity() {
     }
 
     private fun showMedia(card: Int, ink: Int, muted: Int, blue: Int) {
-        if (mediaCategory != null) { renderMediaLibrary(mediaCategory!!, ink, muted, blue); return }
-        content.addView(TextView(this).apply { text = "Your phone,\nbeautifully organised."; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(5)) })
-        content.addView(TextView(this).apply { text = "Choose a category. Your files stay on your device."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, 0, dp(15)) })
-        val categories = listOf(
-            Triple("▧", "Photos", 0xFF277DDB.toInt()), Triple("▷", "Videos", 0xFF8A62D6.toInt()),
-            Triple("♫", "Music", 0xFFE18A38.toInt()), Triple("▤", "Documents", 0xFF159B83.toInt()),
-            Triple("▣", "All files", 0xFF526F8D.toInt()), Triple("◈", "Apps", 0xFFDE6688.toInt())
-        )
-        val grid = android.widget.GridLayout(this).apply { columnCount = 2; useDefaultMargins = false }
-        categories.forEach { item ->
-            val tile = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(15), dp(12), dp(14))
-                background = rounded(if (darkMode) 0xFF142A40.toInt() else -1, 20); elevation = dp(2).toFloat()
-                isClickable = true; isFocusable = true
-            }
-            tile.addView(TextView(this).apply {
-                text = item.first; textSize = 27f; gravity = Gravity.CENTER; setTextColor(-1)
-                background = rounded(item.third, 15)
-                setPadding(dp(8), dp(4), dp(8), dp(4))
-            }, LinearLayout.LayoutParams(dp(48), dp(48)))
-            tile.addView(TextView(this).apply { text = item.second; textSize = 15f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(12), 0, dp(2)) })
-            tile.addView(TextView(this).apply { text = "Browse on this phone  ›"; textSize = 10f; setTextColor(muted) })
-            tile.setOnClickListener {
-                animatePress(tile)
-                when (item.second) {
-                    "Photos", "Videos", "Music" -> openMediaLibrary(item.second)
-                    "Documents" -> openPicker("application/*")
-                    "All files" -> openPicker("*/*")
-                    "Apps" -> { mediaCategory = "Apps"; render() }
-                }
-            }
-            val params = android.widget.GridLayout.LayoutParams().apply {
-                width = 0; height = dp(132); columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
-                setMargins(dp(4), dp(4), dp(4), dp(8))
-            }
-            grid.addView(tile, params)
-        }
-        content.addView(grid, bottom(12))
-        content.addView(button("OPEN FILE PICKER", blue) { openPicker("*/*") })
+        if (mediaCategory == null) mediaCategory = "Apps"
+        renderMediaLibrary(mediaCategory!!, ink, muted, blue)
     }
 
     private fun openMediaLibrary(kind: String) {
@@ -342,9 +305,24 @@ class MainActivity : Activity() {
     }
 
     private fun renderMediaLibrary(kind: String, ink: Int, muted: Int, blue: Int) {
+        val tabs = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val tabRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(3), 0, dp(10)) }
+        listOf("Apps", "Images", "Videos", "Music", "Files").forEach { tab ->
+            val selected = (if (kind == "Photos") "Images" else kind) == tab
+            val tint = when(tab) { "Apps" -> 0xFF7357E8.toInt(); "Images" -> 0xFF168FE5.toInt(); "Videos" -> 0xFFE05C8A.toInt(); "Music" -> 0xFFE69A35.toInt(); else -> 0xFF16A58A.toInt() }
+            val chip = TextView(this).apply { text = tab; textSize = 12f; gravity = Gravity.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(if (selected) -1 else tint); setPadding(dp(16), dp(10), dp(16), dp(10)); background = rounded(if (selected) tint else if (darkMode) 0xFF20364E.toInt() else 0xFFEAF2FB.toInt(), 18) }
+            chip.setOnClickListener { animatePress(chip); mediaCategory = when(tab) { "Images" -> "Photos"; else -> tab }; if (tab == "Files") openPicker("*/*") else if (tab == "Images" || tab == "Videos" || tab == "Music") openMediaLibrary(mediaCategory!!) else render() }
+            tabRow.addView(chip, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(7) })
+        }
+        tabs.addView(tabRow); content.addView(tabs)
         if (kind == "Apps") { renderAppsLibrary(ink, muted, blue); return }
-        content.addView(button("‹  Back to categories", blue) { mediaCategory = null; render() }, bottom(10))
-        content.addView(TextView(this).apply { text = kind; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
+        if (kind == "Files") {
+            content.addView(TextView(this).apply { text = "Browse any folder or file on your phone."; textSize = 13f; setTextColor(muted); setPadding(0, dp(12), 0, dp(10)) })
+            content.addView(button("BROWSE FILES", 0xFF16A58A.toInt()) { openPicker("*/*") })
+            return
+        }
+        val displayKind = if (kind == "Images") "Photos" else kind
+        content.addView(TextView(this).apply { text = displayKind; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
         val search = EditText(this).apply {
             hint = "Search " + kind.lowercase(); setSingleLine(true); textSize = 14f
             setPadding(dp(12), dp(8), dp(12), dp(8))
@@ -442,12 +420,24 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun preloadLibraries() {
+        if (!appsLoaded && !appsLoading) {
+            appsLoading = true
+            Thread {
+                val result = try { packageManager.getInstalledApplications(0).sortedBy { packageManager.getApplicationLabel(it).toString().lowercase() } } catch (_: Exception) { emptyList() }
+                runOnUiThread {
+                    installedApps.clear(); installedApps.addAll(result); appsLoaded = true; appsLoading = false
+                    if (activeTab == "Media" && mediaCategory == "Apps") render()
+                }
+            }.start()
+        }
+    }
+
     private var appsLoaded = false
     private var appsLoading = false
     private val installedApps = ArrayList<android.content.pm.ApplicationInfo>()
 
     private fun renderAppsLibrary(ink: Int, muted: Int, blue: Int) {
-        content.addView(button("‹  Back to categories", blue) { mediaCategory = null; render() }, bottom(10))
         content.addView(TextView(this).apply { text = "Apps on this phone"; textSize = 23f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(6), 0, dp(8)) })
         val search = EditText(this).apply { hint = "Search installed apps"; setSingleLine(true); textSize = 14f; setPadding(dp(12), dp(8), dp(12), dp(8)); setBackground(rounded(if (darkMode) 0xFF263650.toInt() else -1, 12)); setTextColor(ink); setHintTextColor(muted) }
         content.addView(search, bottom(8))
@@ -473,12 +463,17 @@ class MainActivity : Activity() {
                 return
             }
             val matches = installedApps.filter { packageManager.getApplicationLabel(it).toString().contains(query, true) || it.packageName.contains(query, true) }
+            val userApps = matches.filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 }
+            val systemApps = matches.filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 }
             if (matches.isEmpty()) {
                 list.addView(TextView(this).apply { text = "No matching apps found."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
                 return
             }
+            fun addAppSection(title: String, apps: List<android.content.pm.ApplicationInfo>, accent: Int) {
+            if (apps.isEmpty()) return
+            list.addView(TextView(this).apply { text = title + "  ·  " + apps.size; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(accent); setPadding(dp(3), dp(13), 0, dp(6)) })
             val grid = android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }
-            matches.forEach { app ->
+            apps.forEach { app ->
                 val appTile = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                     setPadding(dp(6), dp(12), dp(6), dp(10))
@@ -509,6 +504,9 @@ class MainActivity : Activity() {
                 grid.addView(appTile, params)
             }
             list.addView(grid)
+            }
+            addAppSection("YOUR APPS", userApps, 0xFF7357E8.toInt())
+            addAppSection("SYSTEM APPS", systemApps, 0xFF168FE5.toInt())
         }
         search.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
