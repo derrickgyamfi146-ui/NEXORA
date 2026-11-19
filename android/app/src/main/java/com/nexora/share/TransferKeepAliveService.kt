@@ -38,7 +38,8 @@ class TransferKeepAliveService : Service() {
     private val client by lazy { Nearby.getConnectionsClient(this) }
     private var listener: Listener? = null
     private var lastStatusMessage = "NEXORA is ready."
-    private var connectedEndpoint: String? = null
+    private val connectedEndpoints = LinkedHashSet<String>()
+    private val pendingPayloadEndpoints = ConcurrentHashMap<Long, MutableSet<String>>()
     private var advertising = false
     private var discovering = false
     private val openFiles = ConcurrentHashMap<Long, android.os.ParcelFileDescriptor>()
@@ -49,7 +50,7 @@ class TransferKeepAliveService : Service() {
     private var lastProgressAt = 0L
     private val incomingFiles = ConcurrentHashMap<Long, Pair<Uri, String>>()
     private val serviceId = "com.nexora.share"
-    private val strategy = Strategy.P2P_POINT_TO_POINT
+    private val strategy = Strategy.P2P_STAR
 
     fun setListener(value: Listener?) { listener = value; value?.onStatus(lastStatusMessage) }
 
@@ -114,7 +115,6 @@ class TransferKeepAliveService : Service() {
     @Synchronized
     fun sendFiles(uris: List<Uri>) {
         if (uris.isEmpty()) { status("Choose at least one file."); return }
-        if (connectedEndpoint == null) { status("Connect to a phone first."); return }
         outgoingQueue.addAll(uris)
         status("${outgoingQueue.size} file(s) queued. Starting transfer…")
         sendNextFile()
@@ -123,10 +123,10 @@ class TransferKeepAliveService : Service() {
     @Synchronized
     private fun sendNextFile() {
         if (sending) return
-        val endpoint = connectedEndpoint
-        if (endpoint == null) {
-            outgoingQueue.clear()
-            status("Connection lost. Reconnect before sending again.")
+        val endpoints = synchronized(connectedEndpoints) { connectedEndpoints.toList() }
+        if (endpoints.isEmpty()) {
+            sending = false
+            status("Files are queued. Connect to a nearby phone to start sending.")
             return
         }
         val uri = outgoingQueue.pollFirst()
@@ -148,7 +148,9 @@ class TransferKeepAliveService : Service() {
             transferStartedAt = System.currentTimeMillis()
             lastProgressAt = transferStartedAt
             status("Sending $name…")
-            client.sendPayload(endpoint, payload).addOnFailureListener {
+            pendingPayloadEndpoints[payload.id] = java.util.Collections.synchronizedSet(endpoints.toMutableSet())
+            client.sendPayload(endpoints, payload).addOnFailureListener {
+                pendingPayloadEndpoints.remove(payload.id)
                 openFiles.remove(payload.id)?.close()
                 currentOutgoingPayloadId = null
                 sending = false
@@ -167,7 +169,8 @@ class TransferKeepAliveService : Service() {
         advertising = false
         discovering = false
         client.stopAllEndpoints()
-        connectedEndpoint = null
+        synchronized(connectedEndpoints) { connectedEndpoints.clear() }
+        pendingPayloadEndpoints.clear()
         openFiles.values.forEach { runCatching { it.close() } }
         openFiles.clear()
         outgoingQueue.clear()
@@ -200,21 +203,18 @@ class TransferKeepAliveService : Service() {
         }
         override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
             if (result.status.isSuccess) {
-                connectedEndpoint = endpointId
-                client.stopDiscovery()
-                client.stopAdvertising()
-                discovering = false
-                advertising = false
+                synchronized(connectedEndpoints) { connectedEndpoints.add(endpointId) }
                 listener?.onConnected(endpointId)
-                status("Connected securely. Choose a file to send.")
+                status("Connected to ${connectedEndpoints.size} phone(s). You can add more phones or send files.")
+                sendNextFile()
             } else {
                 status("Connection was not completed. Try again.")
             }
         }
         override fun onDisconnected(endpointId: String) {
-            if (connectedEndpoint == endpointId) connectedEndpoint = null
+            synchronized(connectedEndpoints) { connectedEndpoints.remove(endpointId) }
             listener?.onDisconnected(endpointId)
-            status("Device disconnected.")
+            status("A phone disconnected. ${connectedEndpoints.size} phone(s) remain connected.")
         }
     }
 
@@ -245,36 +245,66 @@ class TransferKeepAliveService : Service() {
                     }
                 }
                 PayloadTransferUpdate.Status.SUCCESS -> {
-                    val outgoing = openFiles.remove(update.payloadId)
-                    outgoing?.close()
-                    val incoming = incomingFiles.remove(update.payloadId)
-                    if (incoming != null) {
-                        saveReceivedFile(incoming.first, incoming.second)
-                    } else if (outgoing != null) {
-                        currentOutgoingPayloadId = null
-                        sending = false
-                        status("File sent. ${outgoingQueue.size} file(s) remaining.")
-                        sendNextFile()
+                    val pending = pendingPayloadEndpoints[update.payloadId]
+                    if (pending != null) {
+                        synchronized(pending) {
+                            pending.remove(endpointId)
+                            if (pending.isEmpty()) {
+                                pendingPayloadEndpoints.remove(update.payloadId)
+                                openFiles.remove(update.payloadId)?.close()
+                                if (currentOutgoingPayloadId == update.payloadId) {
+                                    currentOutgoingPayloadId = null
+                                    sending = false
+                                    status("File sent to connected phone(s). ${outgoingQueue.size} file(s) remaining.")
+                                    sendNextFile()
+                                }
+                            }
+                        }
+                    } else {
+                        val incoming = incomingFiles.remove(update.payloadId)
+                        if (incoming != null) saveReceivedFile(incoming.first, incoming.second)
                     }
                 }
                 PayloadTransferUpdate.Status.FAILURE -> {
-                    openFiles.remove(update.payloadId)?.close()
-                    incomingFiles.remove(update.payloadId)
-                    if (currentOutgoingPayloadId == update.payloadId) {
-                        currentOutgoingPayloadId = null
-                        sending = false
-                        status("One file failed. Continuing with the queue…")
-                        sendNextFile()
-                    } else status("Transfer failed. Check both phones and try again.")
+                    val pending = pendingPayloadEndpoints[update.payloadId]
+                    if (pending != null) {
+                        synchronized(pending) {
+                            pending.remove(endpointId)
+                            status("One phone could not receive the file.")
+                            if (pending.isEmpty()) {
+                                pendingPayloadEndpoints.remove(update.payloadId)
+                                openFiles.remove(update.payloadId)?.close()
+                                if (currentOutgoingPayloadId == update.payloadId) {
+                                    currentOutgoingPayloadId = null
+                                    sending = false
+                                    status("Transfer failed for all remaining phones. Continuing the queue…")
+                                    sendNextFile()
+                                }
+                            }
+                        }
+                    } else {
+                        incomingFiles.remove(update.payloadId)
+                        status("Transfer failed. Check both phones and try again.")
+                    }
                 }
                 PayloadTransferUpdate.Status.CANCELED -> {
                     openFiles.remove(update.payloadId)?.close()
                     incomingFiles.remove(update.payloadId)
-                    if (currentOutgoingPayloadId == update.payloadId) {
-                        currentOutgoingPayloadId = null
-                        sending = false
-                        status("Transfer canceled. Continuing with the queue…")
-                        sendNextFile()
+                    val pending = pendingPayloadEndpoints[update.payloadId]
+                    if (pending != null) {
+                        synchronized(pending) {
+                            pending.remove(endpointId)
+                            if (pending.isEmpty()) {
+                                pendingPayloadEndpoints.remove(update.payloadId)
+                                openFiles.remove(update.payloadId)?.close()
+                                if (currentOutgoingPayloadId == update.payloadId) {
+                                    currentOutgoingPayloadId = null
+                                    sending = false
+                                    status("Transfer canceled. Continuing with the queue…")
+                                    sendNextFile()
+                                }
+                            }
+                        }
                     } else status("Transfer canceled.")
                 }
             }
