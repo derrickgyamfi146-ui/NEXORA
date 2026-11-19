@@ -24,6 +24,7 @@ class MainActivity : Activity() {
     private lateinit var sendButton: Button
     private val selectedUris = ArrayList<Uri>()
     private val discovered = LinkedHashMap<String, String>()
+    private val connectedPeers = LinkedHashSet<String>()
     private var pendingQrDeviceName: String? = null
     private var pendingNearbyAction: (() -> Unit)? = null
     private var sharing: TransferKeepAliveService? = null
@@ -84,8 +85,20 @@ class MainActivity : Activity() {
                     .setCancelable(false).show()
             }
         }
-        override fun onConnected(endpointId: String) { runOnUiThread { if (::sendButton.isInitialized) sendButton.isEnabled = true } }
-        override fun onDisconnected(endpointId: String) { runOnUiThread { if (::sendButton.isInitialized) sendButton.isEnabled = true } }
+        override fun onConnected(endpointId: String) {
+            runOnUiThread {
+                connectedPeers.add(endpointId)
+                if (::peerList.isInitialized) rebuildPeerList()
+                if (::sendButton.isInitialized) sendButton.isEnabled = true
+            }
+        }
+        override fun onDisconnected(endpointId: String) {
+            runOnUiThread {
+                connectedPeers.remove(endpointId)
+                if (::peerList.isInitialized) rebuildPeerList()
+                if (::sendButton.isInitialized) sendButton.isEnabled = true
+            }
+        }
         override fun onTransferProgress(message: String) { runOnUiThread { updateStatus(message) } }
     }
 
@@ -354,7 +367,7 @@ class MainActivity : Activity() {
             }
         }
         content.addView(sendButton, bottom(8))
-        content.addView(button("STOP SHARING", 0xFF62778A.toInt()) { sharing?.stopSharing(); discovered.clear(); rebuildPeerList(); updateStatus("Sharing stopped.") })
+        content.addView(button("STOP SHARING", 0xFF62778A.toInt()) { sharing?.stopSharing(); discovered.clear(); connectedPeers.clear(); rebuildPeerList(); updateStatus("Sharing stopped.") })
     }
 
     private fun showQrCode() {
@@ -1123,8 +1136,31 @@ class MainActivity : Activity() {
     private fun rebuildPeerList() {
         if (!::peerList.isInitialized) return
         peerList.removeAllViews()
-        if (discovered.isEmpty()) peerList.addView(TextView(this).apply { text = "No nearby phones yet. Tap Find nearby phones."; textSize = 11f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
-        discovered.forEach { (id, name) -> peerList.addView(button("Connect to $name", 0xFF16A085.toInt()) { sharing?.connect(id, name) }, bottom(6)) }
+        if (discovered.isEmpty() && connectedPeers.isEmpty()) {
+            peerList.addView(TextView(this).apply { text = "No nearby phones yet. Tap Find nearby phones."; textSize = 11f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
+        }
+        discovered.forEach { (id, name) ->
+            if (connectedPeers.contains(id)) {
+                peerList.addView(TextView(this).apply {
+                    text = "✓  CONNECTED  ·  " + name
+                    textSize = 12f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(0xFF16A58A.toInt())
+                    setPadding(dp(8), dp(10), dp(8), dp(10))
+                    background = rounded(if (darkMode) 0xFF173C3B.toInt() else 0xFFE7F7F1.toInt(), 12)
+                }, bottom(6))
+            } else {
+                peerList.addView(button("Connect to $name", 0xFF16A085.toInt()) { sharing?.connect(id, name) }, bottom(6))
+            }
+        }
+        if (connectedPeers.isNotEmpty()) {
+            peerList.addView(TextView(this).apply {
+                text = connectedPeers.size.toString() + " phone(s) connected · group sharing ready"
+                textSize = 11f
+                setTextColor(if (darkMode) 0xFF8FE4C5.toInt() else 0xFF168A70.toInt())
+                setPadding(dp(4), dp(5), dp(4), dp(3))
+            })
+        }
     }
 
     private fun withNearbyPermissions(action: () -> Unit) {
