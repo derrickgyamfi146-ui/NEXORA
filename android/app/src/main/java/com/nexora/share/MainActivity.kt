@@ -32,7 +32,7 @@ class MainActivity : Activity() {
             sharing = (binder as? TransferKeepAliveService.LocalBinder)?.service()
             bound = sharing != null
             sharing?.setListener(serviceListener)
-            if (::sendButton.isInitialized) sendButton.isEnabled = sharing != null && selectedUris.isNotEmpty()
+            if (::sendButton.isInitialized) sendButton.isEnabled = true
         }
         override fun onServiceDisconnected(name: ComponentName?) { sharing = null; bound = false }
     }
@@ -56,8 +56,8 @@ class MainActivity : Activity() {
                     .setCancelable(false).show()
             }
         }
-        override fun onConnected(endpointId: String) { runOnUiThread { if (::sendButton.isInitialized) sendButton.isEnabled = selectedUris.isNotEmpty() } }
-        override fun onDisconnected(endpointId: String) { runOnUiThread { if (::sendButton.isInitialized) sendButton.isEnabled = false } }
+        override fun onConnected(endpointId: String) { runOnUiThread { if (::sendButton.isInitialized) sendButton.isEnabled = true } }
+        override fun onDisconnected(endpointId: String) { runOnUiThread { if (::sendButton.isInitialized) sendButton.isEnabled = true } }
         override fun onTransferProgress(message: String) { runOnUiThread { updateStatus(message) } }
     }
 
@@ -128,11 +128,11 @@ class MainActivity : Activity() {
             else {
                 sharing?.sendFiles(ArrayList(selectedUris))
                 selectedUris.clear()
-                sendButton.isEnabled = false
+                sendButton.isEnabled = true
                 sendButton.text = "CHOOSE FILES TO SEND"
             }
         }
-        sendButton.isEnabled = selectedUris.isNotEmpty()
+        sendButton.isEnabled = true
         content.addView(sendButton, bottom(10))
         content.addView(button("STOP / DISCONNECT", 0xFF718096.toInt()) { sharing?.stopSharing(); discovered.clear(); rebuildPeerList(); updateStatus("Sharing stopped.") })
     }
@@ -253,10 +253,10 @@ class MainActivity : Activity() {
                 activeTab = "Home"; render()
                 updateStatus("${selectedUris.size} file(s) selected. Connect to a phone, then send.")
                 sendButton.text = "SEND ${selectedUris.size} SELECTED FILE(S)"
-                sendButton.isEnabled = sharing != null
+                sendButton.isEnabled = true
                 sendButton.setOnClickListener {
                     sharing?.sendFiles(ArrayList(selectedUris)); selectedUris.clear()
-                    sendButton.isEnabled = false; sendButton.text = "CHOOSE FILES TO SEND"
+                    sendButton.isEnabled = true; sendButton.text = "CHOOSE FILES TO SEND"
                 }
             }
         }
