@@ -2268,28 +2268,43 @@ class MainActivity : Activity() {
 
         val events = (prefs.getString("history_events", "") ?: "")
             .split("\n").filter { it.isNotBlank() }.toMutableList()
-        val existing = events.mapNotNull { line ->
-            val parts = line.split("|", limit = 3)
-            if (parts.size == 3) parts[1] + "|" + parts[2] else null
-        }.toMutableSet()
+
+        fun alreadyRecorded(timestamp: Long, direction: String, name: String): Boolean {
+            return events.any { line ->
+                val parts = line.split("|", limit = 3)
+                if (parts.size != 3 || parts[1] != direction || parts[2] != name) false
+                else {
+                    val existingTime = parts[0].toLongOrNull() ?: return@any false
+                    kotlin.math.abs(existingTime - timestamp) < 120_000L
+                }
+            }
+        }
 
         fun addLegacyEvent(timestamp: Long, direction: String, rawName: String) {
             val name = rawName.replace("|", "_").replace("\n", " ").take(240)
-            if (name.isBlank() || !existing.add(direction + "|" + name)) return
+            if (name.isBlank() || alreadyRecorded(timestamp, direction, name)) return
             events.add(timestamp.toString() + "|" + direction + "|" + name)
         }
 
-        val sentStamp = java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault())
-        val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        val sentStamp = java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault()).apply {
+            isLenient = false
+        }
+        val now = java.util.Calendar.getInstance()
         (prefs.getString("sent_items", "") ?: "").split("\n").filter { it.isNotBlank() }.forEach { entry ->
             val stampText = entry.substringBefore(" · ")
             val name = entry.substringAfter(" · ", "").substringBefore(" · ")
             val parsed = runCatching { sentStamp.parse(stampText)?.time }.getOrNull()
-            val timestamp = parsed?.let {
-                java.util.Calendar.getInstance().apply {
-                    timeInMillis = it
-                    set(java.util.Calendar.YEAR, currentYear)
-                }.timeInMillis
+            val timestamp = parsed?.let { parsedTime ->
+                val candidate = java.util.Calendar.getInstance().apply {
+                    timeInMillis = parsedTime
+                    set(java.util.Calendar.YEAR, now.get(java.util.Calendar.YEAR))
+                }
+                // Legacy labels omitted the year. If the resulting date is in the
+                // future, it belongs to the previous year (e.g. a December record in January).
+                if (candidate.timeInMillis > System.currentTimeMillis() + 86_400_000L) {
+                    candidate.add(java.util.Calendar.YEAR, -1)
+                }
+                candidate.timeInMillis
             } ?: System.currentTimeMillis()
             addLegacyEvent(timestamp, "SENT", name)
         }
