@@ -78,6 +78,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 if (message.startsWith("Sent: ")) rememberSentFileName(message.removePrefix("Sent: ").trim())
                 updateStatus(message)
+                showWifiDirectFailureHelp(message)
                 if (message.startsWith("Transfer queue finished:")) {
                     java.io.File(cacheDir, "shared_apks").listFiles()?.forEach { it.delete() }
                 }
@@ -927,21 +928,32 @@ class MainActivity : Activity() {
             updateStatus("Wi-Fi is off. Turn it on, then try again.")
             return
         }
+        // Do not guess that hotspot is the problem before Android attempts Wi-Fi Direct.
+        action()
+    }
 
-        // Android does not expose a reliable public hotspot-state switch for ordinary apps.
-        // Let the user check it and open the system tethering page when necessary.
+    private fun showWifiDirectFailureHelp(message: String) {
+        val lower = message.lowercase()
+        val likelyRadioConflict = lower.contains("android is busy") ||
+            lower.contains("could not create wi-fi direct group") ||
+            lower.contains("android reported a wi-fi direct error") ||
+            lower.contains("could not join wi-fi direct group") ||
+            lower.contains("wi-fi direct receiver could not start")
+        if (!likelyRadioConflict || isFinishing || isDestroyed) return
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+        val wifiOn = runCatching { wifiManager?.isWifiEnabled == true }.getOrDefault(false)
+        if (!wifiOn) return
         android.app.AlertDialog.Builder(this)
-            .setTitle("Check hotspot")
-            .setMessage("Wi-Fi Direct may not work while your mobile hotspot is active. If hotspot is on, turn it off before continuing.")
-            .setNeutralButton("Turn off hotspot") { _, _ ->
+            .setTitle("Wi-Fi Direct could not connect")
+            .setMessage("Android could not create the connection. Check whether mobile hotspot is on and turn it off if necessary, then try again. NEXORA cannot switch hotspot off automatically.")
+            .setPositiveButton("Check hotspot settings") { _, _ ->
                 try {
                     startActivity(Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS))
                 } catch (_: Exception) {
                     startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Continue") { _, _ -> action() }
+            .setNegativeButton("Not now", null)
             .show()
     }
 
