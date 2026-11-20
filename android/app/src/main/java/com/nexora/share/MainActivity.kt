@@ -2245,7 +2245,7 @@ class MainActivity : Activity() {
         } else {
             sentEntries.take(20).forEach { entry ->
                 sending.addView(TextView(this).apply {
-                    text = "↑  " + entry.substringAfter(" · ", entry).substringAfter(" · ", entry)
+                    text = "↑  " + entry.substringAfter(" · ", entry).substringBefore(" · ")
                     textSize = 12f
                     maxLines = 2
                     setTextColor(ink)
