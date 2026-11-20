@@ -39,6 +39,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private val channel = manager.initialize(context, context.mainLooper, null)
     private val io = Executors.newCachedThreadPool()
     private val active = AtomicBoolean(false)
+    private val connecting = AtomicBoolean(false)
     @Volatile private var server: ServerSocket? = null
     @Volatile private var socket: Socket? = null
     @Volatile private var token: String? = null
@@ -160,6 +161,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     }
 
     private fun connectSocket(host: String) {
+        if (!connecting.compareAndSet(false, true)) return
         io.execute {
             try {
                 var connected: Socket? = null
@@ -177,6 +179,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 callbacks.onConnected(peerName)
                 callbacks.onStatus("Connected to " + peerName + ". Select files to send.")
             } catch (e: Exception) { if (active.get()) callbacks.onStatus("Wi-Fi Direct connection failed: " + e.localizedMessage) }
+            finally { connecting.set(false) }
         }
     }
 
