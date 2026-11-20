@@ -85,35 +85,46 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
 
         // Android may retain a group from an earlier failed attempt. Remove it first;
         // createGroup commonly returns BUSY while that stale group still exists.
-        manager.requestGroupInfo(channel) { existing ->
-            if (existing != null) {
-                manager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() { createReceiverGroup() }
-                    override fun onFailure(reason: Int) {
-                        // Some Android builds report failure when there was no removable group.
-                        createReceiverGroup()
-                    }
-                })
-            } else createReceiverGroup()
+        try {
+            manager.requestGroupInfo(channel) { existing ->
+                if (!active.get()) return@requestGroupInfo
+                if (existing != null) {
+                    manager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() { createReceiverGroup() }
+                        override fun onFailure(reason: Int) {
+                            // Continue after the removal callback; createGroup reports BUSY if needed.
+                            createReceiverGroup()
+                        }
+                    })
+                } else createReceiverGroup()
+            }
+        } catch (e: Exception) {
+            active.set(false)
+            callbacks.onStatus("Wi-Fi Direct could not inspect the current group: " + (e.localizedMessage ?: "permission or Wi-Fi error"))
         }
     }
 
     private fun createReceiverGroup() {
         if (!active.get()) return
         callbacks.onStatus("Creating a private Wi-Fi Direct connection…")
-        manager.createGroup(channel, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() { requestGroupDetails(0) }
-            override fun onFailure(reason: Int) {
-                active.set(false)
-                callbacks.onStatus("Could not create Wi-Fi Direct group (code " + reason + "). Check that Wi-Fi is on, then tap Receive again.")
-            }
-        })
+        try {
+            manager.createGroup(channel, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() { requestGroupDetails(0) }
+                override fun onFailure(reason: Int) {
+                    active.set(false)
+                    callbacks.onStatus("Could not create Wi-Fi Direct group (code " + reason + "). Check that Wi-Fi is on, then tap Receive again.")
+                }
+            })
+        } catch (e: Exception) {
+            active.set(false)
+            callbacks.onStatus("Wi-Fi Direct could not start: " + (e.localizedMessage ?: "check Wi-Fi and permissions"))
+        }
     }
 
     private fun requestGroupDetails(attempt: Int) {
         manager.requestGroupInfo(channel) { group ->
             if (group == null) {
-                if (attempt < 12) io.execute { Thread.sleep(350); requestGroupDetails(attempt + 1) }
+                if (attempt < 30) io.execute { Thread.sleep(500); requestGroupDetails(attempt + 1) }
                 else {
                     active.set(false)
                     callbacks.onStatus("Wi-Fi Direct group details were unavailable. Please retry.")
