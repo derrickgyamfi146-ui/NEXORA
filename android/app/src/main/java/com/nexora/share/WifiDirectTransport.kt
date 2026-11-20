@@ -161,7 +161,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     try { val incoming = listening.accept(); socket = incoming; handleIncoming(incoming) }
                     catch (_: SocketTimeoutException) { }
                 }
-            } catch (e: Exception) { if (active.get()) callbacks.onStatus("Wi-Fi Direct receiver could not start: " + e.localizedMessage) }
+            } catch (e: Exception) { active.set(false); callbacks.onStatus("Wi-Fi Direct receiver could not start: " + e.localizedMessage) }
         }
     }
 
