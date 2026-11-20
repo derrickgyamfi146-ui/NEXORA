@@ -698,7 +698,8 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             }
                             val confirmed = peer.acknowledgementQueue.poll(10, TimeUnit.MINUTES)
                                 ?: throw IOException(peer.name + " did not acknowledge " + name)
-                            if (!confirmed) callbacks.onStatus(peer.name + " cancelled " + name)
+                            if (confirmed) callbacks.onStatus("Sent: " + name)
+                            else callbacks.onStatus(peer.name + " cancelled " + name)
                         }
                         callbacks.onStatus("Sent selected files to " + peer.name + ".")
                     } catch (e: Exception) {
