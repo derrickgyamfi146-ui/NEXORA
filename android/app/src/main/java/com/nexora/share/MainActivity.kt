@@ -735,18 +735,37 @@ class MainActivity : Activity() {
         })
         val selection = panel(card)
         selection.addView(label("SELECTED ITEMS", 0xFFFFD66B.toInt()))
-        selection.addView(TextView(this).apply {
-            text = selectedUris.size.toString() + " item(s) ready"; textSize = 18f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink)
-            setPadding(0, dp(8), 0, dp(8))
-        })
-        selectedUris.take(6).forEach { uri ->
+        val selectedNames = selectedUris.map { uri ->
             val name = runCatching {
                 contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cur ->
                     if (cur.moveToFirst()) cur.getString(0) else null
                 }
             }.getOrNull() ?: (uri.lastPathSegment ?: "Selected item")
-            selection.addView(TextView(this).apply { text = "•  " + name; textSize = 12f; setTextColor(muted); maxLines = 1 })
+            Pair(uri, name)
+        }
+        val appBundles = LinkedHashMap<String, MutableList<String>>()
+        val ordinaryItems = ArrayList<String>()
+        val appPartPattern = Regex("^(NEXORA_APP_.+?)_(?:BASE|SPLIT_\\d+)\\.apk$", RegexOption.IGNORE_CASE)
+        selectedNames.forEach { (_, name) ->
+            val match = appPartPattern.matchEntire(name)
+            if (match != null) appBundles.getOrPut(match.groupValues[1]) { ArrayList() }.add(name)
+            else ordinaryItems.add(name)
+        }
+        val visibleItemCount = appBundles.size + ordinaryItems.size
+        selection.addView(TextView(this).apply {
+            text = visibleItemCount.toString() + " item(s) ready"; textSize = 18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink)
+            setPadding(0, dp(8), 0, dp(8))
+        })
+        val preview = ArrayList<String>()
+        appBundles.forEach { (bundleKey, parts) ->
+            val packageAndBatch = bundleKey.removePrefix("NEXORA_APP_")
+            val packageName = packageAndBatch.substringBeforeLast("_", packageAndBatch)
+            preview.add("App · " + packageName + " (" + parts.size + " APK parts)")
+        }
+        preview.addAll(ordinaryItems)
+        preview.take(6).forEach { item ->
+            selection.addView(TextView(this).apply { text = "•  " + item; textSize = 12f; setTextColor(muted); maxLines = 1 })
         }
         content.addView(selection, bottom(14))
         content.addView(button("CONNECT & SEND", 0xFF0B9B75.toInt()) {
