@@ -26,6 +26,7 @@ class MainActivity : Activity() {
     private val discovered = LinkedHashMap<String, String>()
     private val connectedPeers = LinkedHashSet<String>()
     private var pendingQrDeviceName: String? = null
+    private var pendingAutoConnectEndpointId: String? = null
     private var pendingNearbyAction: (() -> Unit)? = null
     private var sharing: TransferKeepAliveService? = null
     private var bound = false
@@ -95,8 +96,12 @@ class MainActivity : Activity() {
                 val wanted = pendingQrDeviceName
                 if (wanted != null && name.trim().equals(wanted.trim(), ignoreCase = true)) {
                     pendingQrDeviceName = null
+                    pendingAutoConnectEndpointId = endpointId
                     updateStatus("QR matched $name. Requesting a secure connection…")
-                    // Connect immediately; only show the animation after Nearby confirms success.
+                    sharing?.connect(endpointId, name)
+                } else if (pendingSelectedSend && connectedPeers.isEmpty() && pendingAutoConnectEndpointId == null) {
+                    pendingAutoConnectEndpointId = endpointId
+                    updateStatus("Found $name. Requesting connection…")
                     sharing?.connect(endpointId, name)
                 }
             }
@@ -116,6 +121,7 @@ class MainActivity : Activity() {
         override fun onConnected(endpointId: String) {
             runOnUiThread {
                 connectedPeers.add(endpointId)
+                pendingAutoConnectEndpointId = null
                 if (::peerList.isInitialized) rebuildPeerList()
                 if (::sendButton.isInitialized) sendButton.isEnabled = true
                 if (pendingSelectedSend && selectedUris.isNotEmpty() && pendingConnectionSendUris == null) {
@@ -149,6 +155,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 connectedPeers.remove(endpointId)
                 if (sharing?.connectedEndpointIds()?.isEmpty() != false && connectedPeers.isEmpty()) {
+                    pendingAutoConnectEndpointId = null
                     pendingSelectedSend = false
                     pendingConnectionSendUris = null
                     selectedUris.clear()
@@ -293,14 +300,6 @@ class MainActivity : Activity() {
             return
         }
         when {
-            activeTab == "Send" -> {
-                pendingSelectedSend = false
-                selectedUris.clear()
-                selectedAppPackages.clear()
-                java.io.File(cacheDir, "shared_apks").listFiles()?.forEach { it.delete() }
-                updateSelectionAction()
-                activeTab = "Media"; mediaCategory = "Apps"; render()
-            }
             activeTab == "Settings" || activeTab == "Transfers" || activeTab == "Receive" || activeTab == "Files" || activeTab == "Sent" || activeTab == "Received" || activeTab == "Contacts" -> {
                 activeTab = "Media"; mediaCategory = "Apps"; render()
             }
@@ -554,7 +553,6 @@ class MainActivity : Activity() {
             "Sent" -> showSent(card, ink, muted)
             "Received" -> showReceived(card, ink, muted)
             "Transfers" -> showTransfers(card, ink, muted)
-            "Send" -> showSend(card, ink, muted, blue)
             "Receive" -> showReceive(card, ink, muted)
             "Settings" -> showSettings(card, ink, muted, blue)
             "Contacts" -> showContacts(card, ink, muted)
@@ -733,54 +731,6 @@ class MainActivity : Activity() {
             render()
         })
     }
-    private fun showSend(card: Int, ink: Int, muted: Int, blue: Int) {
-        content.addView(TextView(this).apply {
-            text = "Ready to send"; textSize = 25f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(ink); setPadding(dp(2), dp(12), dp(2), dp(6))
-        })
-        val selection = panel(card)
-        selection.addView(label("SELECTED ITEMS", 0xFFFFD66B.toInt()))
-        val selectedNames = selectedUris.map { uri ->
-            val name = runCatching {
-                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cur ->
-                    if (cur.moveToFirst()) cur.getString(0) else null
-                }
-            }.getOrNull() ?: (uri.lastPathSegment ?: "Selected item")
-            Pair(uri, name)
-        }
-        val appBundles = LinkedHashMap<String, MutableList<String>>()
-        val ordinaryItems = ArrayList<String>()
-        val appPartPattern = Regex("^(NEXORA_APP_.+?)_(?:BASE|SPLIT_\\d+)\\.apk$", RegexOption.IGNORE_CASE)
-        selectedNames.forEach { (_, name) ->
-            val match = appPartPattern.matchEntire(name)
-            if (match != null) appBundles.getOrPut(match.groupValues[1]) { ArrayList() }.add(name)
-            else ordinaryItems.add(name)
-        }
-        val visibleItemCount = appBundles.size + ordinaryItems.size
-        selection.addView(TextView(this).apply {
-            text = visibleItemCount.toString() + " item(s) ready"; textSize = 18f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink)
-            setPadding(0, dp(8), 0, dp(8))
-        })
-        val preview = ArrayList<String>()
-        appBundles.forEach { (bundleKey, parts) ->
-            val packageAndBatch = bundleKey.removePrefix("NEXORA_APP_")
-            val packageName = packageAndBatch.substringBeforeLast("_", packageAndBatch)
-            preview.add("App · " + packageName + " (" + parts.size + " APK parts)")
-        }
-        preview.addAll(ordinaryItems)
-        preview.take(6).forEach { item ->
-            selection.addView(TextView(this).apply { text = "•  " + item; textSize = 12f; setTextColor(muted); maxLines = 1 })
-        }
-        content.addView(selection, bottom(14))
-        content.addView(button("CONNECT & SEND", 0xFF0B9B75.toInt()) {
-            if (selectedUris.isEmpty()) openPicker("*/*") else beginSendSelected()
-        }, bottom(8))
-        content.addView(button("CHOOSE MORE FILES", 0xFF4C46A8.toInt()) { openPicker("*/*") }, bottom(8))
-        content.addView(button("BACK TO APPS", 0xFFB38A2E.toInt()) { activeTab = "Media"; mediaCategory = "Apps"; render() })
-    }
-
     private fun beginSendSelected() {
         if (selectedUris.isEmpty()) { Toast.makeText(this, "Select something to send first.", Toast.LENGTH_SHORT).show(); return }
         val outgoing = ArrayList(LinkedHashSet(selectedUris))
@@ -797,7 +747,16 @@ class MainActivity : Activity() {
             render()
         } else {
             pendingSelectedSend = true
-            openSendQr()
+            pendingAutoConnectEndpointId = null
+            withNearbyPermissions {
+                runWithSharingService { service ->
+                    service.setHighSpeedMode(highSpeedMode)
+                    activeTab = "Transfers"
+                    render()
+                    updateStatus("Searching for a receiving phone. On the other phone, tap RECEIVE / START RECEIVING.")
+                    service.startFinding()
+                }
+            }
         }
     }
 
@@ -1525,10 +1484,10 @@ class MainActivity : Activity() {
                     Toast.makeText(this, "Could not prepare selected apps: " + (failure ?: "no app files found"), Toast.LENGTH_LONG).show()
                     return@runOnUiThread
                 }
-                activeTab = "Send"
+                activeTab = "Transfers"
                 mediaCategory = "Apps"
                 render()
-                updateStatus(labels.size.toString() + " app(s) prepared (" + totalParts + " APK part(s)). Opening connection…")
+                updateStatus(labels.size.toString() + " app(s) prepared (" + totalParts + " APK part(s)). Searching for a receiving phone…")
                 beginSendSelected()
             }
         }.start()
@@ -2603,8 +2562,10 @@ class MainActivity : Activity() {
             selectedUris.clear(); selectedUris.addAll(chosen)
             if (selectedUris.isEmpty()) updateStatus("No files selected.")
             else {
-                activeTab = "Send"; render()
-                updateStatus("${selectedUris.size} file(s) selected. Find a nearby phone or connect by QR.")
+                activeTab = "Media"
+                mediaCategory = "Apps"
+                render()
+                updateStatus("${selectedUris.size} file(s) selected. Tap SEND SELECTED to find a receiving phone.")
             }
         }
     }
