@@ -581,13 +581,9 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             } catch (e: Exception) {
                 val busy = e.localizedMessage?.contains("busy", ignoreCase = true) == true
                 if (!busy) {
+                    // Closing the socket lets the single peer reader own cleanup
+                    // and emit exactly one disconnect callback.
                     runCatching { s.close() }
-                    if (socket === s) {
-                        socket = null
-                        peerInput = null
-                        peerOutput = null
-                    }
-                    callbacks.onDisconnected()
                 }
                 callbacks.onStatus("Send failed: " + (e.localizedMessage ?: "network error"))
             } finally {
