@@ -17,7 +17,7 @@ class TransferKeepAliveService : Service() {
         fun onPeerFound(endpointId: String, name: String)
         fun onPeerLost(endpointId: String)
         fun onConnectionRequest(endpointId: String, name: String, digits: String)
-        fun onConnected(endpointId: String, isReceiver: Boolean)
+        fun onConnected(endpointId: String, name: String, isReceiver: Boolean)
         fun onDisconnected(endpointId: String)
         fun onTransferProgress(message: String)
         fun onQrReady(payload: String)
@@ -32,8 +32,7 @@ class TransferKeepAliveService : Service() {
     private var listener: Listener? = null
     private var lastStatusMessage = "NEXORA is ready."
     @Volatile private var receiving = false
-    @Volatile private var connected = false
-    @Volatile private var peerName = "NEXORA device"
+    private val connectedPeers = java.util.concurrent.ConcurrentHashMap<String, String>()
     private var transferWakeLock: android.os.PowerManager.WakeLock? = null
 
     private val transportDelegate = lazy {
@@ -50,15 +49,14 @@ class TransferKeepAliveService : Service() {
                 status(message)
             }
             override fun onQrReady(payload: String) { listener?.onQrReady(payload) }
-            override fun onConnected(peer: String, localIsReceiver: Boolean) {
-                connected = true
-                peerName = peer
-                listener?.onConnected(ENDPOINT_ID, localIsReceiver)
+            override fun onConnected(endpointId: String, peer: String, localIsReceiver: Boolean) {
+                connectedPeers[endpointId] = peer
+                listener?.onConnected(endpointId, peer, localIsReceiver)
                 status("Connected to " + peer + " over Wi-Fi Direct.")
             }
-            override fun onDisconnected() {
-                connected = false
-                listener?.onDisconnected(ENDPOINT_ID)
+            override fun onDisconnected(endpointId: String) {
+                connectedPeers.remove(endpointId)
+                listener?.onDisconnected(endpointId)
             }
             override fun onProgress(message: String) {
                 lastStatusMessage = message
@@ -78,10 +76,10 @@ class TransferKeepAliveService : Service() {
     }
 
     val isAdvertising: Boolean get() = receiving
-    val isConnected: Boolean get() = connected
-    fun connectedEndpointCount(): Int = if (connected) 1 else 0
-    fun connectedEndpointIds(): List<String> = if (connected) listOf(ENDPOINT_ID) else emptyList()
-    fun connectedEndpointName(endpointId: String): String? = if (endpointId == ENDPOINT_ID) peerName else null
+    val isConnected: Boolean get() = connectedPeers.isNotEmpty()
+    fun connectedEndpointCount(): Int = connectedPeers.size
+    fun connectedEndpointIds(): List<String> = connectedPeers.keys().toList()
+    fun connectedEndpointName(endpointId: String): String? = connectedPeers[endpointId]
 
     fun setHighSpeedMode(enabled: Boolean) {
         status("Wi-Fi Direct is the active connection mode.")
@@ -120,6 +118,12 @@ class TransferKeepAliveService : Service() {
         transport.sendFiles(uris)
     }
 
+    fun sendFilesToGroup(uris: List<Uri>, excludedPeerIds: Set<String> = emptySet()) {
+        if (uris.isEmpty()) { status("Choose at least one item."); return }
+        if (!isConnected) { status("Connect at least one phone before broadcasting."); return }
+        transport.sendFilesToGroup(uris, excludedPeerIds)
+    }
+
     fun pauseIncoming() { if (transportDelegate.isInitialized()) transport.pauseIncoming() }
     fun resumeIncoming() { if (transportDelegate.isInitialized()) transport.resumeIncoming() }
     fun cancelIncoming() { if (transportDelegate.isInitialized()) transport.cancelIncoming() }
@@ -132,7 +136,7 @@ class TransferKeepAliveService : Service() {
     fun stopSharing() {
         if (transportDelegate.isInitialized()) transport.stop()
         receiving = false
-        connected = false
+        connectedPeers.clear()
         releaseTransferWakeLock()
         stopForegroundCompat()
         stopSelf()
