@@ -1116,6 +1116,7 @@ class MainActivity : Activity() {
             text = "🚀"
             textSize = 66f
             gravity = Gravity.CENTER
+            rotation = -45f
             alpha = 0f
             scaleX = .45f
             scaleY = .45f
