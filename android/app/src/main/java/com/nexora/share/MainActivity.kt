@@ -1326,7 +1326,7 @@ class MainActivity : Activity() {
         if (kind == "Apps") { renderAppsLibrary(ink, muted, blue); return }
         if (kind == "Files") {
             content.addView(TextView(this).apply { text = "Browse any folder or file on your phone."; textSize = 13f; setTextColor(muted); setPadding(0, dp(12), 0, dp(10)) })
-            val browse = panel(card)
+            val browse = panel(if (darkMode) 0xFF142A40.toInt() else -1)
             browse.addView(label("FILE LIBRARY", 0xFFFFD21F.toInt()))
             browse.addView(TextView(this).apply { text = "Choose files from your folders, downloads or shared storage."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(10)) })
             browse.addView(button("BROWSE FILES", 0xFF0B4FB3.toInt()) { openPicker("*/*") })
