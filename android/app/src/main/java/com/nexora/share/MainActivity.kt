@@ -844,58 +844,113 @@ class MainActivity : Activity() {
 
     private fun showReceive(card: Int, ink: Int, muted: Int) {
         content.addView(TextView(this).apply {
-            text = "Receive files"; textSize = 26f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(4))
+            text = "Receive files"
+            textSize = 28f
+            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+            setTextColor(ink)
+            setPadding(dp(2), dp(12), dp(2), dp(4))
         })
         content.addView(TextView(this).apply {
-            text = "Create a private Wi-Fi Direct group and let another phone join by scanning your QR code."
-            textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(14))
+            text = "Get ready to receive files directly from another phone."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(dp(3), 0, 0, dp(15))
         })
-        val ready = panel(card)
-        ready.background = android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF8A243A.toInt())
-        ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0xFFFFD21F.toInt()) }
+
+        val ready = panel(card).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF8A243A.toInt())
+            ).apply { cornerRadius = dp(24).toFloat(); setStroke(dp(1), 0xFFFFD21F.toInt()) }
+            elevation = dp(6).toFloat()
+        }
+        ready.addView(label("NEXORA · RECEIVE MODE", 0xFFFFD66B.toInt()))
         receiveModeLabel = TextView(this).apply {
-            text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"
-            textSize = 10f; letterSpacing = .12f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF83F0C9.toInt())
+            text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  READY WHEN YOU ARE"
+            textSize = 10f
+            letterSpacing = .12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(0xFF83F0C9.toInt())
+            setPadding(0, dp(11), 0, dp(5))
         }
         ready.addView(receiveModeLabel)
         ready.addView(TextView(this).apply {
-            text = if (connectedPeers.isEmpty()) "Waiting for another phone to connect" else connectedPeers.size.toString() + " phone(s) connected"
-            textSize = 18f; typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(-1); setPadding(0, dp(14), 0, dp(8))
+            text = if (connectedPeers.isEmpty()) "Your phone is ready to connect" else "Connected to " + connectedPeers.size + " phone(s)"
+            textSize = 20f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1)
+            setPadding(0, dp(5), 0, dp(5))
         })
         ready.addView(TextView(this).apply {
-            text = latestStatus; textSize = 12f; setTextColor(0xFFD4EDE5.toInt()); setPadding(0, 0, 0, dp(13))
+            text = latestStatus
+            textSize = 12f
+            setTextColor(0xFFD4EDE5.toInt())
+            setPadding(0, 0, 0, dp(13))
         })
-        ready.addView(button("↓   START RECEIVING & SHOW QR", 0xFF0B9B75.toInt()) {
-            openSendQr()
+        ready.addView(button("START RECEIVING · SHOW MY QR", 0xFFE52B3A.toInt()) { openSendQr() })
+        content.addView(ready, bottom(14))
+
+        val steps = panel(card)
+        steps.addView(label("HOW TO CONNECT", 0xFF0B4FB3.toInt()))
+        listOf(
+            Triple("01", "Start receiving", "NEXORA creates a private Wi-Fi Direct session."),
+            Triple("02", "Show your QR code", "The other phone scans your code to connect."),
+            Triple("03", "Receive your files", "Received files are saved in Download/NEXORA.")
+        ).forEach { item ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(10), 0, dp(10))
+            }
+            row.addView(TextView(this).apply {
+                text = item.first
+                textSize = 13f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setTextColor(if (item.first == "02") 0xFFE52B3A.toInt() else 0xFF0B4FB3.toInt())
+                background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFEAF1FA.toInt(), 11)
+            }, LinearLayout.LayoutParams(dp(42), dp(42)).apply { rightMargin = dp(11) })
+            val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            details.addView(TextView(this@MainActivity).apply {
+                text = item.second
+                textSize = 13f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(ink)
+            })
+            details.addView(TextView(this@MainActivity).apply {
+                text = item.third
+                textSize = 11f
+                setTextColor(muted)
+                setPadding(0, dp(3), 0, 0)
+            })
+            row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+            steps.addView(row)
+        }
+        content.addView(steps, bottom(14))
+
+        val connect = panel(card)
+        connect.addView(label("ALREADY HAVE A QR CODE?", 0xFFE52B3A.toInt()))
+        connect.addView(TextView(this).apply {
+            text = "Scan another NEXORA phone's QR code to join its receiving session."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(7), 0, dp(11))
         })
-        content.addView(ready, bottom(13))
-        val qr = panel(card)
-        qr.addView(label("CONNECT WITH QR", 0xFF7357E8.toInt()))
-        qr.addView(TextView(this).apply {
-            text = "Show your Wi-Fi Direct QR code to the sender, or scan the receiver code to connect."
-            textSize = 12f; setTextColor(muted); setPadding(0, dp(7), 0, dp(10))
-        })
-        val qrRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        qrRow.addView(button("MY QR CODE", 0xFFE69A35.toInt()) { openSendQr() },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(5) })
-        qrRow.addView(button("SCAN QR", 0xFF7357E8.toInt()) { scanQrCode() },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(5) })
-        qr.addView(qrRow)
-        content.addView(qr, bottom(13))
-        content.addView(button("BACK TO APPS", 0xFF4C46A8.toInt()) { activeTab = "Media"; mediaCategory = "Apps"; render() }, bottom(8))
+        connect.addView(button("SCAN A QR CODE", 0xFF0B4FB3.toInt()) { scanQrCode() })
+        content.addView(connect, bottom(13))
+        content.addView(button("OPEN SENT & RECEIVED", 0xFFE69A35.toInt()) {
+            activeTab = "Transfers"
+            render()
+        }, bottom(8))
         content.addView(button("STOP RECEIVING", 0xFF64748B.toInt()) {
             sharing?.stopSharing()
-            discovered.clear(); connectedPeers.clear()
+            discovered.clear()
+            connectedPeers.clear()
             updateStatus("Receiving stopped.")
             render()
         })
     }
+
     private fun beginSendSelected() {
         if (selectedUris.isEmpty()) { Toast.makeText(this, "Select something to send first.", Toast.LENGTH_SHORT).show(); return }
         val outgoing = ArrayList(LinkedHashSet(selectedUris))
