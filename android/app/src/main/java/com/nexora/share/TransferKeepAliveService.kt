@@ -113,6 +113,12 @@ class TransferKeepAliveService : Service() {
         transport.sendFiles(uris)
     }
 
+    fun pauseIncoming() { if (transportDelegate.isInitialized()) transport.pauseIncoming() }
+    fun resumeIncoming() { if (transportDelegate.isInitialized()) transport.resumeIncoming() }
+    fun cancelIncoming() { if (transportDelegate.isInitialized()) transport.cancelIncoming() }
+    fun isIncomingPaused(): Boolean = transportDelegate.isInitialized() && transport.isIncomingPaused()
+    fun hasIncomingTransfer(): Boolean = transportDelegate.isInitialized() && transport.hasIncomingTransfer()
+
     fun stopSharing() {
         if (transportDelegate.isInitialized()) transport.stop()
         receiving = false
