@@ -23,7 +23,7 @@ Rule: preserve the existing applicationId and original signing certificate. Do n
 
 ## Ordered checklist
 
-- [ ] 1. Full source audit: connection lifecycle, socket protocol, permissions, service lifecycle, navigation, transfer history and build/signing workflow.
+- [x] 1. Full source audit: connection lifecycle, socket protocol, permissions, service lifecycle, navigation, transfer history and build/signing workflow.
 - [ ] 2. Persistent two-way connection/session architecture.
 - [ ] 3. Repeated bidirectional transfers without reconnecting.
 - [ ] 4. Connect-first workflow with no file selection required.
@@ -58,3 +58,8 @@ No upgrade feature has been marked complete yet. The initial audit is underway. 
 | Date | Work | Result |
 |---|---|---|
 | 2026-11-20 | Read baseline Activity, transport, service, manifest, Gradle and CI workflow | Initial architecture findings recorded; full audit remains open |
+
+## Audit completion note
+
+The source inventory and all Kotlin app classes, app manifest, Gradle configuration, launcher icon vectors and both GitHub Actions workflows have now been inspected. The audit confirms that the requested upgrade is not a cosmetic-only change: the current transport is structurally one-way and must be redesigned before the requested user interface can honestly claim two-way or group sharing. The CI signing step currently prints historical/current fingerprints but does not itself fail on a mismatch; this must be hardened before a new APK is distributed.
+
