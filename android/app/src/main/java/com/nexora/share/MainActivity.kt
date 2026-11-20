@@ -37,7 +37,6 @@ class MainActivity : Activity() {
     private var mediaCategory: String? = null
     private var pendingSelectedSend = false
     private var pendingConnectionSendUris: List<Uri>? = null
-    private var highSpeedMode = false
     private var pendingServiceAction: ((TransferKeepAliveService) -> Unit)? = null
     private var appSelectionButton: Button? = null
     private var selectionSendButton: TextView? = null
@@ -183,7 +182,6 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         darkMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("dark_mode", true)
-        highSpeedMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("high_speed_mode", false)
         val savedTree = getSharedPreferences("nexora_file_manager", MODE_PRIVATE).getString("tree_uri", null)
         if (!savedTree.isNullOrBlank()) {
             runCatching {
@@ -546,7 +544,7 @@ class MainActivity : Activity() {
                 background = rounded(0xFF168FE5.toInt(), 22); elevation = dp(5).toFloat()
                 setPadding(dp(18), 0, dp(18), 0)
                 isHapticFeedbackEnabled = true
-                setOnClickListener { animatePress(this); hideQuickActions(); openSendQr() }
+                setOnClickListener { animatePress(this); hideQuickActions(); scanQrCode() }
             }
             val receiveFab = TextView(this).apply {
                 text = "⇩  RECEIVE"; textSize = 12f; gravity = Gravity.CENTER
@@ -554,7 +552,7 @@ class MainActivity : Activity() {
                 background = rounded(0xFF16A58A.toInt(), 22); elevation = dp(5).toFloat()
                 setPadding(dp(18), 0, dp(18), 0)
                 isHapticFeedbackEnabled = true
-                setOnClickListener { animatePress(this); hideQuickActions(); scanQrCode() }
+                setOnClickListener { animatePress(this); hideQuickActions(); openSendQr() }
             }
             quickActions.addView(sendFab, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(6) })
             quickActions.addView(receiveFab, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(6) })
@@ -815,7 +813,6 @@ class MainActivity : Activity() {
             withWifiDirectPermissions {
                 runWithSharingService { service ->
                     receivingModeArmed = true
-                    service.setHighSpeedMode(highSpeedMode)
                     service.startReceiving()
                     Toast.makeText(this@MainActivity, "This phone is ready to receive.", Toast.LENGTH_SHORT).show()
                 }
@@ -862,8 +859,7 @@ class MainActivity : Activity() {
             pendingAutoConnectEndpointId = null
             withWifiDirectPermissions {
                 runWithSharingService { service ->
-                    service.setHighSpeedMode(highSpeedMode)
-                    activeTab = "Transfers"
+                        activeTab = "Transfers"
                     render()
                     updateStatus("Scan the receiving phone QR code to connect over Wi-Fi Direct.")
                     scanQrCode()
@@ -986,7 +982,6 @@ class MainActivity : Activity() {
             page.addView(button("START RECEIVING", 0xFF0B9B75.toInt()) {
                 withWifiDirectPermissions {
                     runWithSharingService { service ->
-                        service.setHighSpeedMode(highSpeedMode)
                         service.startReceiving()
                         Toast.makeText(this@MainActivity, "This phone is ready to receive.", Toast.LENGTH_SHORT).show()
                     }
@@ -2312,12 +2307,6 @@ class MainActivity : Activity() {
         content.addView(TextView(this).apply { text = "Preferences"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
         val appearance = panel(card); appearance.addView(label("APPEARANCE", muted))
         appearance.addView(button(if (darkMode) "Switch to light theme" else "Switch to dark theme", blue) { darkMode = !darkMode; getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply(); render() })
-        appearance.addView(button("HIGH-SPEED MODE  ·  " + if (highSpeedMode) "ON" else "OFF", 0xFFB38A2E.toInt()) {
-            highSpeedMode = !highSpeedMode
-            getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("high_speed_mode", highSpeedMode).apply()
-            runWithSharingService { it.setHighSpeedMode(highSpeedMode) }
-            render()
-        }, bottom(8))
         content.addView(appearance, bottom(10))
         val prefs = panel(card); prefs.addView(label("TRANSFER & STORAGE", muted))
         listOf("Save location\nDownload/NEXORA", "Connection\nWi-Fi Direct", "Transfer mode\nDirect device-to-device", "Mobile data\nNot required for local transfers", "Privacy\nFiles are selected by you").forEach { value ->
