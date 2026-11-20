@@ -470,7 +470,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                if (darkMode) intArrayOf(0xFF061522.toInt(), 0xFF103C45.toInt(), 0xFF3D3218.toInt()) else intArrayOf(0xFFFFF8DF.toInt(), 0xFFE8F7EF.toInt(), 0xFFE5F2FF.toInt())
+                if (darkMode) intArrayOf(0xFF07142E.toInt(), 0xFF102C58.toInt(), 0xFF3D1B32.toInt()) else intArrayOf(0xFFFFF4C2.toInt(), 0xFFFFE7E5.toInt(), 0xFFE6F0FF.toInt())
             )
         }
         val libraryMode = activeTab in setOf("Media", "Files", "Sent", "Received", "Contacts")
@@ -479,7 +479,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xFF102D48.toInt(), 0xFF0B6555.toInt(), 0xFF80601B.toInt())).apply { setStroke(dp(1), 0x3349E7D1) }
+            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF9F2436.toInt())).apply { setStroke(dp(1), 0xFFFFD21F.toInt()) }
         }
         val menuButton = TextView(this).apply {
             text = "☰"; textSize = 23f; gravity = Gravity.CENTER; setTextColor(-1)
@@ -499,7 +499,7 @@ class MainActivity : Activity() {
         if (libraryMode) {
             val tabs = android.widget.HorizontalScrollView(this).apply {
                 isHorizontalScrollBarEnabled = false
-                setBackgroundColor(if (darkMode) 0xFF0B2433.toInt() else 0xFFE8F3F1.toInt())
+                setBackgroundColor(if (darkMode) 0xFF0B1B38.toInt() else 0xFFFFD21F.toInt())
             }
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -522,7 +522,7 @@ class MainActivity : Activity() {
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(if (selected) -1 else if (darkMode) 0xFFB8C9D8.toInt() else 0xFF356052.toInt())
                     setPadding(dp(13), dp(10), dp(13), dp(10))
-                    if (selected) background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xFF087E70.toInt(), 0xFF10B99A.toInt())).apply { cornerRadius = dp(18).toFloat(); setStroke(dp(1), 0x665AF2D4) }
+                    if (selected) background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xFF0B4FB3.toInt(), 0xFFE52B3A.toInt())).apply { cornerRadius = dp(18).toFloat(); setStroke(dp(1), 0xFFFFD21F.toInt()) }
                 }
                 chip.setOnClickListener {
                     animatePress(chip)
@@ -2558,14 +2558,21 @@ class MainActivity : Activity() {
         orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14))
         background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            if (darkMode) intArrayOf(0xFF18384B.toInt(), 0xFF162D3C.toInt(), 0xFF332D1C.toInt()) else intArrayOf(0xFFFFFDF4.toInt(), 0xFFF0FAF4.toInt())
+            if (darkMode) intArrayOf(0xFF14284A.toInt(), 0xFF192A45.toInt(), 0xFF3B2435.toInt()) else intArrayOf(0xFFFFFEF5.toInt(), 0xFFFFF3D2.toInt(), 0xFFEAF1FF.toInt())
         ).apply { cornerRadius = dp(21).toFloat(); setStroke(dp(1), if (darkMode) 0x665CCCB4 else 0xFFE7D8A2.toInt()) }
         elevation = dp(3).toFloat()
     }
     private fun label(value: String, color: Int) = TextView(this).apply { text = value; textSize = 10f; letterSpacing = .1f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(color) }
     private fun button(value: String, color: Int, action: () -> Unit) = Button(this).apply {
         text = value; textSize = 12f; isAllCaps = false; typeface = android.graphics.Typeface.DEFAULT_BOLD
-        setTextColor(-1); background = rounded(color, 15); setPadding(dp(10), dp(9), dp(10), dp(9))
+        val brand = when {
+            android.graphics.Color.red(color) > 180 && android.graphics.Color.green(color) > 100 && android.graphics.Color.blue(color) < 130 -> 0xFFFFD21F.toInt()
+            android.graphics.Color.red(color) > 150 && android.graphics.Color.green(color) < 150 -> 0xFFE52B3A.toInt()
+            else -> 0xFF0B4FB3.toInt()
+        }
+        setTextColor(if (brand == 0xFFFFD21F.toInt()) 0xFF10234B.toInt() else -1)
+        background = rounded(brand, 15)
+        setPadding(dp(10), dp(9), dp(10), dp(9))
         stateListAnimator = null
         setOnClickListener { animatePress(this); action() }
     }
