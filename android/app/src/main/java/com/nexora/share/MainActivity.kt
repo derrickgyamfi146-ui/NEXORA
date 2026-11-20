@@ -2374,27 +2374,47 @@ class MainActivity : Activity() {
     }
 
     private fun showReceived(card: Int, ink: Int, muted: Int) {
-        content.addView(TextView(this).apply { text = "Received"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
-
-        val incoming = panel(card)
-        incoming.addView(label("INCOMING TRANSFERS", 0xFFE52B3A.toInt()))
-        incomingStatusView = TextView(this).apply {
-            text = if (sharing?.hasIncomingTransfer() == true) latestIncomingProgress else latestIncomingProgress
-            textSize = 12f
+        content.addView(TextView(this).apply {
+            text = "Received files"
+            textSize = 27f
+            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
             setTextColor(ink)
-            setPadding(0, dp(9), 0, dp(9))
+            setPadding(dp(2), dp(12), dp(2), dp(3))
+        })
+        content.addView(TextView(this).apply {
+            text = "Files saved by NEXORA are kept in Download/NEXORA."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(dp(3), 0, 0, dp(15))
+        })
+
+        val hasActiveIncoming = sharing?.hasIncomingTransfer() == true
+        val incoming = panel(card).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF8A243A.toInt())
+            ).apply { cornerRadius = dp(22).toFloat(); setStroke(dp(1), 0xFFFFD21F.toInt()) }
+        }
+        incoming.addView(label("INCOMING TRANSFER", 0xFFFFD66B.toInt()))
+        incomingStatusView = TextView(this).apply {
+            text = latestIncomingProgress
+            textSize = 13f
+            setTextColor(-1)
+            setPadding(0, dp(10), 0, dp(10))
         }
         incoming.addView(incomingStatusView)
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        controls.addView(button("PAUSE", 0xFF0B4FB3.toInt()) {
+        val pause = button("PAUSE", 0xFF0B4FB3.toInt()) {
             sharing?.pauseIncoming()
             incomingStatusView?.text = "Pausing incoming transfer…"
-        }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(4) })
-        controls.addView(button("RESUME", 0xFFE69A35.toInt()) {
+        }
+        pause.isEnabled = hasActiveIncoming && sharing?.isIncomingPaused() != true
+        val resume = button("RESUME", 0xFFE69A35.toInt()) {
             sharing?.resumeIncoming()
             incomingStatusView?.text = "Resuming incoming transfer…"
-        }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
-        controls.addView(button("CANCEL", 0xFFE52B3A.toInt()) {
+        }
+        resume.isEnabled = hasActiveIncoming && sharing?.isIncomingPaused() == true
+        val cancel = button("CANCEL", 0xFFE52B3A.toInt()) {
             android.app.AlertDialog.Builder(this)
                 .setTitle("Cancel this incoming item?")
                 .setMessage("Only the current item will be cancelled. The NEXORA connection will remain open.")
@@ -2404,12 +2424,16 @@ class MainActivity : Activity() {
                     incomingStatusView?.text = "Cancelling this item…"
                 }
                 .show()
-        }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(4) })
+        }
+        cancel.isEnabled = hasActiveIncoming
+        controls.addView(pause, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(4) })
+        controls.addView(resume, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
+        controls.addView(cancel, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(4) })
         incoming.addView(controls)
-        content.addView(incoming, bottom(10))
+        content.addView(incoming, bottom(13))
 
         val box = panel(card)
-        box.addView(label("ITEMS RECEIVED ON THIS PHONE", muted))
+        box.addView(label("SAVED ON THIS PHONE", 0xFF0B4FB3.toInt()))
         receivedList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(receivedList)
         content.addView(box)
