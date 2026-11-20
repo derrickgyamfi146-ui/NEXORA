@@ -66,6 +66,8 @@ class TransferKeepAliveService : Service() {
     val isAdvertising: Boolean get() = advertising
     val isConnected: Boolean get() = synchronized(connectedEndpoints) { connectedEndpoints.isNotEmpty() }
     fun connectedEndpointCount(): Int = synchronized(connectedEndpoints) { connectedEndpoints.size }
+    fun connectedEndpointIds(): List<String> = synchronized(connectedEndpoints) { connectedEndpoints.toList() }
+    fun connectedEndpointName(endpointId: String): String? = endpointNames[endpointId]
 
     @Synchronized
     fun setHighSpeedMode(enabled: Boolean) {

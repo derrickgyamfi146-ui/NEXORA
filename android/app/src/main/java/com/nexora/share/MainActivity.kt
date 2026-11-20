@@ -58,7 +58,10 @@ class MainActivity : Activity() {
             sharing = (binder as? TransferKeepAliveService.LocalBinder)?.service()
             bound = sharing != null
             sharing?.setListener(serviceListener)
+            connectedPeers.clear()
+            connectedPeers.addAll(sharing?.connectedEndpointIds().orEmpty())
             if (::sendButton.isInitialized) sendButton.isEnabled = true
+            if (::root.isInitialized) render()
             val pending = pendingServiceAction
             pendingServiceAction = null
             if (pending != null && sharing != null) pending(sharing!!)
@@ -131,6 +134,7 @@ class MainActivity : Activity() {
                 connectedPeers.remove(endpointId)
                 if (::peerList.isInitialized) rebuildPeerList()
                 if (::sendButton.isInitialized) sendButton.isEnabled = true
+                if (::root.isInitialized) render()
             }
         }
         override fun onTransferProgress(message: String) { runOnUiThread { updateStatus(message) } }
@@ -253,6 +257,18 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
+        if (sharing?.isConnected == true || connectedPeers.isNotEmpty()) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Disconnect and leave?")
+                .setMessage("Your nearby connection will end if you leave NEXORA.")
+                .setNegativeButton("Stay connected", null)
+                .setPositiveButton("Disconnect and leave") { _, _ ->
+                    sharing?.stopSharing()
+                    connectedPeers.clear()
+                    finish()
+                }.show()
+            return
+        }
         when {
             activeTab == "Settings" || activeTab == "Transfers" || activeTab == "Send" || activeTab == "Receive" || activeTab == "Files" || activeTab == "Sent" || activeTab == "Received" || activeTab == "Contacts" -> {
                 activeTab = "Media"; mediaCategory = "Apps"; render()
@@ -293,6 +309,7 @@ class MainActivity : Activity() {
             )
         }
         val libraryMode = activeTab in setOf("Media", "Files", "Sent", "Received", "Contacts")
+        val connectedNow = connectedPeers.isNotEmpty() || sharing?.isConnected == true
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -422,7 +439,7 @@ class MainActivity : Activity() {
             content.setPadding(dp(13), dp(7), dp(13), dp(84))
         }
         root.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
-        if (libraryMode) {
+        if (libraryMode || connectedNow) {
             val nav = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
@@ -433,21 +450,49 @@ class MainActivity : Activity() {
                 )
             }
             val centre = TextView(this).apply {
-                text = "↔"
-                textSize = 25f
+                text = if (connectedNow) "⇅" else "↔"
+                textSize = if (connectedNow) 27f else 25f
                 gravity = Gravity.CENTER
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(0xFFFFD66B.toInt())
-                background = rounded(0xFF1C5360.toInt(), 22)
-                elevation = dp(5).toFloat()
+                setTextColor(-1)
+                background = if (connectedNow) android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(0xFF00BFA5.toInt(), 0xFF168FE5.toInt(), 0xFF8B4DDF.toInt())
+                ).apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setStroke(dp(2), 0xAAFFFFFF.toInt()) }
+                else rounded(0xFF1C5360.toInt(), 22)
+                elevation = dp(8).toFloat()
                 isHapticFeedbackEnabled = true
-                contentDescription = "Show Send and Receive actions"
+                contentDescription = if (connectedNow) "Open transfer centre" else "Show Send and Receive actions"
                 setOnClickListener {
                     animatePress(this)
-                    if (quickActionPanel?.visibility == View.VISIBLE) hideQuickActions() else showQuickActions()
+                    if (connectedNow) {
+                        activeTab = "Transfers"
+                        render()
+                    } else if (quickActionPanel?.visibility == View.VISIBLE) hideQuickActions() else showQuickActions()
+                }
+                var downX = 0f
+                var downY = 0f
+                var startX = 0f
+                var startY = 0f
+                setOnTouchListener { view, event ->
+                    when (event.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN -> {
+                            downX = event.rawX; downY = event.rawY
+                            startX = view.translationX; startY = view.translationY
+                            false
+                        }
+                        android.view.MotionEvent.ACTION_MOVE -> {
+                            if (connectedNow) {
+                                view.translationX = startX + event.rawX - downX
+                                view.translationY = startY + event.rawY - downY
+                            }
+                            false
+                        }
+                        else -> false
+                    }
                 }
             }
-            nav.addView(centre, LinearLayout.LayoutParams(dp(62), dp(48)))
+            nav.addView(centre, LinearLayout.LayoutParams(if (connectedNow) dp(58) else dp(62), if (connectedNow) dp(58) else dp(48)))
             root.addView(nav, LinearLayout.LayoutParams(-1, -2))
         }
                 setContentView(root)
@@ -667,9 +712,9 @@ class MainActivity : Activity() {
 
     private fun beginSendSelected() {
         if (selectedUris.isEmpty()) { Toast.makeText(this, "Select something to send first.", Toast.LENGTH_SHORT).show(); return }
-        val outgoing = ArrayList(selectedUris)
+        val outgoing = ArrayList(LinkedHashSet(selectedUris))
         rememberOutgoingUris(outgoing)
-        if (connectedPeers.isNotEmpty() && sharing != null) {
+        if ((sharing?.isConnected == true || connectedPeers.isNotEmpty()) && sharing != null) {
             sharing?.sendFiles(outgoing)
             selectedUris.clear()
             selectedAppPackages.clear()
@@ -1638,6 +1683,19 @@ class MainActivity : Activity() {
     }
 
     private fun showTransfers(card: Int, ink: Int, muted: Int) {
+        if (sharing?.isConnected == true || connectedPeers.isNotEmpty()) {
+            val actions = panel(card)
+            actions.addView(label("CONNECTED · TRANSFER ACTIONS", 0xFF16A58A.toInt()))
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(button("SEND FILES", 0xFF168FE5.toInt()) {
+                activeTab = "Media"; mediaCategory = "Apps"; render()
+            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
+            row.addView(button("RECEIVE", 0xFF0B9B75.toInt()) {
+                withNearbyPermissions { runWithSharingService { it.startReceiving(); updateStatus("Connected. Ready to receive.") } }
+            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
+            actions.addView(row)
+            content.addView(actions, bottom(10))
+        }
         content.addView(TextView(this).apply { text = "Transfer centre"; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
         val live = panel(card)
         live.addView(label("LIVE TRANSFER STATUS", 0xFF16A58A.toInt()))
