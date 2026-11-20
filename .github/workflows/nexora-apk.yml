@@ -88,7 +88,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NEXORA-0.8.0-build77
+          name: NEXORA-0.8.1-build78
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
