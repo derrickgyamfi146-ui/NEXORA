@@ -860,7 +860,7 @@ class MainActivity : Activity() {
         } else {
             pendingSelectedSend = true
             pendingAutoConnectEndpointId = null
-            withNearbyPermissions {
+            withWifiDirectPermissions {
                 runWithSharingService { service ->
                     service.setHighSpeedMode(highSpeedMode)
                     activeTab = "Transfers"
@@ -887,7 +887,7 @@ class MainActivity : Activity() {
     }
 
     private fun openSendQr() {
-        withNearbyPermissions {
+        withWifiDirectPermissions {
             runWithSharingService { service ->
                 receivingModeArmed = true
                 service.setHighSpeedMode(highSpeedMode)
@@ -984,7 +984,7 @@ class MainActivity : Activity() {
             val spacer = View(this)
             page.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
             page.addView(button("START RECEIVING", 0xFF0B9B75.toInt()) {
-                withNearbyPermissions {
+                withWifiDirectPermissions {
                     runWithSharingService { service ->
                         service.setHighSpeedMode(highSpeedMode)
                         service.startReceiving()
@@ -1906,7 +1906,7 @@ class MainActivity : Activity() {
                 activeTab = "Media"; mediaCategory = "Apps"; render()
             }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
             row.addView(button("RECEIVE", 0xFF0B9B75.toInt()) {
-                withNearbyPermissions { receivingModeArmed = true; runWithSharingService { it.startReceiving(); updateStatus("Connected. Ready to receive.") } }
+                withWifiDirectPermissions { receivingModeArmed = true; runWithSharingService { it.startReceiving(); updateStatus("Connected. Ready to receive.") } }
             }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
             actions.addView(row)
             content.addView(actions, bottom(10))
@@ -2547,14 +2547,14 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun withNearbyPermissions(action: () -> Unit) {
+    private fun withWifiDirectPermissions(action: () -> Unit) {
         val needed = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 33) needed += Manifest.permission.NEARBY_WIFI_DEVICES
         else if (Build.VERSION.SDK_INT >= 29) needed += Manifest.permission.ACCESS_FINE_LOCATION
         else needed += Manifest.permission.ACCESS_COARSE_LOCATION
         val missing = needed.distinct().filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isEmpty()) action() else {
-            pendingNearbyAction = action
+            pendingWifiDirectAction = action
             requestPermissions(missing.toTypedArray(), REQUEST_WIFI_DIRECT)
         }
     }
@@ -2580,14 +2580,14 @@ class MainActivity : Activity() {
             else updateStatus("Contact access was not granted.")
             return
         }
-        if (requestCode == REQUEST_NEARBY) {
+        if (requestCode == REQUEST_WIFI_DIRECT) {
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                val resume = pendingNearbyAction
-                pendingNearbyAction = null
+                val resume = pendingWifiDirectAction
+                pendingWifiDirectAction = null
                 if (resume != null) resume()
                 else Toast.makeText(this, "Permissions granted.", Toast.LENGTH_SHORT).show()
             } else {
-                pendingNearbyAction = null
+                pendingWifiDirectAction = null
                 updateStatus("Wi-Fi Direct permission is needed to connect to phones.")
             }
         }
@@ -2623,7 +2623,7 @@ class MainActivity : Activity() {
             if (!contents.isNullOrBlank()) {
                 if (contents.startsWith("NEXORA-WFD:")) {
                     pendingQrDeviceName = null
-                    withNearbyPermissions {
+                    withWifiDirectPermissions {
                         runWithSharingService { service ->
                             service.connectWithQr(contents)
                             updateStatus("QR accepted. Joining the Wi-Fi Direct group…")
@@ -2799,5 +2799,5 @@ class MainActivity : Activity() {
         receivedList.addView(TextView(this).apply { text = "Received files will appear here when saved."; textSize = 12f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
     }
 
-    companion object { private const val REQUEST_NEARBY = 2001; private const val REQUEST_FILE = 2002; private const val REQUEST_MEDIA = 2003; private const val REQUEST_TREE = 2004; private const val REQUEST_CAMERA = 2005 }
+    companion object { private const val REQUEST_WIFI_DIRECT = 2001; private const val REQUEST_FILE = 2002; private const val REQUEST_MEDIA = 2003; private const val REQUEST_TREE = 2004; private const val REQUEST_CAMERA = 2005 }
 }
