@@ -225,7 +225,7 @@ class MainActivity : Activity() {
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(0x00102030)
-                setStroke(dp(2), 0xFFFFD21F)
+                setStroke(dp(2), 0xFFFFD21F.toInt())
             }
             alpha = 0f
             scaleX = .72f
