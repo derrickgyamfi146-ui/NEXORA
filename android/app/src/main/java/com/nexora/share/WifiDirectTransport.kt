@@ -115,7 +115,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         } else if (socket != null) {
             runCatching { socket?.close() }
             socket = null
-            callbacks.onDisconnected()
+            callbacks.onDisconnected("WIFI_DIRECT")
             callbacks.onStatus("Wi-Fi Direct connection ended. Scan again to reconnect.")
         }
     }
@@ -933,7 +933,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         currentQrPayload = null
         val activePeer = socket
         runCatching { activePeer?.close() }
-        if (activePeer == null) callbacks.onDisconnected()
+        if (activePeer == null) callbacks.onDisconnected("WIFI_DIRECT")
         runCatching { server?.close() }; server = null
         runCatching { manager.removeGroup(channel, null) }
         if (receiverRegistered) { runCatching { context.unregisterReceiver(receiver) }; receiverRegistered = false }
