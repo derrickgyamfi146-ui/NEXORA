@@ -351,7 +351,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setTextColor(0xFFFFD66B.toInt())
             alpha = 0f
-            background = rounded(0x3327DDB0, 18)
+            background = rounded(0x33FFD21F, 18)
             setPadding(dp(17), dp(9), dp(17), dp(9))
         }
         screen.addView(featureLine)
@@ -1117,14 +1117,14 @@ class MainActivity : Activity() {
         val stage = android.widget.FrameLayout(this).apply {
             setBackground(android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF071526.toInt(), 0xFF07564D.toInt(), 0xFF493817.toInt())
+                intArrayOf(0xFF07142E.toInt(), 0xFF0B4FB3.toInt(), 0xFF7A1F36.toInt())
             ))
         }
         val halo = View(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(0x3327DDB0)
-                setStroke(dp(2), 0x8878F4D1.toInt())
+                setStroke(dp(2), 0xFFFFD21F.toInt())
             }
             alpha = 0f
             scaleX = .65f
@@ -1155,7 +1155,7 @@ class MainActivity : Activity() {
             letterSpacing = .13f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setTextColor(if (received) 0xFF8AF2C8.toInt() else 0xFFFFD66B.toInt())
+            setTextColor(if (received) 0xFFFFD21F.toInt() else 0xFFFFD66B.toInt())
             alpha = 0f
         }
         stage.addView(caption, android.widget.FrameLayout.LayoutParams(-1, dp(54), Gravity.CENTER).apply {
