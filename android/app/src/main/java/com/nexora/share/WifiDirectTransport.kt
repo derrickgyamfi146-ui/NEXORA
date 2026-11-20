@@ -190,21 +190,27 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             if (!valid) { s.close(); return }
             callbacks.onConnected("NEXORA sender")
             s.soTimeout = 0
-            val count = input.readInt()
-            require(count in 1..MAX_FILES) { "Invalid file count." }
-            repeat(count) {
-                val name = safeName(input.readUTF())
-                val mime = input.readUTF().take(120).ifBlank { "application/octet-stream" }
-                val size = input.readLong()
-                require(size in 0..(20L * 1024 * 1024 * 1024)) { "Invalid file size." }
-                saveIncoming(input, name, mime, size)
-                output.writeBoolean(true)
-                output.flush()
-                callbacks.onReceived(name)
+            while (active.get() && !s.isClosed) {
+                val count = try { input.readInt() } catch (_: EOFException) { break }
+                require(count in 1..MAX_FILES) { "Invalid file count." }
+                repeat(count) {
+                    val name = safeName(input.readUTF())
+                    val mime = input.readUTF().take(120).ifBlank { "application/octet-stream" }
+                    val size = input.readLong()
+                    require(size in 0..(20L * 1024 * 1024 * 1024)) { "Invalid file size." }
+                    saveIncoming(input, name, mime, size)
+                    output.writeBoolean(true)
+                    output.flush()
+                    callbacks.onReceived(name)
+                }
+                callbacks.onStatus("All files received successfully.")
             }
-            callbacks.onStatus("All files received successfully.")
-        } catch (e: Exception) { callbacks.onStatus("Receive failed: " + e.localizedMessage) }
-        finally { runCatching { s.close() }; socket = null }
+        } catch (e: Exception) { if (active.get()) callbacks.onStatus("Receive failed: " + e.localizedMessage) }
+        finally {
+            runCatching { s.close() }
+            if (socket === s) socket = null
+            callbacks.onDisconnected()
+        }
     }
 
     private fun saveIncoming(input: DataInputStream, name: String, mime: String, size: Long) {
