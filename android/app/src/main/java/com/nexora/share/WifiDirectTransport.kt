@@ -298,7 +298,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 if (server != null) return@execute
                 val listening = ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(PORT)); soTimeout = 1000 }
                 server = listening
-                callbacks.onStatus("Waiting for the phone scanning your QR code…")
+                callbacks.onStatus("Waiting for phones to scan your group QR code…")
                 while (active.get() && !listening.isClosed) {
                     try {
                         val incoming = listening.accept()
