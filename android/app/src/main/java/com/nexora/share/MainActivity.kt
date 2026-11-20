@@ -709,8 +709,6 @@ class MainActivity : Activity() {
                 }
             }
             floatingCentre = centre
-            centre.animate().alpha(1f).scaleX(1f).scaleY(1f)
-                .setDuration(320).setInterpolator(android.view.animation.OvershootInterpolator()).start()
         }
         setContentView(root)
         floatingCentre?.let { fab ->
@@ -719,6 +717,8 @@ class MainActivity : Activity() {
                 rightMargin = dp(16)
                 bottomMargin = dp(88)
             })
+            fab.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(320).setInterpolator(android.view.animation.OvershootInterpolator()).start()
         }
         when (activeTab) {
             "Media" -> showMedia(card, ink, muted, blue)
