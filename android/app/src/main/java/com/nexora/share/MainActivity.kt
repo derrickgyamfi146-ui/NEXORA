@@ -87,12 +87,9 @@ class MainActivity : Activity() {
                     refreshReceivedFiles()
                 }
                 if (message == "All files received successfully.") {
+                    // Connection animation belongs to the connection event only.
+                    // A completed file batch must never replay the connection rocket.
                     refreshReceivedFiles()
-                    showReceivedRocketAnimation {
-                        activeTab = "Media"
-                        mediaCategory = "Apps"
-                        render()
-                    }
                 }
             }
         }
