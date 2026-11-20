@@ -938,9 +938,9 @@ class MainActivity : Activity() {
             .setMessage("Wi-Fi Direct may not work while your mobile hotspot is active. If hotspot is on, turn it off before continuing.")
             .setNeutralButton("Turn off hotspot") { _, _ ->
                 try {
-                    startActivity(Intent(android.provider.Settings.ACTION_TETHER_SETTINGS))
-                } catch (_: Exception) {
                     startActivity(Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS))
+                } catch (_: Exception) {
+                    startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
                 }
             }
             .setNegativeButton("Cancel", null)
