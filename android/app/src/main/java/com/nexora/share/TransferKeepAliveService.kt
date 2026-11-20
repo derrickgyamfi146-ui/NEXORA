@@ -114,7 +114,7 @@ class TransferKeepAliveService : Service() {
 
     fun sendFiles(uris: List<Uri>) {
         if (uris.isEmpty()) { status("Choose at least one file."); return }
-        if (!connected) { status("Scan the receiver's QR code before sending files."); return }
+        if (!isConnected) { status("Scan the receiver's QR code before sending files."); return }
         transport.sendFiles(uris)
     }
 
