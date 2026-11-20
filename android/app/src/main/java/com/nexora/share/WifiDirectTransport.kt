@@ -459,6 +459,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 val output = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
                 output.writeUTF(MAGIC)
                 output.writeUTF(token ?: "")
+                output.writeUTF(deviceName())
                 output.flush()
                 val input = DataInputStream(BufferedInputStream(s.getInputStream()))
                 if (!input.readBoolean()) throw IOException("The QR session was rejected or expired.")
@@ -476,20 +477,23 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             s.soTimeout = 15000
             val input = DataInputStream(BufferedInputStream(s.getInputStream()))
             val output = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
-            val valid = input.readUTF() == MAGIC && input.readUTF() == token
+            val remoteMagic = input.readUTF()
+            val remoteToken = input.readUTF()
+            val remoteName = input.readUTF().trim().take(24).ifBlank { "NEXORA device" }
+            val valid = remoteMagic == MAGIC && remoteToken == token
             output.writeBoolean(valid)
             output.flush()
             if (!valid) { s.close(); return }
-            startGroupPeerSession(s, input, output)
+            startGroupPeerSession(s, input, output, remoteName)
         } catch (e: Exception) {
             runCatching { s.close() }
             if (active.get()) callbacks.onStatus("Receive connection failed: " + (e.localizedMessage ?: "network error"))
         }
     }
 
-    private fun startGroupPeerSession(s: Socket, input: DataInputStream, output: DataOutputStream) {
+    private fun startGroupPeerSession(s: Socket, input: DataInputStream, output: DataOutputStream, remoteName: String) {
         val id = UUID.randomUUID().toString()
-        val peer = GroupPeer(id, peerName, s, input, output)
+        val peer = GroupPeer(id, remoteName, s, input, output)
         s.soTimeout = 0
         groupPeers[id] = peer
         callbacks.onConnected(id, peer.name, true)
@@ -503,6 +507,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             while (active.get() && !s.isClosed) {
                 when (peer.input.readUnsignedByte()) {
                     FRAME_BATCH -> synchronized(groupIncomingLock) {
+                        peer.remoteOwnsTurn = true
                         val count = peer.input.readInt()
                         require(count in 1..MAX_FILES) { "Invalid file count." }
                         data class IncomingMeta(val name: String, val mime: String, val size: Long)
