@@ -93,8 +93,9 @@ class MainActivity : Activity() {
                 discovered[endpointId] = name
                 if (::peerList.isInitialized) rebuildPeerList()
                 val wanted = pendingQrDeviceName
-                if (wanted != null && name.equals(wanted, ignoreCase = true)) {
+                if (wanted != null && name.trim().equals(wanted.trim(), ignoreCase = true)) {
                     pendingQrDeviceName = null
+                    updateStatus("QR matched $name. Requesting a secure connection…")
                     // Connect immediately; only show the animation after Nearby confirms success.
                     sharing?.connect(endpointId, name)
                 }
@@ -822,8 +823,11 @@ class MainActivity : Activity() {
     private fun showQrCode() {
         val returnTab = activeTab
         val dialog = android.app.Dialog(this)
+        // Keep the QR name identical to TransferKeepAliveService.deviceName().
+        // A different fallback here makes scanning succeed visually but never match discovery.
         val deviceName = (getSharedPreferences("nexora_preferences", MODE_PRIVATE)
-            .getString("device_name", Build.MODEL) ?: "Android device").trim().take(24)
+            .getString("device_name", null)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: (Build.MODEL ?: "Android device").take(24)).take(24)
         val payload = "NEXORA|$deviceName"
         try {
             val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(
