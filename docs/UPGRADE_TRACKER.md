@@ -1,6 +1,6 @@
 # NEXORA Master Upgrade Tracker
 
-Last updated: 2026-11-20
+Last updated: 2026-11-20 (latest UI consistency pass)
 
 Baseline: NEXORA 0.8.2, versionCode 79  
 Application ID: `com.nexora.share`
@@ -24,7 +24,7 @@ Application ID: `com.nexora.share`
 | 11 | Wi-Fi/hotspot prompts only after relevant failure | **Implemented; device verification pending** |
 | 12 | Group Share: one QR, multiple active peers, broadcast and recipient exclusions | **Not implemented; current transport is single-peer and must be redesigned before UI can claim group support** |
 | 13 | Floating control draggable across full app screen | **Implemented; touch-boundary verification pending** |
-| 14 | Full visual redesign using yellow/red/blue direction inspired by 2C TV icon | **Partially complete: Transfer Centre, Sent, Received, History and Settings redesigned; Home/Receive/Media/Files/Contacts still need final consistency pass** |
+| 14 | Full visual redesign using yellow/red/blue direction inspired by 2C TV icon | **Partially complete: Transfer Centre, Sent, Received, History, Settings and Receive redesigned; Home/Media/Files/Contacts received a consistency pass; visual review still pending** |
 | 15 | Final build, original signing-certificate check, APK verification and device test plan | **Not started for release 0.8.3/build80; prior intermediate builds passed CI only** |
 
 ## Technical decisions and safeguards
@@ -52,7 +52,7 @@ Application ID: `com.nexora.share`
 | `324768b` | Protocol v2 marker | Build, signature and artifact upload passed |
 | `60726f9` | Disconnect cleanup and wake pending sends | Build, signature and artifact upload passed |\n| `569e750` | Import legacy sent and received items into History | Build, signature and artifact upload passed |\n| `352b130` | Correct year rollover and avoid duplicate legacy History events | CI pending at the time of tracker update |
 
-Recent screen redesign commits also passed their APK CI workflows: Transfer Centre (`7ddd7c0`), Received Files (`af727ba`), History (`5d21707`), Sent Files (`e075c9f`) and Settings (`90bacf2`). CI proves compilation and signing, not real-world Wi-Fi Direct operation.
+Recent screen redesign commits also passed their APK CI workflows: Transfer Centre (`7ddd7c0`), Received Files (`af727ba`), History (`5d21707`), Sent Files (`e075c9f`), Settings (`90bacf2`) and Receive (`0d8e896`). A later consistency pass adjusted the Files/media palette and Files browse card (`0c5a0d9`) and corrected the Contacts selection navigation (`1a937db`); the latest CI run is still in progress. CI proves compilation and signing, not real-world Wi-Fi Direct operation.
 
 ## Release acceptance tests
 
