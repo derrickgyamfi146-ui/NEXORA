@@ -43,6 +43,9 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private val connecting = AtomicBoolean(false)
     private val sending = AtomicBoolean(false)
     private val serverStarting = AtomicBoolean(false)
+    private val incomingPaused = AtomicBoolean(false)
+    private val incomingCancelled = AtomicBoolean(false)
+    @Volatile private var incomingName: String? = null
     @Volatile private var server: ServerSocket? = null
     @Volatile private var socket: Socket? = null
     @Volatile private var token: String? = null
@@ -305,10 +308,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     val mime = input.readUTF().take(120).ifBlank { "application/octet-stream" }
                     val size = input.readLong()
                     require(size in 0..(20L * 1024 * 1024 * 1024)) { "Invalid file size." }
-                    saveIncoming(input, name, mime, size)
-                    output.writeBoolean(true)
+                    val saved = saveIncoming(input, name, mime, size)
+                    output.writeBoolean(saved)
                     output.flush()
-                    callbacks.onReceived(name)
+                    if (saved) callbacks.onReceived(name)
+                    else callbacks.onStatus("Incoming transfer cancelled: " + name)
                 }
                 callbacks.onStatus("All files received successfully.")
             }
@@ -320,7 +324,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         }
     }
 
-    private fun saveIncoming(input: DataInputStream, name: String, mime: String, size: Long) {
+    private fun saveIncoming(input: DataInputStream, name: String, mime: String, size: Long): Boolean {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
@@ -329,21 +333,63 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         }
         val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
             ?: throw IOException("Could not create the Downloads file.")
+        incomingName = name
+        incomingPaused.set(false)
+        incomingCancelled.set(false)
         try {
             context.contentResolver.openOutputStream(uri)?.use { out ->
                 val buffer = ByteArray(256 * 1024)
                 var remaining = size
                 var done = 0L
                 while (remaining > 0) {
+                    while (incomingPaused.get() && active.get() && !incomingCancelled.get()) Thread.sleep(100)
                     val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
                     if (n < 0) throw EOFException("Connection ended before the file completed.")
-                    out.write(buffer, 0, n); remaining -= n; done += n
+                    if (!incomingCancelled.get()) out.write(buffer, 0, n)
+                    remaining -= n
+                    done += n
                     callbacks.onProgress("Receiving " + name + " · " + (done * 100 / size.coerceAtLeast(1)) + "%")
                 }
             } ?: throw IOException("Could not open Downloads output.")
+            if (incomingCancelled.get()) {
+                context.contentResolver.delete(uri, null, null)
+                return false
+            }
             context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
-        } catch (e: Exception) { context.contentResolver.delete(uri, null, null); throw e }
+            return true
+        } catch (e: Exception) {
+            context.contentResolver.delete(uri, null, null)
+            throw e
+        } finally {
+            incomingPaused.set(false)
+            incomingCancelled.set(false)
+            incomingName = null
+        }
     }
+
+    fun pauseIncoming() {
+        if (incomingName != null) {
+            incomingPaused.set(true)
+            callbacks.onProgress("Paused: " + incomingName)
+        }
+    }
+
+    fun resumeIncoming() {
+        if (incomingName != null) {
+            incomingPaused.set(false)
+            callbacks.onProgress("Receiving " + incomingName + " · Resuming")
+        }
+    }
+
+    fun cancelIncoming() {
+        if (incomingName != null) {
+            incomingCancelled.set(true)
+            incomingPaused.set(false)
+        }
+    }
+
+    fun isIncomingPaused(): Boolean = incomingPaused.get()
+    fun hasIncomingTransfer(): Boolean = incomingName != null
 
     fun sendFiles(uris: List<Uri>) {
         val s = socket ?: run { callbacks.onStatus("Connect by scanning the receiver's QR code first."); return }
@@ -373,8 +419,8 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         }
                     } ?: throw IOException("Could not open " + name)
                     output.flush()
-                    if (!inputAck.readBoolean()) throw IOException("The receiving phone did not confirm " + name)
-                    callbacks.onStatus("Sent: " + name)
+                    if (inputAck.readBoolean()) callbacks.onStatus("Sent: " + name)
+                    else callbacks.onStatus("Receiver cancelled: " + name)
                 }
                 callbacks.onStatus("Transfer complete.")
             } catch (e: Exception) {
