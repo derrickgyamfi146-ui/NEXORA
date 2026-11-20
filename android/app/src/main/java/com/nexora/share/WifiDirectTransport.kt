@@ -23,6 +23,8 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
+data class IncomingQueueItem(val id: Int, val name: String, val size: Long, val status: String, val progress: Int = 0)
+
 /** QR-authenticated Wi-Fi Direct file transport. */
 class WifiDirectTransport(private val context: Context, private val callbacks: Callbacks) {
     interface Callbacks {
@@ -32,10 +34,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         fun onDisconnected()
         fun onProgress(message: String)
         fun onReceived(name: String)
+        fun onIncomingQueueChanged(items: List<IncomingQueueItem>)
     }
     companion object {
         private const val PORT = 43821
-        private const val MAGIC = "NEXORA-WFD-2"
+        private const val MAGIC = "NEXORA-WFD-3"
         private const val MAX_FILES = 200
         private const val FRAME_BATCH = 1
         private const val FRAME_ACK = 2
@@ -53,6 +56,10 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private val incomingPaused = AtomicBoolean(false)
     private val incomingCancelled = AtomicBoolean(false)
     @Volatile private var incomingName: String? = null
+    @Volatile private var currentIncomingIndex = -1
+    private val incomingQueueLock = Any()
+    private val incomingQueue = ArrayList<IncomingQueueItem>()
+    private val cancelledIncomingItems = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
     @Volatile private var server: ServerSocket? = null
     @Volatile private var socket: Socket? = null
     @Volatile private var peerInput: DataInputStream? = null
@@ -306,20 +313,48 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         remoteOwnsTurn = true
                         val count = input.readInt()
                         require(count in 1..MAX_FILES) { "Invalid file count." }
+                        data class IncomingMeta(val name: String, val mime: String, val size: Long)
+                        val metadata = ArrayList<IncomingMeta>(count)
                         repeat(count) {
                             val name = safeName(input.readUTF())
                             val mime = input.readUTF().take(120).ifBlank { "application/octet-stream" }
                             val size = input.readLong()
                             require(size in 0..(20L * 1024 * 1024 * 1024)) { "Invalid file size." }
-                            val saved = saveIncoming(input, name, mime, size)
-                            synchronized(outputLock) {
-                                output.writeByte(FRAME_ACK)
-                                output.writeBoolean(saved)
-                                output.flush()
-                            }
-                            if (saved) callbacks.onReceived(name)
-                            else callbacks.onStatus("Incoming transfer cancelled: " + name)
+                            metadata.add(IncomingMeta(name, mime, size))
                         }
+                        synchronized(incomingQueueLock) {
+                            incomingQueue.clear()
+                            cancelledIncomingItems.clear()
+                            metadata.forEachIndexed { index, item ->
+                                incomingQueue.add(IncomingQueueItem(index, item.name, item.size, "Queued", 0))
+                            }
+                        }
+                        publishIncomingQueue()
+                        metadata.forEachIndexed { index, item ->
+                            currentIncomingIndex = index
+                            if (cancelledIncomingItems.contains(index)) {
+                                skipIncomingBytes(input, item.size)
+                                updateIncomingQueue(index, "Cancelled", 0)
+                                synchronized(outputLock) {
+                                    output.writeByte(FRAME_ACK)
+                                    output.writeBoolean(false)
+                                    output.flush()
+                                }
+                                callbacks.onStatus("Incoming transfer cancelled: " + item.name)
+                            } else {
+                                updateIncomingQueue(index, "Receiving", 0)
+                                val saved = saveIncoming(input, item.name, item.mime, item.size, index)
+                                updateIncomingQueue(index, if (saved) "Completed" else "Cancelled", if (saved) 100 else incomingProgress(index))
+                                synchronized(outputLock) {
+                                    output.writeByte(FRAME_ACK)
+                                    output.writeBoolean(saved)
+                                    output.flush()
+                                }
+                                if (saved) callbacks.onReceived(item.name)
+                                else callbacks.onStatus("Incoming transfer cancelled: " + item.name)
+                            }
+                        }
+                        currentIncomingIndex = -1
                         callbacks.onStatus("All files received successfully.")
                     }
                     FRAME_ACK -> acknowledgementQueue.offer(input.readBoolean())
@@ -457,7 +492,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         }
     }
 
-    private fun saveIncoming(input: DataInputStream, name: String, mime: String, size: Long): Boolean {
+    private fun saveIncoming(input: DataInputStream, name: String, mime: String, size: Long, queueId: Int): Boolean {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
@@ -481,7 +516,9 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     if (!incomingCancelled.get()) out.write(buffer, 0, n)
                     remaining -= n
                     done += n
-                    callbacks.onProgress("Receiving " + name + " · " + (done * 100 / size.coerceAtLeast(1)) + "%")
+                    val percent = (done * 100 / size.coerceAtLeast(1)).toInt()
+                    updateIncomingQueue(queueId, "Receiving", percent)
+                    callbacks.onProgress("Receiving " + name + " · " + percent + "%")
                 }
             } ?: throw IOException("Could not open Downloads output.")
             if (incomingCancelled.get()) {
@@ -499,6 +536,47 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             incomingName = null
         }
     }
+
+    private fun skipIncomingBytes(input: DataInputStream, size: Long) {
+        var remaining = size
+        val buffer = ByteArray(8192)
+        while (remaining > 0) {
+            val skipped = input.skip(remaining)
+            if (skipped > 0) remaining -= skipped
+            else {
+                val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                if (n < 0) throw EOFException("Connection ended while skipping a cancelled item.")
+                remaining -= n
+            }
+        }
+    }
+
+    private fun publishIncomingQueue() {
+        val snapshot = synchronized(incomingQueueLock) { incomingQueue.toList() }
+        callbacks.onIncomingQueueChanged(snapshot)
+    }
+
+    private fun incomingProgress(id: Int): Int =
+        synchronized(incomingQueueLock) { incomingQueue.firstOrNull { it.id == id }?.progress ?: 0 }
+
+    private fun updateIncomingQueue(id: Int, status: String, progress: Int) {
+        synchronized(incomingQueueLock) {
+            val index = incomingQueue.indexOfFirst { it.id == id }
+            if (index >= 0) incomingQueue[index] = incomingQueue[index].copy(status = status, progress = progress)
+        }
+        publishIncomingQueue()
+    }
+
+    fun cancelIncomingItem(id: Int) {
+        val valid = synchronized(incomingQueueLock) { incomingQueue.any { it.id == id && it.status !in setOf("Completed", "Cancelled") } }
+        if (!valid) return
+        cancelledIncomingItems.add(id)
+        if (id == currentIncomingIndex) cancelIncoming()
+        else updateIncomingQueue(id, "Cancelled", 0)
+    }
+
+    fun incomingQueueSnapshot(): List<IncomingQueueItem> =
+        synchronized(incomingQueueLock) { incomingQueue.toList() }
 
     fun pauseIncoming() {
         if (incomingName != null) {
@@ -546,20 +624,30 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 val output = peerOutput ?: throw IOException("The NEXORA connection ended.")
                 val outgoing = uris.take(MAX_FILES)
                 synchronized(outputLock) {
-                    output.writeByte(FRAME_BATCH)
-                    output.writeInt(outgoing.size)
-                    output.flush()
-                }
-                outgoing.forEach { uri ->
-                    val name = safeName(queryName(uri))
-                    val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
-                    val size = querySize(uri)
-                    require(size >= 0) { "Could not determine the size of " + name }
+                    data class OutgoingMeta(val uri: Uri, val name: String, val mime: String, val size: Long)
+                    val metadata = outgoing.map { uri ->
+                        val name = safeName(queryName(uri))
+                        val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
+                        val size = querySize(uri)
+                        require(size >= 0) { "Could not determine the size of " + name }
+                        OutgoingMeta(uri, name, mime.take(120), size)
+                    }
                     synchronized(outputLock) {
-                        output.writeUTF(name)
-                        output.writeUTF(mime.take(120))
-                        output.writeLong(size)
-                        context.contentResolver.openInputStream(uri)?.use { input ->
+                        output.writeByte(FRAME_BATCH)
+                        output.writeInt(metadata.size)
+                        metadata.forEach { item ->
+                            output.writeUTF(item.name)
+                            output.writeUTF(item.mime)
+                            output.writeLong(item.size)
+                        }
+                        output.flush()
+                    }
+                    metadata.forEach { item ->
+                        val uri = item.uri
+                        val name = item.name
+                        val size = item.size
+                        synchronized(outputLock) {
+                            context.contentResolver.openInputStream(uri)?.use { input ->
                             val buffer = ByteArray(256 * 1024)
                             var remaining = size
                             var done = 0L
