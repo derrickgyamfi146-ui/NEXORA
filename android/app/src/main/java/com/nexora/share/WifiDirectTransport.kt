@@ -477,8 +477,14 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 var connected: Socket? = null
                 for (attempt in 0 until 15) {
                     if (!active.get()) return@execute
-                    try { connected = Socket().apply { connect(InetSocketAddress(host, PORT), 2500) }; break }
-                    catch (_: Exception) { Thread.sleep(500) }
+                    try {
+                        connected = Socket().apply {
+                            tcpNoDelay = true
+                            keepAlive = true
+                            connect(InetSocketAddress(host, PORT), 2000)
+                        }
+                        break
+                    } catch (_: Exception) { Thread.sleep(300) }
                 }
                 val s = connected ?: throw IOException("The receiving phone did not respond. Scan its QR code again.")
                 val output = DataOutputStream(BufferedOutputStream(s.getOutputStream()))

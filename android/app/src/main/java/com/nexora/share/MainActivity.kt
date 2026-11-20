@@ -46,6 +46,8 @@ class MainActivity : Activity() {
     private var appSelectionButton: Button? = null
     private var selectionSendButton: TextView? = null
     private var pendingCameraScan = false
+    private var pendingInstallUri: Uri? = null
+    private var qrDialog: android.app.Dialog? = null
     private var connectionArrivalAnimationRunning = false
     private var connectionSessionAnimationShown = false
     private var preparingApps = false
@@ -83,7 +85,11 @@ class MainActivity : Activity() {
     private val serviceListener = object : TransferKeepAliveService.Listener {
         override fun onStatus(message: String) {
             runOnUiThread {
-                if (message.startsWith("Sent: ")) rememberSentFileName(message.removePrefix("Sent: ").trim())
+                if (message.startsWith("Sent: ")) {
+                    rememberSentFileName(message.removePrefix("Sent: ").trim())
+                    successFeedback()
+                }
+                if (message.startsWith("Received and saved:")) successFeedback()
                 if (message.startsWith("Receiving ") || message.startsWith("Paused:")) {
                     latestIncomingProgress = message
                     incomingStatusView?.text = message
@@ -150,6 +156,13 @@ class MainActivity : Activity() {
             runOnUiThread {
                 discovered[endpointId] = name
                 connectedPeers.add(endpointId)
+                successFeedback()
+                // A one-to-one QR receiver closes its QR once connected. A group
+                // host keeps the same QR visible so additional phones can join.
+                if (endpointId == "WIFI_DIRECT") {
+                    qrDialog?.dismiss()
+                    qrDialog = null
+                }
                 pendingAutoConnectEndpointId = null
                 receivingModeArmed = false
                 if (::peerList.isInitialized) rebuildPeerList()
@@ -225,8 +238,22 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        val pending = pendingInstallUri
+        if (pending != null && (Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls())) {
+            pendingInstallUri = null
+            launchApkInstaller(pending)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState != null) {
+            activeTab = savedInstanceState.getString("nexora_active_tab", "Media") ?: "Media"
+            mediaCategory = savedInstanceState.getString("nexora_media_category", "Apps") ?: "Apps"
+            launchSplashVisible = false
+        }
         darkMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("dark_mode", true)
         val savedTree = getSharedPreferences("nexora_file_manager", MODE_PRIVATE).getString("tree_uri", null)
         if (!savedTree.isNullOrBlank()) {
@@ -240,7 +267,13 @@ class MainActivity : Activity() {
             }
         }
         preloadLibraries()
-        showLaunchSplash()
+        if (savedInstanceState == null) showLaunchSplash() else render()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("nexora_active_tab", activeTab)
+        outState.putString("nexora_media_category", mediaCategory)
+        super.onSaveInstanceState(outState)
     }
 
     private fun showLaunchSplash() {
@@ -501,6 +534,12 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        floatingArrowUpAnimator?.cancel()
+        floatingArrowDownAnimator?.cancel()
+        floatingArrowUpAnimator = null
+        floatingArrowDownAnimator = null
+        floatingArrowUp = null
+        floatingArrowDown = null
         receiveModeLabel = null
         mediaContinueButton = null
         transferStatusView = null
@@ -551,9 +590,10 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(dp(8), dp(5), dp(8), dp(5))
             }
-            listOf("History", "Sent", "Received", "Apps", "Photos", "Videos", "Music", "Files", "Contacts").forEach { tab ->
+            listOf("History", "Sent", "Received", "Group Share", "Apps", "Photos", "Videos", "Music", "Files", "Contacts").forEach { tab ->
                 val selected = when (tab) {
                     "History" -> activeTab == "History"
+                    "Group Share" -> activeTab == "Receive"
                     "Sent" -> activeTab == "Sent"
                     "Received" -> activeTab == "Received"
                     "Apps" -> activeTab == "Media" && mediaCategory == "Apps"
@@ -576,6 +616,7 @@ class MainActivity : Activity() {
                         "History" -> { activeTab = "History"; render() }
                         "Sent" -> { activeTab = "Sent"; render() }
                         "Received" -> { activeTab = "Received"; render() }
+                        "Group Share" -> { activeTab = "Receive"; render() }
                         "Apps" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
                         "Photos" -> openMediaLibrary("Photos")
                         "Videos" -> openMediaLibrary("Videos")
@@ -654,14 +695,9 @@ class MainActivity : Activity() {
             content.setPadding(dp(13), dp(7), dp(13), dp(84))
         }
         root.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
-        var floatingCentre: TextView? = null
+        var floatingCentre: View? = null
         if (libraryMode || connectedNow) {
-            val centre = TextView(this).apply {
-                text = if (connectedNow) "⇅" else "↔"
-                textSize = if (connectedNow) 27f else 25f
-                gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(-1)
+            val centre = android.widget.FrameLayout(this).apply {
                 background = if (connectedNow) android.graphics.drawable.GradientDrawable(
                     android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
                     intArrayOf(0xFF0B4FB3.toInt(), 0xFFE52B3A.toInt(), 0xFFFFD21F.toInt())
@@ -675,16 +711,35 @@ class MainActivity : Activity() {
                 alpha = 0f
                 scaleX = .68f
                 scaleY = .68f
-                if (connectedNow) {
-                    android.animation.ObjectAnimator.ofFloat(this, "translationY", -dp(3).toFloat(), dp(3).toFloat()).apply {
-                        duration = 900
-                        repeatCount = android.animation.ValueAnimator.INFINITE
-                        repeatMode = android.animation.ValueAnimator.REVERSE
-                        start()
-                    }
-                }
                 isHapticFeedbackEnabled = true
                 contentDescription = if (connectedNow) "Open transfer centre" else "Show Send and Receive actions"
+                if (connectedNow) {
+                    val arrows = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER
+                    }
+                    val up = TextView(this@MainActivity).apply {
+                        text = "↑"; textSize = 24f; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(-1)
+                    }
+                    val down = TextView(this@MainActivity).apply {
+                        text = "↓"; textSize = 24f; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(-1)
+                    }
+                    floatingArrowUp = up
+                    floatingArrowDown = down
+                    arrows.addView(up, LinearLayout.LayoutParams(dp(22), dp(42)))
+                    arrows.addView(down, LinearLayout.LayoutParams(dp(22), dp(42)))
+                    addView(arrows, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+                } else {
+                    addView(TextView(this@MainActivity).apply {
+                        text = "↔"; textSize = 25f; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(-1)
+                    }, android.widget.FrameLayout.LayoutParams(-1, -1))
+                }
                 setOnClickListener {
                     animatePress(this)
                     if (connectedNow) {
@@ -728,6 +783,7 @@ class MainActivity : Activity() {
             floatingCentre = centre
         }
         setContentView(root)
+        updateFloatingTransferAnimation()
         floatingCentre?.let { fab ->
             val appContent = findViewById<android.widget.FrameLayout>(android.R.id.content)
             appContent.addView(fab, android.widget.FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.END).apply {
@@ -1099,6 +1155,8 @@ class MainActivity : Activity() {
     private fun showQrCode(payload: String) {
         val returnTab = activeTab
         val dialog = android.app.Dialog(this)
+        qrDialog?.dismiss()
+        qrDialog = dialog
         val deviceName = (getSharedPreferences("nexora_preferences", MODE_PRIVATE)
             .getString("device_name", null)?.trim()?.takeIf { it.isNotEmpty() }
             ?: (Build.MODEL ?: "Android device").take(24)).take(24)
@@ -1126,7 +1184,15 @@ class MainActivity : Activity() {
                 textSize = 34f
                 setTextColor(-1)
                 gravity = Gravity.CENTER
-                setOnClickListener { dialog.dismiss(); activeTab = returnTab; render() }
+                setOnClickListener {
+                    sharing?.stopSharing()
+                    connectedPeers.clear()
+                    receivingModeArmed = false
+                    dialog.dismiss()
+                    activeTab = "Media"
+                    mediaCategory = "Apps"
+                    render()
+                }
             }, LinearLayout.LayoutParams(dp(42), dp(48)))
             top.addView(TextView(this).apply {
                 text = "Connect"
@@ -1182,12 +1248,25 @@ class MainActivity : Activity() {
             })
             val spacer = View(this)
             page.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
-            page.addView(button("CLOSE", 0xFF4C46A8.toInt()) {
+            page.addView(button("END SESSION", 0xFFE52B3A.toInt()) {
+                sharing?.stopSharing()
+                connectedPeers.clear()
+                receivingModeArmed = false
                 dialog.dismiss()
-                activeTab = returnTab
+                activeTab = "Media"
+                mediaCategory = "Apps"
                 render()
             }, LinearLayout.LayoutParams(-1, dp(44)))
             dialog.setContentView(page)
+            dialog.setOnDismissListener { if (qrDialog === dialog) qrDialog = null }
+            dialog.setOnCancelListener {
+                sharing?.stopSharing()
+                connectedPeers.clear()
+                receivingModeArmed = false
+                activeTab = "Media"
+                mediaCategory = "Apps"
+                render()
+            }
             dialog.setCancelable(true)
             dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
             dialog.show()
@@ -1339,6 +1418,7 @@ class MainActivity : Activity() {
     }
 
     private fun openMediaLibrary(kind: String) {
+        activeTab = "Media"
         mediaCategory = kind
         mediaSearch = ""
         mediaDisplayLimit = 20
@@ -1347,7 +1427,15 @@ class MainActivity : Activity() {
             "Videos" -> if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
             else -> if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_AUDIO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-        if (hasMediaPermission(kind)) render() else {
+        val fullPermission = when (kind) {
+            "Photos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
+            "Videos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
+            else -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        val hasFullPermission = ContextCompat.checkSelfPermission(this, fullPermission) == PackageManager.PERMISSION_GRANTED
+        if (hasFullPermission) render() else {
+            // Ask for the full media permission instead of accepting Android 14's
+            // selected-media-only grant as if it covered the entire Videos library.
             val missing = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
             requestPermissions(missing.toTypedArray(), REQUEST_MEDIA)
         }
@@ -1499,7 +1587,11 @@ class MainActivity : Activity() {
             }
             val preview = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(if (darkMode) 0xFF263650.toInt() else 0xFFE8EDF5.toInt()) }
             row.addView(preview, LinearLayout.LayoutParams(if (useGrid) dp(88) else dp(66), if (useGrid) dp(88) else dp(66)))
-            if (kind == "Videos") preview.setOnClickListener { previewVideo(item.first, item.second) }
+            when (kind) {
+                "Photos" -> preview.setOnClickListener { previewImage(item.first, item.second) }
+                "Videos" -> preview.setOnClickListener { previewVideo(item.first, item.second) }
+                "Music" -> preview.setOnClickListener { previewAudio(item.first, item.second) }
+            }
             row.addView(TextView(this).apply {
                 text = item.second; textSize = if (useGrid) 9f else 12f; maxLines = if (useGrid) 2 else 3
                 gravity = if (useGrid) Gravity.CENTER else Gravity.START
@@ -1566,6 +1658,75 @@ class MainActivity : Activity() {
                     if (!launchSplashVisible && activeTab == "Media" && mediaCategory == "Apps") render()
                 }
             }.start()
+        }
+    }
+
+    private fun previewImage(uri: Uri, title: String) {
+        val image = ImageView(this).apply {
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(0xFF081522.toInt())
+            setImageURI(uri)
+        }
+        val dialog = android.app.Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = rounded(0xFF12243A.toInt(), 18)
+        }
+        panel.addView(TextView(this).apply {
+            text = title; textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1); setPadding(dp(3), 0, dp(3), dp(8))
+        })
+        panel.addView(image, LinearLayout.LayoutParams(-1, dp(360)))
+        panel.addView(button("CLOSE PREVIEW", 0xFFE05C8A.toInt()) { dialog.dismiss() })
+        dialog.setContentView(panel)
+        dialog.show()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(-1, -2)
+    }
+
+    private fun previewAudio(uri: Uri, title: String) {
+        val player = android.media.MediaPlayer()
+        val dialog = android.app.Dialog(this)
+        var prepared = false
+        lateinit var play: Button
+        play = button("PLAY", 0xFF168A68.toInt()) {
+            if (!prepared) {
+                Toast.makeText(this, "Audio is still loading.", Toast.LENGTH_SHORT).show()
+            } else if (player.isPlaying) {
+                player.pause()
+                play.text = "RESUME"
+            } else {
+                player.start()
+                play.text = "PAUSE"
+            }
+        }
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = rounded(0xFF12243A.toInt(), 18)
+        }
+        panel.addView(TextView(this).apply {
+            text = title; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1); setPadding(0, 0, 0, dp(12))
+        })
+        panel.addView(play, bottom(8))
+        panel.addView(button("CLOSE PLAYER", 0xFFE05C8A.toInt()) {
+            runCatching { player.stop() }; runCatching { player.release() }; dialog.dismiss()
+        })
+        dialog.setOnDismissListener { runCatching { player.release() } }
+        dialog.setContentView(panel)
+        dialog.show()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(-1, -2)
+        try {
+            player.setDataSource(this, uri)
+            player.setOnPreparedListener { prepared = true; play.text = "PLAY" }
+            player.setOnCompletionListener { play.text = "PLAY" }
+            player.prepareAsync()
+        } catch (_: Exception) {
+            Toast.makeText(this, "This audio file cannot be previewed.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1800,6 +1961,33 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun launchApkInstaller(uri: Uri) {
+        try {
+            val intent = Intent(Intent.ACTION_INSTALL_PACKAGE)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Android could not start the installer: " + (e.localizedMessage ?: "unknown error"), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun successFeedback() {
+        runCatching {
+            val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 65)
+            tone.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 140)
+            android.os.Handler(mainLooper).postDelayed({ runCatching { tone.release() } }, 350L)
+        }
+        runCatching {
+            val vibrator = getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator
+            if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(android.os.VibrationEffect.createOneShot(45L, 75))
+            else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(45L)
+            }
+        }
+    }
+
     private fun installReceivedApkGroup(prefix: String) {
         if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
             val settings = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName))
@@ -1853,7 +2041,12 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 34) {
             val permission = if (kind == "Photos") Manifest.permission.READ_MEDIA_IMAGES else if (kind == "Videos") Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_MEDIA_AUDIO
             if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) return true
-            if (kind == "Photos" || kind == "Videos") return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+            // Android 14's selected-photos/videos permission may grant access to only
+            // a subset of media. It must not be treated as full library access: for
+            // example, a user may have selected photos but no videos at all.
+            if (kind == "Photos" || kind == "Videos") {
+                return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+            }
             return false
         }
         val permission = when (kind) {
@@ -2095,143 +2288,95 @@ class MainActivity : Activity() {
     }
 
     private fun showTransfers(card: Int, ink: Int, muted: Int) {
-        val connected = sharing?.isConnected == true || connectedPeers.isNotEmpty()
-        content.addView(TextView(this).apply {
-            text = "Transfer centre"
-            textSize = 27f
-            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-            setTextColor(ink)
-            setPadding(dp(2), dp(12), dp(2), dp(3))
-        })
-        content.addView(TextView(this).apply {
-            text = "Manage your connection and keep track of file sharing."
-            textSize = 12f
-            setTextColor(muted)
-            setPadding(dp(3), 0, 0, dp(15))
-        })
-
-        val live = panel(card).apply {
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF8A243A.toInt())
-            ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0xFFFFD21F.toInt()) }
-            elevation = dp(5).toFloat()
-        }
-        live.addView(label("LIVE SESSION", 0xFFFFD66B.toInt()))
-        val statusLine = TextView(this).apply {
-            text = latestStatus
-            textSize = 16f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(-1)
-            setPadding(0, dp(10), 0, dp(8))
-        }
-        transferStatusView = statusLine
-        live.addView(statusLine)
-        val stepRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("SELECT", "CONNECT", "SEND", "DONE").forEachIndexed { index, stepName ->
-            val step = TextView(this).apply {
-                text = stepName
-                textSize = 8f
-                gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setPadding(dp(3), dp(9), dp(3), dp(9))
-                val tint = intArrayOf(0xFFFFD21F.toInt(), 0xFF168FE5.toInt(), 0xFFE52B3A.toInt(), 0xFF16A58A.toInt())[index]
-                background = rounded(if (index < transferStage) tint else 0x553D5A7A, 9)
-                setTextColor(if (index < transferStage) if (index == 0) 0xFF10243B.toInt() else -1 else 0xFFD5E2EF.toInt())
-            }
-            transferStepViews.add(step)
-            stepRow.addView(step, LinearLayout.LayoutParams(0, dp(34), 1f).apply {
-                leftMargin = dp(2); rightMargin = dp(2)
-            })
-        }
-        live.addView(stepRow, bottom(10))
-        val initialPercent = Regex("(\\d{1,3})%").find(latestStatus)?.groupValues?.getOrNull(1)?.toIntOrNull()
-        val progressLine = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            progressTintList = android.content.res.ColorStateList.valueOf(0xFFFFD21F.toInt())
-            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x665D7897)
-            isIndeterminate = initialPercent == null && (latestStatus.contains("sending", true) || latestStatus.contains("receiving", true))
-            progress = initialPercent ?: if (transferStage >= 4) 100 else 0
-        }
-        transferProgressBar = progressLine
-        live.addView(progressLine, LinearLayout.LayoutParams(-1, dp(7)))
-        content.addView(live, bottom(14))
-
-        val devices = panel(card)
-        devices.addView(label("CONNECTED DEVICES", 0xFF168FE5.toInt()))
-        if (!connected) {
-            devices.addView(TextView(this).apply {
-                text = "No phone is connected yet. Connect first, then choose files to send. You can keep the same session for repeated transfers."
-                textSize = 12f
-                setTextColor(muted)
-                setPadding(0, dp(9), 0, dp(5))
-            })
-            devices.addView(button("SCAN A QR CODE", 0xFF0B4FB3.toInt()) { scanQrCode() }, bottom(4))
-            devices.addView(button("SHOW MY QR CODE", 0xFFE52B3A.toInt()) { openSendQr() })
-        } else {
-            devices.addView(TextView(this).apply {
-                text = "Your NEXORA session is active."
-                textSize = 13f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(ink)
-                setPadding(0, dp(8), 0, dp(7))
-            })
-            val names = if (connectedPeers.isNotEmpty()) connectedPeers.map { discovered[it] ?: "Wi-Fi Direct phone" }
-                else listOf("Connected phone")
-            names.forEach { peer ->
-                devices.addView(TextView(this).apply {
-                    text = "●  " + peer + "  ·  CONNECTED"
-                    textSize = 11f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(0xFF168A68.toInt())
-                    setPadding(dp(10), dp(10), dp(10), dp(10))
-                    background = rounded(if (darkMode) 0xFF173C3B.toInt() else 0xFFE7F7F1.toInt(), 11)
-                }, bottom(6))
-            }
-            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            actions.addView(button("SEND FILES", 0xFF0B4FB3.toInt()) {
-                activeTab = "Media"; mediaCategory = "Apps"; render()
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
-            actions.addView(button("RECEIVED", 0xFFE52B3A.toInt()) {
-                activeTab = "Received"; render()
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
-            devices.addView(actions, bottom(3))
-        }
-        content.addView(devices, bottom(14))
-
-        if (connected) {
-            content.addView(button("DISCONNECT", 0xFFE52B3A.toInt()) {
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("Disconnect from this session?")
-                    .setMessage("The active NEXORA connection will end. You can connect again later.")
-                    .setNegativeButton("Keep connected", null)
-                    .setPositiveButton("Disconnect") { _, _ ->
-                        sharing?.stopSharing()
-                        connectedPeers.clear()
-                        activeTab = "Media"
-                        mediaCategory = "Apps"
-                        render()
-                    }
-                    .show()
-            }, bottom(14))
-        }
-
-        val history = panel(card)
-        history.addView(label("RECENTLY SENT", 0xFFE52B3A.toInt()))
-        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
+        // Keep this screen deliberately simple: only incoming and outgoing items.
+        val sentEntries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
             .getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
-        if (entries.isEmpty()) {
-            history.addView(TextView(this).apply {
-                text = "Files you send will appear here."
+
+        content.addView(TextView(this).apply {
+            text = "Transfers"
+            textSize = 25f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink)
+            setPadding(dp(2), dp(12), dp(2), dp(12))
+        })
+
+        val sending = panel(card)
+        sending.addView(label("SENT", 0xFF0B4FB3.toInt()))
+        if (sentEntries.isEmpty()) {
+            sending.addView(TextView(this).apply {
+                text = "Items you send will appear here."
                 textSize = 12f
                 setTextColor(muted)
-                setPadding(0, dp(8), 0, dp(5))
+                setPadding(0, dp(10), 0, dp(8))
             })
-        } else addGroupedHistory(history, entries.take(20), 0xFF0B4FB3.toInt(), ink, muted)
-        content.addView(history, bottom(12))
-        content.addView(button("VIEW FULL TRANSFER HISTORY", 0xFF0B4FB3.toInt()) {
-            activeTab = "History"; render()
-        })
+        } else {
+            sentEntries.take(20).forEach { entry ->
+                sending.addView(TextView(this).apply {
+                    text = "↑  " + entry.substringAfter(" · ", entry).substringBefore(" · ")
+                    textSize = 12f
+                    maxLines = 2
+                    setTextColor(ink)
+                    setPadding(dp(8), dp(9), dp(8), dp(9))
+                    background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 10)
+                }, bottom(5))
+            }
+        }
+        content.addView(sending, bottom(12))
+
+        val receiving = panel(card)
+        receiving.addView(label("RECEIVED", 0xFFE52B3A.toInt()))
+        if (incomingQueueItems.isNotEmpty()) {
+            incomingQueueItems.forEach { item ->
+                receiving.addView(TextView(this).apply {
+                    text = "↓  " + item.name + "  ·  " + item.status +
+                        if (item.progress > 0) "  " + item.progress + "%" else ""
+                    textSize = 12f
+                    maxLines = 2
+                    setTextColor(ink)
+                    setPadding(dp(8), dp(9), dp(8), dp(9))
+                    background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 10)
+                }, bottom(5))
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            var count = 0
+            runCatching {
+                val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
+                contentResolver.query(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    projection,
+                    MediaStore.MediaColumns.RELATIVE_PATH + " = ?",
+                    arrayOf("Download/NEXORA/"),
+                    MediaStore.MediaColumns.DATE_ADDED + " DESC"
+                )?.use { cursor ->
+                    while (cursor.moveToNext() && count < 20) {
+                        val name = cursor.getString(0) ?: "Received file"
+                        receiving.addView(TextView(this).apply {
+                            text = "↓  " + name
+                            textSize = 12f
+                            maxLines = 2
+                            setTextColor(ink)
+                            setPadding(dp(8), dp(9), dp(8), dp(9))
+                            background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 10)
+                        }, bottom(5))
+                        count++
+                    }
+                }
+            }
+            if (count == 0) receiving.addView(TextView(this).apply {
+                text = "Items you receive will appear here."
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(10), 0, dp(8))
+            })
+        } else {
+            receiving.addView(TextView(this).apply {
+                text = latestIncomingProgress
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(10), 0, dp(8))
+            })
+        }
+        content.addView(receiving)
     }
 
     private fun addGroupedHistory(target: LinearLayout, entries: List<String>, accent: Int, ink: Int, muted: Int) {
@@ -3036,6 +3181,11 @@ class MainActivity : Activity() {
     }
 
     private var quickActionPanel: LinearLayout? = null
+    private var floatingArrowUp: TextView? = null
+    private var floatingArrowDown: TextView? = null
+    private var floatingArrowUpAnimator: android.animation.ObjectAnimator? = null
+    private var floatingArrowDownAnimator: android.animation.ObjectAnimator? = null
+    private var transferIsActive = false
     private val quickActionHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var quickActionHide: Runnable? = null
 
@@ -3167,12 +3317,49 @@ class MainActivity : Activity() {
     private var transferProgressBar: android.widget.ProgressBar? = null
     private var transferStage = 0
     private val transferStepViews = ArrayList<TextView>()
+    private fun updateFloatingTransferAnimation() {
+        val up = floatingArrowUp ?: return
+        val down = floatingArrowDown ?: return
+        if (transferIsActive) {
+            if (floatingArrowUpAnimator?.isRunning != true) {
+                floatingArrowUpAnimator = android.animation.ObjectAnimator.ofFloat(up, "translationY", dp(4).toFloat(), -dp(4).toFloat()).apply {
+                    duration = 360L
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    repeatMode = android.animation.ValueAnimator.REVERSE
+                    start()
+                }
+                floatingArrowDownAnimator = android.animation.ObjectAnimator.ofFloat(down, "translationY", -dp(4).toFloat(), dp(4).toFloat()).apply {
+                    duration = 360L
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    repeatMode = android.animation.ValueAnimator.REVERSE
+                    start()
+                }
+            }
+        } else {
+            floatingArrowUpAnimator?.cancel()
+            floatingArrowDownAnimator?.cancel()
+            floatingArrowUpAnimator = null
+            floatingArrowDownAnimator = null
+            up.translationY = 0f
+            down.translationY = 0f
+        }
+    }
+
     private fun updateStatus(message: String) {
         latestStatus = message
         if (::status.isInitialized) status.text = message
         transferStatusView?.text = message
         receiveModeLabel?.text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"
         val lower = message.lowercase()
+        transferIsActive = when {
+            lower.contains("sending") || lower.contains("receiving") -> true
+            lower.contains("all files received successfully") ||
+                lower.contains("transfer finished") || lower.contains("queue finished") ||
+                lower.contains("transfer cancelled") || lower.contains("connection ended") ||
+                lower.contains("disconnected") -> false
+            else -> transferIsActive
+        }
+        updateFloatingTransferAnimation()
         transferStage = when {
             lower.contains("queue finished") || lower.contains("all selected files") || lower.startsWith("sent:") || lower.contains("file sent") || lower.contains("received and saved") -> 5
             lower.contains("sending") || lower.contains("receiving") -> 4
@@ -3438,12 +3625,11 @@ class MainActivity : Activity() {
                                 Toast.makeText(this@MainActivity, "This is one part of an app. Tap Install app on its BASE file.", Toast.LENGTH_LONG).show()
                             } else if (isApk) {
                                 if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                                    pendingInstallUri = uri
                                     startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName)))
-                                    Toast.makeText(this@MainActivity, "Allow NEXORA to install apps, then tap Open again.", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(this@MainActivity, "Allow NEXORA to install apps. Installation will continue when you return.", Toast.LENGTH_LONG).show()
                                 } else {
-                                    val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType(uri, "application/vnd.android.package-archive")
-                                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    startActivity(intent)
+                                    launchApkInstaller(uri)
                                 }
                             } else {
                                 val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
