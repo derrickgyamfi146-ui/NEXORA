@@ -505,9 +505,11 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(dp(8), dp(5), dp(8), dp(5))
             }
-            listOf("History", "Apps", "Photos", "Videos", "Music", "Files", "Contacts").forEach { tab ->
+            listOf("History", "Sent", "Received", "Apps", "Photos", "Videos", "Music", "Files", "Contacts").forEach { tab ->
                 val selected = when (tab) {
                     "History" -> activeTab == "History"
+                    "Sent" -> activeTab == "Sent"
+                    "Received" -> activeTab == "Received"
                     "Apps" -> activeTab == "Media" && mediaCategory == "Apps"
                     "Photos" -> activeTab == "Media" && mediaCategory == "Photos"
                     "Videos" -> activeTab == "Media" && mediaCategory == "Videos"
@@ -526,6 +528,8 @@ class MainActivity : Activity() {
                     animatePress(chip)
                     when (tab) {
                         "History" -> { activeTab = "History"; render() }
+                        "Sent" -> { activeTab = "Sent"; render() }
+                        "Received" -> { activeTab = "Received"; render() }
                         "Apps" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
                         "Photos" -> openMediaLibrary("Photos")
                         "Videos" -> openMediaLibrary("Videos")
