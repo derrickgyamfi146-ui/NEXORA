@@ -432,9 +432,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private fun handleIncoming(s: Socket) {
         try {
             if (socket?.isConnected == true && socket?.isClosed == false) {
+                s.soTimeout = 5000
+                val rejectedInput = DataInputStream(BufferedInputStream(s.getInputStream()))
+                runCatching { rejectedInput.readUTF(); rejectedInput.readUTF() }
                 val reject = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
-                reject.writeUTF(MAGIC)
-                reject.writeUTF("")
+                reject.writeBoolean(false)
                 reject.flush()
                 s.close()
                 return
@@ -626,6 +628,14 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         active.set(false)
         currentQrPayload = null
         runCatching { socket?.close() }; socket = null
+        peerInput = null
+        peerOutput = null
+        acknowledgementQueue.clear()
+        sendPermit.drainPermits()
+        localWaitingForTurn = false
+        localOwnsTurn = false
+        remoteOwnsTurn = false
+        remoteRequestPending = false
         runCatching { server?.close() }; server = null
         runCatching { manager.removeGroup(channel, null) }
         if (receiverRegistered) { runCatching { context.unregisterReceiver(receiver) }; receiverRegistered = false }
