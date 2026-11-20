@@ -770,13 +770,6 @@ class MainActivity : Activity() {
         quickAccess.addView(quickRow)
         content.addView(quickAccess, bottom(14))
 
-        val devices = panel(card)
-        devices.addView(label("NEARBY DEVICES", 0xFF5DBCEB.toInt()))
-        peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        devices.addView(peerList)
-        rebuildPeerList()
-        content.addView(devices, bottom(14))
-
         val statusCard = panel(card)
         statusCard.addView(label("TRANSFER STATUS", 0xFFFFC45D.toInt()))
         status = TextView(this).apply {
@@ -796,7 +789,7 @@ class MainActivity : Activity() {
             setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(4))
         })
         content.addView(TextView(this).apply {
-            text = "Make this phone visible so nearby NEXORA users can send to you."
+            text = "Create a private Wi-Fi Direct group and let another phone join by scanning your QR code."
             textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(14))
         })
         val ready = panel(card)
@@ -832,7 +825,7 @@ class MainActivity : Activity() {
         val qr = panel(card)
         qr.addView(label("CONNECT WITH QR", 0xFF7357E8.toInt()))
         qr.addView(TextView(this).apply {
-            text = "Show your code to the sender, or scan their code to find their phone."
+            text = "Show your Wi-Fi Direct QR code to the sender, or scan the receiver code to connect."
             textSize = 12f; setTextColor(muted); setPadding(0, dp(7), 0, dp(10))
         })
         val qrRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -964,7 +957,7 @@ class MainActivity : Activity() {
             page.addView(top, LinearLayout.LayoutParams(-1, dp(52)))
 
             val instruction = TextView(this).apply {
-                text = "Scan this code with the other phone to connect"
+                text = "Scan this code with the other phone to join your private Wi-Fi Direct group"
                 textSize = 13f
                 gravity = Gravity.CENTER
                 setTextColor(0xFFD5D9D8.toInt())
@@ -994,7 +987,7 @@ class MainActivity : Activity() {
             page.addView(qrCard, LinearLayout.LayoutParams(-2, -2))
 
             page.addView(TextView(this).apply {
-                text = "Keep NEXORA open while the other phone scans your code."
+                text = "Keep NEXORA open while the other phone scans and joins your group."
                 textSize = 12f
                 gravity = Gravity.CENTER
                 setTextColor(0xFFB7C1C0.toInt())
@@ -2587,7 +2580,6 @@ class MainActivity : Activity() {
     private fun withNearbyPermissions(action: () -> Unit) {
         val needed = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 33) needed += Manifest.permission.NEARBY_WIFI_DEVICES
-        if (Build.VERSION.SDK_INT >= 31) { needed += Manifest.permission.BLUETOOTH_SCAN; needed += Manifest.permission.BLUETOOTH_CONNECT; needed += Manifest.permission.BLUETOOTH_ADVERTISE }
         else if (Build.VERSION.SDK_INT >= 29) needed += Manifest.permission.ACCESS_FINE_LOCATION
         else needed += Manifest.permission.ACCESS_COARSE_LOCATION
         val missing = needed.distinct().filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
