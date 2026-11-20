@@ -1626,15 +1626,16 @@ class MainActivity : Activity() {
         val player = android.media.MediaPlayer()
         val dialog = android.app.Dialog(this)
         var prepared = false
-        val play = button("PLAY", 0xFF168A68.toInt()) {
+        lateinit var play: Button
+        play = button("PLAY", 0xFF168A68.toInt()) {
             if (!prepared) {
                 Toast.makeText(this, "Audio is still loading.", Toast.LENGTH_SHORT).show()
             } else if (player.isPlaying) {
                 player.pause()
-                (it as? Button)?.text = "RESUME"
+                play.text = "RESUME"
             } else {
                 player.start()
-                (it as? Button)?.text = "PAUSE"
+                play.text = "PAUSE"
             }
         }
         val panel = LinearLayout(this).apply {
@@ -1916,7 +1917,10 @@ class MainActivity : Activity() {
         runCatching {
             val vibrator = getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator
             if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(android.os.VibrationEffect.createOneShot(45L, 75))
-            else @Suppress("DEPRECATION") vibrator.vibrate(45L)
+            else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(45L)
+            }
         }
     }
 
