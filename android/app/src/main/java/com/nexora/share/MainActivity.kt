@@ -2230,14 +2230,44 @@ class MainActivity : Activity() {
     }
 
     private fun showSent(card: Int, ink: Int, muted: Int) {
-        content.addView(TextView(this).apply { text = "Sent"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
+        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
+            .getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
+        content.addView(TextView(this).apply {
+            text = "Sent files"
+            textSize = 27f
+            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+            setTextColor(ink)
+            setPadding(dp(2), dp(12), dp(2), dp(3))
+        })
+        content.addView(TextView(this).apply {
+            text = "Files you've shared from this phone."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(dp(3), 0, 0, dp(15))
+        })
+        val summary = panel(card)
+        summary.addView(label("TOTAL ITEMS RECORDED", 0xFF0B4FB3.toInt()))
+        summary.addView(TextView(this).apply {
+            text = entries.size.toString()
+            textSize = 26f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink)
+            setPadding(0, dp(5), 0, 0)
+        })
+        content.addView(summary, bottom(13))
+
         val box = panel(card)
-        box.addView(label("ITEMS SENT FROM THIS PHONE", muted))
+        box.addView(label("SENT FROM THIS PHONE · NEWEST FIRST", 0xFF0B4FB3.toInt()))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(list)
-        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
-        if (entries.isEmpty()) list.addView(TextView(this).apply { text = "Items you send will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(8)) })
-        else addGroupedHistory(list, entries.take(100), 0xFF1755C9.toInt(), ink, muted)
+        if (entries.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = "Files you send will appear here."
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(10), 0, dp(10))
+            })
+        } else addGroupedHistory(list, entries.take(100), 0xFF0B4FB3.toInt(), ink, muted)
         content.addView(box)
     }
 
