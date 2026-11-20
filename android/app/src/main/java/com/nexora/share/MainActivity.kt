@@ -1160,7 +1160,15 @@ class MainActivity : Activity() {
                 textSize = 34f
                 setTextColor(-1)
                 gravity = Gravity.CENTER
-                setOnClickListener { dialog.dismiss(); activeTab = returnTab; render() }
+                setOnClickListener {
+                    sharing?.stopSharing()
+                    connectedPeers.clear()
+                    receivingModeArmed = false
+                    dialog.dismiss()
+                    activeTab = "Media"
+                    mediaCategory = "Apps"
+                    render()
+                }
             }, LinearLayout.LayoutParams(dp(42), dp(48)))
             top.addView(TextView(this).apply {
                 text = "Connect"
@@ -1216,13 +1224,25 @@ class MainActivity : Activity() {
             })
             val spacer = View(this)
             page.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
-            page.addView(button("CLOSE", 0xFF4C46A8.toInt()) {
+            page.addView(button("END SESSION", 0xFFE52B3A.toInt()) {
+                sharing?.stopSharing()
+                connectedPeers.clear()
+                receivingModeArmed = false
                 dialog.dismiss()
-                activeTab = returnTab
+                activeTab = "Media"
+                mediaCategory = "Apps"
                 render()
             }, LinearLayout.LayoutParams(-1, dp(44)))
             dialog.setContentView(page)
             dialog.setOnDismissListener { if (qrDialog === dialog) qrDialog = null }
+            dialog.setOnCancelListener {
+                sharing?.stopSharing()
+                connectedPeers.clear()
+                receivingModeArmed = false
+                activeTab = "Media"
+                mediaCategory = "Apps"
+                render()
+            }
             dialog.setCancelable(true)
             dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
             dialog.show()
