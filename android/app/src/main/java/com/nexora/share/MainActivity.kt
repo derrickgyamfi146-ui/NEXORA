@@ -3275,7 +3275,7 @@ class MainActivity : Activity() {
         val indicator = floatingTransferIndicator ?: return
         if (transferIsActive) {
             if (floatingTransferAnimator?.isRunning != true) {
-                floatingTransferAnimator = android.animation.ObjectAnimator.ofFloat(indicator, View.ROTATION, 0f, 360f).apply {
+                floatingTransferAnimator = android.animation.ObjectAnimator.ofFloat(indicator, "rotation", 0f, 360f).apply {
                     duration = 850L
                     repeatCount = android.animation.ValueAnimator.INFINITE
                     interpolator = android.view.animation.LinearInterpolator()
