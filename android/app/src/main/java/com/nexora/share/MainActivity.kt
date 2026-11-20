@@ -2580,6 +2580,15 @@ class MainActivity : Activity() {
                 setPadding(0, dp(3), 0, 0)
             })
             row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+            if (item.status == "Receiving") {
+                val paused = sharing?.isIncomingPaused() == true
+                val toggle = button(if (paused) "RESUME" else "PAUSE", 0xFF0B4FB3.toInt()) {
+                    if (sharing?.isIncomingPaused() == true) sharing?.resumeIncoming()
+                    else sharing?.pauseIncoming()
+                }
+                toggle.textSize = 9f
+                row.addView(toggle, LinearLayout.LayoutParams(dp(78), dp(38)).apply { rightMargin = dp(4) })
+            }
             val cancel = button("CANCEL", 0xFFE52B3A.toInt()) {
                 android.app.AlertDialog.Builder(this)
                     .setTitle("Cancel " + item.name + "?")
@@ -2588,9 +2597,9 @@ class MainActivity : Activity() {
                     .setPositiveButton("Cancel item") { _, _ -> sharing?.cancelIncomingItem(item.id) }
                     .show()
             }
-            cancel.textSize = 10f
+            cancel.textSize = 9f
             cancel.isEnabled = item.status == "Queued" || item.status == "Receiving"
-            row.addView(cancel, LinearLayout.LayoutParams(dp(82), dp(38)))
+            row.addView(cancel, LinearLayout.LayoutParams(dp(78), dp(38)))
             target.addView(row)
             target.addView(View(this).apply {
                 setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
