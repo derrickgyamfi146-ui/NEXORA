@@ -47,6 +47,7 @@ class MainActivity : Activity() {
     private var selectionSendButton: TextView? = null
     private var pendingCameraScan = false
     private var connectionArrivalAnimationRunning = false
+    private var connectionSessionAnimationShown = false
     private var preparingApps = false
     private var launchSplashVisible = true
     private val appIconCache = java.util.concurrent.ConcurrentHashMap<String, android.graphics.drawable.Drawable>()
@@ -145,8 +146,9 @@ class MainActivity : Activity() {
                 }
             }
         }
-        override fun onConnected(endpointId: String, isReceiver: Boolean) {
+        override fun onConnected(endpointId: String, name: String, isReceiver: Boolean) {
             runOnUiThread {
+                discovered[endpointId] = name
                 connectedPeers.add(endpointId)
                 pendingAutoConnectEndpointId = null
                 receivingModeArmed = false
@@ -159,7 +161,8 @@ class MainActivity : Activity() {
                     selectedAppPackages.clear()
                     updateSelectionAction()
                 }
-                if (!connectionArrivalAnimationRunning) {
+                if (!connectionSessionAnimationShown && !connectionArrivalAnimationRunning) {
+                    connectionSessionAnimationShown = true
                     connectionArrivalAnimationRunning = true
                     updateStatus("Connected successfully.")
                     val finishArrival = {
@@ -171,7 +174,7 @@ class MainActivity : Activity() {
                         pendingConnectionSendUris = null
                         if (!outgoing.isNullOrEmpty() && sharing?.isConnected == true) {
                             rememberOutgoingUris(outgoing)
-                            sharing?.sendFiles(outgoing)
+                            sendFilesWithRecipientSelection(outgoing)
                             updateStatus("Connected. Sending your selected files…")
                             if (::root.isInitialized) render()
                         }
@@ -191,6 +194,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 connectedPeers.remove(endpointId)
                 if (sharing?.connectedEndpointIds()?.isEmpty() != false && connectedPeers.isEmpty()) {
+                    connectionSessionAnimationShown = false
                     pendingAutoConnectEndpointId = null
                     pendingSelectedSend = false
                     pendingConnectionSendUris = null
@@ -965,7 +969,7 @@ class MainActivity : Activity() {
         val outgoing = ArrayList(LinkedHashSet(selectedUris))
         rememberOutgoingUris(outgoing)
         if ((sharing?.isConnected == true || connectedPeers.isNotEmpty()) && sharing != null) {
-            sharing?.sendFiles(outgoing)
+            sendFilesWithRecipientSelection(outgoing)
             selectedUris.clear()
             selectedAppPackages.clear()
             pendingSelectedSend = false
@@ -986,6 +990,33 @@ class MainActivity : Activity() {
                 }
             }
         }
+    }
+
+    private fun sendFilesWithRecipientSelection(uris: List<Uri>) {
+        val service = sharing ?: return
+        val peers = service.connectedEndpointIds()
+        if (peers.size <= 1) {
+            service.sendFiles(uris)
+            return
+        }
+        val names = peers.map { service.connectedEndpointName(it) ?: "Connected phone" }.toTypedArray()
+        val excluded = LinkedHashSet<String>()
+        val checked = BooleanArray(peers.size)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Group Share · Choose recipients")
+            .setMessage("Select phones to exclude. All unchecked phones will receive the files.")
+            .setMultiChoiceItems(names, checked) { _, which, isChecked ->
+                if (isChecked) excluded.add(peers[which]) else excluded.remove(peers[which])
+            }
+            .setPositiveButton("SEND TO SELECTED") { _, _ ->
+                if (excluded.size == peers.size) {
+                    Toast.makeText(this, "Choose at least one recipient.", Toast.LENGTH_SHORT).show()
+                } else {
+                    service.sendFilesToGroup(uris, excluded)
+                }
+            }
+            .setNegativeButton("CANCEL", null)
+            .show()
     }
 
     private fun runWithSharingService(action: (TransferKeepAliveService) -> Unit) {
