@@ -129,7 +129,7 @@ class MainActivity : Activity() {
                 }
             }
         }
-        override fun onConnected(endpointId: String) {
+        override fun onConnected(endpointId: String, isReceiver: Boolean) {
             runOnUiThread {
                 connectedPeers.add(endpointId)
                 pendingAutoConnectEndpointId = null
@@ -146,7 +146,7 @@ class MainActivity : Activity() {
                 if (!connectionArrivalAnimationRunning) {
                     connectionArrivalAnimationRunning = true
                     updateStatus("Connected successfully.")
-                    showRocketConnectAnimation {
+                    val finishArrival = {
                         connectionArrivalAnimationRunning = false
                         activeTab = "Media"
                         mediaCategory = "Apps"
@@ -159,6 +159,14 @@ class MainActivity : Activity() {
                             updateStatus("Connected. Sending your selected files…")
                             if (::root.isInitialized) render()
                         }
+                    }
+                    if (isReceiver) {
+                        // The receiver alone gets the upright connection rocket.
+                        showRocketConnectAnimation { finishArrival() }
+                    } else {
+                        // Keep both phones on the connection screen for the same
+                        // animation window, without showing a second rocket.
+                        android.os.Handler(mainLooper).postDelayed({ finishArrival() }, 2450L)
                     }
                 }
             }
