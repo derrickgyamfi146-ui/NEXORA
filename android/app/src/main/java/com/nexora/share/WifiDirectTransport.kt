@@ -141,6 +141,9 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             return
         }
         active.set(true)
+        localIsGroupOwner = false
+        groupPeers.values.toList().forEach { runCatching { it.socket.close() } }
+        groupPeers.clear()
         currentQrPayload = null
         token = UUID.randomUUID().toString()
         runCatching { socket?.close() }
@@ -241,6 +244,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 return
             }
             token = session
+            localIsGroupOwner = false
             peerName = data.optString("name", "NEXORA device")
             active.set(true)
             register()
@@ -930,6 +934,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
 
     fun stop() {
         active.set(false)
+        localIsGroupOwner = false
         currentQrPayload = null
         val activePeer = socket
         runCatching { activePeer?.close() }
