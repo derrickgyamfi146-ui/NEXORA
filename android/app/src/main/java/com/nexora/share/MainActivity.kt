@@ -809,14 +809,8 @@ class MainActivity : Activity() {
         ready.addView(TextView(this).apply {
             text = latestStatus; textSize = 12f; setTextColor(0xFFD4EDE5.toInt()); setPadding(0, 0, 0, dp(13))
         })
-        ready.addView(button("↓   START RECEIVING", 0xFF0B9B75.toInt()) {
-            withWifiDirectPermissions {
-                runWithSharingService { service ->
-                    receivingModeArmed = true
-                    service.startReceiving()
-                    Toast.makeText(this@MainActivity, "This phone is ready to receive.", Toast.LENGTH_SHORT).show()
-                }
-            }
+        ready.addView(button("↓   START RECEIVING & SHOW QR", 0xFF0B9B75.toInt()) {
+            openSendQr()
         })
         content.addView(ready, bottom(13))
         val qr = panel(card)
