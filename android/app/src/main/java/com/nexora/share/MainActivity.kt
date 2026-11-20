@@ -3181,7 +3181,7 @@ class MainActivity : Activity() {
         }
         if (connectedPeers.isNotEmpty()) {
             peerList.addView(TextView(this).apply {
-                text = connectedPeers.size.toString() + " phone(s) connected · group sharing ready"
+                text = connectedPeers.size.toString() + " phone(s) connected · ready to send"
                 textSize = 11f
                 setTextColor(if (darkMode) 0xFF8FE4C5.toInt() else 0xFF168A70.toInt())
                 setPadding(dp(4), dp(5), dp(4), dp(3))
