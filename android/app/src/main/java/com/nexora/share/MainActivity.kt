@@ -1317,7 +1317,11 @@ class MainActivity : Activity() {
         if (kind == "Apps") { renderAppsLibrary(ink, muted, blue); return }
         if (kind == "Files") {
             content.addView(TextView(this).apply { text = "Browse any folder or file on your phone."; textSize = 13f; setTextColor(muted); setPadding(0, dp(12), 0, dp(10)) })
-            content.addView(button("BROWSE FILES", 0xFF16A58A.toInt()) { openPicker("*/*") })
+            val browse = panel(card)
+            browse.addView(label("FILE LIBRARY", 0xFFFFD21F.toInt()))
+            browse.addView(TextView(this).apply { text = "Choose files from your folders, downloads or shared storage."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(10)) })
+            browse.addView(button("BROWSE FILES", 0xFF0B4FB3.toInt()) { openPicker("*/*") })
+            content.addView(browse, bottom(10))
             return
         }
         val displayKind = if (kind == "Images") "Photos" else kind
@@ -1838,14 +1842,14 @@ class MainActivity : Activity() {
         content.addView(TextView(this).apply { text = "File manager"; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(5)) })
         content.addView(TextView(this).apply { text = "Find documents, downloads, APKs and large files."; textSize = 12f; setTextColor(muted); setPadding(dp(2), 0, dp(2), dp(13)) })
         val storage = panel(card)
-        storage.addView(label("PHONE STORAGE", 0xFF16A58A.toInt()))
+        storage.addView(label("PHONE STORAGE", 0xFFFFD21F.toInt()))
         try {
             val stat = android.os.StatFs(android.os.Environment.getDataDirectory().absolutePath)
             val total = stat.totalBytes; val free = stat.availableBytes; val used = (total - free).coerceAtLeast(0L)
             storage.addView(TextView(this).apply { text = readableSize(used) + " used  ·  " + readableSize(free) + " available"; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(8), 0, dp(5)) })
             val bar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
                 max = 100; progress = if (total > 0) ((used * 100L) / total).toInt() else 0
-                progressTintList = android.content.res.ColorStateList.valueOf(0xFF16A58A.toInt())
+                progressTintList = android.content.res.ColorStateList.valueOf(0xFF0B4FB3.toInt())
                 progressBackgroundTintList = android.content.res.ColorStateList.valueOf(if (darkMode) 0xFF29445B.toInt() else 0xFFE2EAF2.toInt())
             }
             storage.addView(bar, LinearLayout.LayoutParams(-1, dp(8)))
@@ -1858,7 +1862,7 @@ class MainActivity : Activity() {
                 .distinctBy { it.absolutePath.substringBefore("/Android/") }
         }.getOrDefault(emptyList())
         val sdPanel = panel(card)
-        sdPanel.addView(label("SD CARD STORAGE", 0xFF7357E8.toInt()))
+        sdPanel.addView(label("SD CARD STORAGE", 0xFFE52B3A.toInt()))
         if (removableVolumes.isEmpty()) {
             sdPanel.addView(TextView(this).apply {
                 text = "No removable SD card detected."
@@ -1881,21 +1885,21 @@ class MainActivity : Activity() {
                     })
                 }
             }
-            sdPanel.addView(button("BROWSE SD CARD FOLDER", 0xFF7357E8.toInt()) {
+            sdPanel.addView(button("BROWSE SD CARD FOLDER", 0xFF0B4FB3.toInt()) {
                 updateStatus("Choose the SD card in Android's folder picker, then grant NEXORA access.")
                 openFolderTree()
             }, bottom(5))
         }
         content.addView(sdPanel, bottom(12))
         val categoryPanel = panel(card)
-        categoryPanel.addView(label("BROWSE BY CATEGORY", muted))
+        categoryPanel.addView(label("BROWSE BY CATEGORY", 0xFFFFD21F.toInt()))
         val categoryGrid = android.widget.GridLayout(this).apply { columnCount = 2 }
         listOf(
-            Triple("Documents", "documents", 0xFF168FE5.toInt()),
-            Triple("E-books", "ebooks", 0xFF7357E8.toInt()),
-            Triple("APKs", "apks", 0xFFE69A35.toInt()),
-            Triple("Archives", "archives", 0xFF16A58A.toInt()),
-            Triple("Big Files", "big", 0xFFE05C8A.toInt())
+            Triple("Documents", "documents", 0xFF0B4FB3.toInt()),
+            Triple("E-books", "ebooks", 0xFFFFD21F.toInt()),
+            Triple("APKs", "apks", 0xFFE52B3A.toInt()),
+            Triple("Archives", "archives", 0xFF0B4FB3.toInt()),
+            Triple("Big Files", "big", 0xFFE52B3A.toInt())
         ).forEach { item ->
             val tile = TextView(this).apply {
                 text = "▤  " + item.first
@@ -1918,7 +1922,7 @@ class MainActivity : Activity() {
         }
         categoryPanel.addView(categoryGrid)
         content.addView(categoryPanel, bottom(10))
-        content.addView(button("OPEN PHONE FOLDERS", 0xFF16A58A.toInt()) { openFolderTree() }, bottom(8))
+        content.addView(button("OPEN PHONE FOLDERS", 0xFF0B4FB3.toInt()) { openFolderTree() }, bottom(8))
         listOf("Browse all files" to "*/*", "Browse documents" to "application/*", "Browse images" to "image/*", "Browse videos" to "video/*", "Browse audio" to "audio/*").forEach { (title, mime) ->
             val tint = when (mime) { "image/*" -> 0xFF168FE5.toInt(); "video/*" -> 0xFFE05C8A.toInt(); "audio/*" -> 0xFFE69A35.toInt(); else -> blue }
             content.addView(button(title, tint) { openPicker(mime) }, bottom(7))
@@ -2723,7 +2727,7 @@ class MainActivity : Activity() {
             textSize = 12f; setTextColor(muted); setPadding(0, 0, 0, dp(12))
         })
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-            content.addView(button("ALLOW CONTACT ACCESS", 0xFF009D70.toInt()) {
+            content.addView(button("ALLOW CONTACT ACCESS", 0xFF0B4FB3.toInt()) {
                 requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), 303)
             })
             return
