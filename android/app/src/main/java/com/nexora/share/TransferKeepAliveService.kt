@@ -59,7 +59,10 @@ class TransferKeepAliveService : Service() {
                 connected = false
                 listener?.onDisconnected(ENDPOINT_ID)
             }
-            override fun onProgress(message: String) { listener?.onTransferProgress(message) }
+            override fun onProgress(message: String) {
+                lastStatusMessage = message
+                listener?.onTransferProgress(message)
+            }
             override fun onReceived(name: String) { status("Received and saved: " + name) }
         })
     }
