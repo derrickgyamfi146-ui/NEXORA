@@ -197,6 +197,8 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 val size = input.readLong()
                 require(size in 0..(20L * 1024 * 1024 * 1024)) { "Invalid file size." }
                 saveIncoming(input, name, mime, size)
+                output.writeBoolean(true)
+                output.flush()
                 callbacks.onReceived(name)
             }
             callbacks.onStatus("All files received successfully.")
@@ -234,11 +236,12 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         io.execute {
             try {
                 val output = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
+                val inputAck = DataInputStream(BufferedInputStream(s.getInputStream()))
                 output.writeInt(uris.size.coerceAtMost(MAX_FILES))
                 uris.take(MAX_FILES).forEach { uri ->
                     val name = safeName(queryName(uri))
                     val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
-                    val size = context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+                    val size = querySize(uri)
                     require(size >= 0) { "Could not determine the size of " + name }
                     output.writeUTF(name); output.writeUTF(mime.take(120)); output.writeLong(size)
                     context.contentResolver.openInputStream(uri)?.use { input ->
@@ -249,11 +252,25 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             callbacks.onProgress("Sending " + name + " · " + (done * 100 / size.coerceAtLeast(1)) + "%")
                         }
                     } ?: throw IOException("Could not open " + name)
-                    output.flush(); callbacks.onStatus("Sent: " + name)
+                    output.flush()
+                    if (!inputAck.readBoolean()) throw IOException("The receiving phone did not confirm " + name)
+                    callbacks.onStatus("Sent: " + name)
                 }
                 callbacks.onStatus("Transfer complete.")
             } catch (e: Exception) { callbacks.onStatus("Send failed: " + e.localizedMessage) }
         }
+    }
+
+    private fun querySize(uri: Uri): Long {
+        val descriptorSize = runCatching { context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L }.getOrDefault(-1L)
+        if (descriptorSize >= 0) return descriptorSize
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use {
+            if (it.moveToFirst()) {
+                val index = it.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                if (index >= 0 && !it.isNull(index)) return it.getLong(index)
+            }
+        }
+        return -1L
     }
 
     private fun queryName(uri: Uri): String {
