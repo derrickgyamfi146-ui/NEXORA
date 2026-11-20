@@ -265,7 +265,6 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 while (active.get() && !listening.isClosed) {
                     try {
                         val incoming = listening.accept()
-                        socket = incoming
                         handleIncoming(incoming)
                     } catch (_: SocketTimeoutException) { }
                 }
@@ -415,13 +414,13 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     catch (_: Exception) { Thread.sleep(500) }
                 }
                 val s = connected ?: throw IOException("The receiving phone did not respond. Scan its QR code again.")
-                socket = s
                 val output = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
-                output.writeUTF(MAGIC); output.writeUTF(token ?: ""); output.flush()
+                output.writeUTF(MAGIC)
+                output.writeUTF(token ?: "")
+                output.flush()
                 val input = DataInputStream(BufferedInputStream(s.getInputStream()))
                 if (!input.readBoolean()) throw IOException("The QR session was rejected or expired.")
-                callbacks.onConnected(peerName, false)
-                callbacks.onStatus("Connected to " + peerName + ". Select files to send.")
+                startPeerSession(s, input, output, false)
             } catch (e: Exception) {
                 runCatching { socket?.close() }
                 socket = null
@@ -432,35 +431,25 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
 
     private fun handleIncoming(s: Socket) {
         try {
+            if (socket?.isConnected == true && socket?.isClosed == false) {
+                val reject = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
+                reject.writeUTF(MAGIC)
+                reject.writeUTF("")
+                reject.flush()
+                s.close()
+                return
+            }
             s.soTimeout = 15000
             val input = DataInputStream(BufferedInputStream(s.getInputStream()))
             val output = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
             val valid = input.readUTF() == MAGIC && input.readUTF() == token
-            output.writeBoolean(valid); output.flush()
+            output.writeBoolean(valid)
+            output.flush()
             if (!valid) { s.close(); return }
-            callbacks.onConnected("NEXORA sender", true)
-            s.soTimeout = 0
-            while (active.get() && !s.isClosed) {
-                val count = try { input.readInt() } catch (_: EOFException) { break }
-                require(count in 1..MAX_FILES) { "Invalid file count." }
-                repeat(count) {
-                    val name = safeName(input.readUTF())
-                    val mime = input.readUTF().take(120).ifBlank { "application/octet-stream" }
-                    val size = input.readLong()
-                    require(size in 0..(20L * 1024 * 1024 * 1024)) { "Invalid file size." }
-                    val saved = saveIncoming(input, name, mime, size)
-                    output.writeBoolean(saved)
-                    output.flush()
-                    if (saved) callbacks.onReceived(name)
-                    else callbacks.onStatus("Incoming transfer cancelled: " + name)
-                }
-                callbacks.onStatus("All files received successfully.")
-            }
-        } catch (e: Exception) { if (active.get()) callbacks.onStatus("Receive failed: " + e.localizedMessage) }
-        finally {
+            startPeerSession(s, input, output, true)
+        } catch (e: Exception) {
             runCatching { s.close() }
-            if (socket === s) socket = null
-            callbacks.onDisconnected()
+            if (active.get()) callbacks.onStatus("Receive connection failed: " + (e.localizedMessage ?: "network error"))
         }
     }
 
