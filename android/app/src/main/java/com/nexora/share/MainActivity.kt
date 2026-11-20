@@ -31,6 +31,7 @@ class MainActivity : Activity() {
     private var pendingWifiDirectAction: (() -> Unit)? = null
     private var sharing: TransferKeepAliveService? = null
     private var bound = false
+    private var binding = false
     private var activeTab = "Media"
     private var latestStatus = "Ready. Choose Send or Receive to begin."
     private var darkMode = false
@@ -58,6 +59,7 @@ class MainActivity : Activity() {
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             sharing = (binder as? TransferKeepAliveService.LocalBinder)?.service()
+            binding = false
             bound = sharing != null
             sharing?.setListener(serviceListener)
             connectedPeers.clear()
@@ -68,7 +70,7 @@ class MainActivity : Activity() {
             pendingServiceAction = null
             if (pending != null && sharing != null) pending(sharing!!)
         }
-        override fun onServiceDisconnected(name: ComponentName?) { sharing = null; bound = false }
+        override fun onServiceDisconnected(name: ComponentName?) { sharing = null; bound = false; binding = false }
     }
 
     private val serviceListener = object : TransferKeepAliveService.Listener {
@@ -430,9 +432,24 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    override fun onStart() { super.onStart(); bindService(Intent(this, TransferKeepAliveService::class.java), serviceConnection, BIND_AUTO_CREATE) }
+    override fun onStart() {
+        super.onStart()
+        bindSharingServiceIfNeeded()
+    }
+
+    private fun bindSharingServiceIfNeeded() {
+        if (bound || binding) return
+        binding = bindService(Intent(this, TransferKeepAliveService::class.java), serviceConnection, BIND_AUTO_CREATE)
+    }
+
     override fun onStop() {
-        if (bound) { sharing?.setListener(null); unbindService(serviceConnection); bound = false }
+        if (bound || binding) {
+            sharing?.setListener(null)
+            runCatching { unbindService(serviceConnection) }
+        }
+        sharing = null
+        bound = false
+        binding = false
         super.onStop()
     }
 
@@ -868,7 +885,7 @@ class MainActivity : Activity() {
         pendingServiceAction = action
         try {
             ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
-            if (!bound) bindService(Intent(this, TransferKeepAliveService::class.java), serviceConnection, BIND_AUTO_CREATE)
+            bindSharingServiceIfNeeded()
             updateStatus("Preparing Wi-Fi Direct…")
         } catch (e: Exception) {
             pendingServiceAction = null
