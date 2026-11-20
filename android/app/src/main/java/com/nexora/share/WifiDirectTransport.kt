@@ -135,11 +135,12 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         } catch (e: Exception) { callbacks.onStatus(e.localizedMessage ?: "That QR code could not be read.") }
     }
 
+    @Suppress("DEPRECATION")
     private fun register() {
         if (receiverRegistered) return
         val filter = IntentFilter(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
         if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        else @Suppress("DEPRECATION") context.registerReceiver(receiver, filter)
+        else context.registerReceiver(receiver, filter)
         receiverRegistered = true
     }
 
