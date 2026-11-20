@@ -17,7 +17,7 @@ Application ID: `com.nexora.share`
 | 4 | Connect first without selecting files; select and send later | **UI path available; verify with new session on devices** |
 | 5 | Incoming transfer manager with progress, pause, resume and cancel | **Partially implemented: one active incoming item at a time** |
 | 6 | Separate Sent and Received item lists | **Implemented; physical-device verification pending** |
-| 7 | Combined chronological History | **Implemented for new transfers; legacy history migration pending** |
+| 7 | Combined chronological History | **Implemented for new transfers and legacy records; latest date/deduplication correction awaiting CI** |
 | 8 | Verified connection navigation, both devices leave QR screen, explicit disconnect | **Implemented; physical-device verification pending** |
 | 9 | One connection animation per session; upright receiver-only rocket | **Implemented; visual verification pending** |
 | 10 | Five-second splash, background preload and reduce screen blinking | **Implemented; device verification pending** |
@@ -50,9 +50,9 @@ Application ID: `com.nexora.share`
 | `3cb997e` | Incoming manager pause/resume/cancel controls | Build, signature and artifact upload passed |
 | `6e86a5e` | Initial framed duplex send/receive session | Build, signature and artifact upload passed |
 | `324768b` | Protocol v2 marker | Build, signature and artifact upload passed |
-| `60726f9` | Disconnect cleanup and wake pending sends | Build, signature and artifact upload passed |
+| `60726f9` | Disconnect cleanup and wake pending sends | Build, signature and artifact upload passed |\n| `569e750` | Import legacy sent and received items into History | Build, signature and artifact upload passed |\n| `352b130` | Correct year rollover and avoid duplicate legacy History events | CI queued; not yet verified |
 
-The newest commits after this table are still being validated by GitHub Actions. A successful CI build proves compilation and signing, not real-world Wi-Fi Direct operation.
+The newest commit is awaiting GitHub Actions validation. A successful CI build proves compilation and signing, not real-world Wi-Fi Direct operation. A successful CI build proves compilation and signing, not real-world Wi-Fi Direct operation.
 
 ## Release acceptance tests
 
