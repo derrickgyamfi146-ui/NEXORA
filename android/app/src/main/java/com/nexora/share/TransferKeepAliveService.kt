@@ -91,22 +91,7 @@ class TransferKeepAliveService : Service() {
 
     @Synchronized
     fun setHighSpeedMode(enabled: Boolean) {
-        val next = if (enabled) Strategy.P2P_POINT_TO_POINT else Strategy.P2P_STAR
-        if (strategy == next) return
-        val wasAdvertising = advertising
-        val wasDiscovering = discovering
-        if (wasAdvertising) client.stopAdvertising()
-        if (wasDiscovering) client.stopDiscovery()
-        advertising = false
-        discovering = false
-        strategy = next
-        status(if (enabled) {
-            "High-speed direct mode selected. Both phones must enable it."
-        } else {
-            "Standard compatibility mode selected."
-        })
-        if (wasAdvertising) startReceiving()
-        else if (wasDiscovering) startFinding()
+        status("Wi-Fi Direct is the active connection mode. Both phones use the same direct transfer path.")
     }
 
     @Synchronized
