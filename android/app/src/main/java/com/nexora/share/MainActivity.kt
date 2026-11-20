@@ -286,7 +286,15 @@ class MainActivity : Activity() {
             return
         }
         when {
-            activeTab == "Settings" || activeTab == "Transfers" || activeTab == "Send" || activeTab == "Receive" || activeTab == "Files" || activeTab == "Sent" || activeTab == "Received" || activeTab == "Contacts" -> {
+            activeTab == "Send" -> {
+                pendingSelectedSend = false
+                selectedUris.clear()
+                selectedAppPackages.clear()
+                java.io.File(cacheDir, "shared_apks").listFiles()?.forEach { it.delete() }
+                updateSelectionAction()
+                activeTab = "Media"; mediaCategory = "Apps"; render()
+            }
+            activeTab == "Settings" || activeTab == "Transfers" || activeTab == "Receive" || activeTab == "Files" || activeTab == "Sent" || activeTab == "Received" || activeTab == "Contacts" -> {
                 activeTab = "Media"; mediaCategory = "Apps"; render()
             }
             activeTab == "Media" && mediaCategory != "Apps" -> { mediaCategory = "Apps"; render() }
@@ -2491,6 +2499,14 @@ class MainActivity : Activity() {
                         }
                     }
                 } else Toast.makeText(this, "That is not a NEXORA connection code.", Toast.LENGTH_LONG).show()
+            } else {
+                pendingQrDeviceName = null
+                pendingSelectedSend = false
+                selectedUris.clear()
+                selectedAppPackages.clear()
+                java.io.File(cacheDir, "shared_apks").listFiles()?.forEach { it.delete() }
+                updateSelectionAction()
+                updateStatus("Connection cancelled. Your pending selection was cleared.")
             }
         } else if (requestCode == REQUEST_TREE && resultCode == RESULT_OK && data?.data != null) {
             val uri = data.data!!
