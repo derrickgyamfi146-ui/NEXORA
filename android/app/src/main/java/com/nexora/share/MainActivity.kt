@@ -388,7 +388,7 @@ class MainActivity : Activity() {
                     .setInterpolator(android.view.animation.DecelerateInterpolator())
                     .start()
             }
-        }, 2450L)
+        }, 5000L)
     }
 
     private fun showExitConfirmation() {
