@@ -100,3 +100,11 @@ The source inventory and all Kotlin app classes, app manifest, Gradle configurat
 
 - [x] Incoming manager groundwork: the receiver screen now shows current incoming progress and exposes Pause, Resume and Cancel controls. Pause uses TCP back-pressure; Cancel drains and discards only the current file, returns a negative acknowledgement, and keeps the existing connection available for the next item. Completed items remain in Received, where the existing Delete action removes saved items.
 - [ ] This is currently a single active incoming item at a time, not a multi-peer/multi-transfer queue. It does not yet provide chunk-level resume after a broken connection. Device testing is required to confirm pause/cancel behaviour across different Android vendors.
+
+## Persistent connection architecture work
+
+- Replaced the one-way post-handshake socket handling with a persistent framed session on both QR roles.
+- Added a single inbound reader loop on each device, framed file batches, per-file acknowledgements, and a send-turn request/grant/release handshake. This prevents both devices from writing file payloads at the same time and allows either side to request the next send turn without scanning another QR.
+- Kept per-item receiver pause/cancel behaviour in the new receiving path; cancelled items are drained and negatively acknowledged so the peer can continue with the next item without intentionally closing the session.
+- Bumped the Wi-Fi Direct QR/session protocol marker to v2 so older builds fail clearly instead of interpreting the new framed messages as the old unframed protocol. Both phones must run the upgraded NEXORA build to use this protocol.
+- [ ] This architecture is not yet marked complete: integrated build, two-device tests, repeated transfers in both directions, pause/resume/cancel, disconnect/reconnect, and Android 12/14 vendor behaviour still need verification.
