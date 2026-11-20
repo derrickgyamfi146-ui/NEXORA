@@ -151,9 +151,10 @@ class TransferKeepAliveService : Service() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun stopForegroundCompat() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
-        else @Suppress("DEPRECATION") stopForeground(true)
+        else stopForeground(true)
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
