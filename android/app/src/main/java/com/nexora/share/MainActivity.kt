@@ -314,7 +314,7 @@ class MainActivity : Activity() {
         screen.addView(subtitle)
 
         val featureLine = TextView(this).apply {
-            text = "FAST  •  SIMPLE  •  NEARBY"
+            text = "FAST  •  SIMPLE  •  DIRECT"
             textSize = 9f
             letterSpacing = .16f
             gravity = Gravity.CENTER
@@ -408,7 +408,7 @@ class MainActivity : Activity() {
         if (sharing?.isConnected == true || connectedPeers.isNotEmpty()) {
             android.app.AlertDialog.Builder(this)
                 .setTitle("Disconnect and leave?")
-                .setMessage("Your nearby connection will end if you leave NEXORA.")
+                .setMessage("Your Wi-Fi Direct transfer will end if you leave NEXORA.")
                 .setNegativeButton("Stay connected", null)
                 .setPositiveButton("Disconnect and leave") { _, _ ->
                     sharing?.stopSharing()
@@ -701,7 +701,7 @@ class MainActivity : Activity() {
             setPadding(dp(2), dp(13), dp(2), dp(5))
         })
         content.addView(TextView(this).apply {
-            text = "Share quickly with people nearby."
+            text = "Share directly between phones using Wi-Fi Direct."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(3), 0, 0, dp(17))
@@ -835,18 +835,6 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(5) })
         qr.addView(qrRow)
         content.addView(qr, bottom(13))
-        val devices = panel(card)
-        devices.addView(label("CONNECTED PHONES", 0xFF168FE5.toInt()))
-        peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        devices.addView(peerList)
-        rebuildPeerList()
-        content.addView(devices, bottom(13))
-        content.addView(button("HIGH-SPEED MODE  ·  " + if (highSpeedMode) "ON" else "OFF", 0xFFB38A2E.toInt()) {
-            highSpeedMode = !highSpeedMode
-            getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("high_speed_mode", highSpeedMode).apply()
-            runWithSharingService { it.setHighSpeedMode(highSpeedMode) }
-            render()
-        }, bottom(8))
         content.addView(button("BACK TO APPS", 0xFF4C46A8.toInt()) { activeTab = "Media"; mediaCategory = "Apps"; render() }, bottom(8))
         content.addView(button("STOP RECEIVING", 0xFF64748B.toInt()) {
             sharing?.stopSharing()
@@ -891,7 +879,7 @@ class MainActivity : Activity() {
         try {
             ContextCompat.startForegroundService(this, Intent(this, TransferKeepAliveService::class.java))
             if (!bound) bindService(Intent(this, TransferKeepAliveService::class.java), serviceConnection, BIND_AUTO_CREATE)
-            updateStatus("Preparing nearby connection…")
+            updateStatus("Preparing Wi-Fi Direct…")
         } catch (e: Exception) {
             pendingServiceAction = null
             updateStatus("Could not start the sharing service: " + (e.localizedMessage ?: "unknown error"))
@@ -1979,7 +1967,7 @@ class MainActivity : Activity() {
         devices.addView(label("CONNECTED PHONES", 0xFF168FE5.toInt()))
         if (connectedPeers.isEmpty()) {
             devices.addView(TextView(this).apply {
-                text = "No phones connected. Open Send or Receive to find a nearby device."
+                text = "No phones connected. Use Send to scan a receiver QR code, or Receive to show your QR code."
                 textSize = 12f
                 setTextColor(muted)
                 setPadding(0, dp(8), 0, dp(4))
@@ -2216,11 +2204,11 @@ class MainActivity : Activity() {
                         "Settings" -> { activeTab = "Settings"; render() }
                         "Help & Feedback" -> android.app.AlertDialog.Builder(this@MainActivity)
                             .setTitle(title)
-                            .setMessage("Keep both phones nearby, enable Wi-Fi and Bluetooth, and allow nearby-device permissions.")
+                            .setMessage("Keep both phones close, turn on Wi-Fi, and allow the Wi-Fi Direct permission when Android asks.")
                             .setPositiveButton("Got it", null).show()
                         "About NEXORA" -> android.app.AlertDialog.Builder(this@MainActivity)
                             .setTitle(title)
-                            .setMessage("NEXORA is a local file-sharing app. Transfers use nearby device connections.")
+                            .setMessage("NEXORA is a local file-sharing app. Transfers use a direct Wi-Fi connection between phones.")
                             .setPositiveButton("Close", null).show()
                         "Status & Updates" -> Toast.makeText(this@MainActivity, "You are using the current installed NEXORA build.", Toast.LENGTH_SHORT).show()
                         "Language" -> Toast.makeText(this@MainActivity, "English is selected.", Toast.LENGTH_SHORT).show()
@@ -2470,7 +2458,7 @@ class MainActivity : Activity() {
             paint.color = 0xFFDAFFF8.toInt()
             paint.textSize = dp(10).toFloat()
             paint.textAlign = android.graphics.Paint.Align.CENTER
-            canvas.drawText("NEXORA  •  NEARBY", cx, cy + dp(58), paint)
+            canvas.drawText("NEXORA  •  WI-FI DIRECT", cx, cy + dp(58), paint)
         }
     }
 
@@ -2551,7 +2539,7 @@ class MainActivity : Activity() {
         if (!::peerList.isInitialized) return
         peerList.removeAllViews()
         if (discovered.isEmpty() && connectedPeers.isEmpty()) {
-            peerList.addView(TextView(this).apply { text = "No nearby phones yet. Tap Find nearby phones."; textSize = 11f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
+            peerList.addView(TextView(this).apply { text = "No phone connected yet. Scan a NEXORA Wi-Fi Direct QR code to connect."; textSize = 11f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
         }
         discovered.forEach { (id, name) ->
             if (connectedPeers.contains(id)) {
