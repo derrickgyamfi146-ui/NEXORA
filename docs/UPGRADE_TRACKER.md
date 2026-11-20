@@ -75,3 +75,13 @@ The source inventory and all Kotlin app classes, app manifest, Gradle configurat
 - Build validation for the code changes is running in GitHub Actions; no APK from these intermediate commits is approved for installation.
 
 - Extended the startup splash to 5 seconds. The installed-app library is already preloaded on a background thread, so this keeps the visual intro running while that preparation proceeds. This is an initial timing change; visual polish and ad/loading integration remain to be reviewed.
+
+## Additional progress (2026-11-20)
+
+- [x] Targeted animation correction: removed the post-transfer rocket replay. The connection animation is no longer intentionally triggered by the "All files received successfully" status.
+- [x] Startup timing: splash now lasts approximately 5 seconds; installed-app discovery remains on a background thread.
+- [x] Wi-Fi failure diagnostics: removed the premature hotspot confirmation; show hotspot guidance only after a relevant Wi-Fi Direct failure while Wi-Fi is enabled.
+- [x] History/navigation groundwork: added distinct Sent, Received and combined History destinations. New successful send/receive events are recorded in a shared timestamped event list and shown newest-first in History. This is UI/history groundwork; legacy transfer entries and live Incoming queue integration still need further work.
+- [x] CI checks for commits 9f529c9, 6c5715a and 78edc95 completed successfully, including the original signing-key fingerprint check and APK certificate compatibility check.
+- [ ] The newest Sent/Received/History navigation commit is currently being built and has not yet passed CI.
+- [ ] The persistent duplex transfer architecture remains the next major implementation task. The old transport has not been replaced, so two-way send/receive is not complete.
