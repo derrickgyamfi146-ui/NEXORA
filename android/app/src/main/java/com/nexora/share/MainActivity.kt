@@ -1996,88 +1996,114 @@ class MainActivity : Activity() {
     }
 
     private fun showTransfers(card: Int, ink: Int, muted: Int) {
-        if (sharing?.isConnected == true || connectedPeers.isNotEmpty()) {
-            val actions = panel(card)
-            actions.addView(label("CONNECTED · TRANSFER ACTIONS", 0xFF16A58A.toInt()))
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            row.addView(button("SEND FILES", 0xFF168FE5.toInt()) {
-                activeTab = "Media"; mediaCategory = "Apps"; render()
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
-            row.addView(button("RECEIVE", 0xFF0B9B75.toInt()) {
-                activeTab = "Received"
-                render()
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
-            actions.addView(row)
-            content.addView(actions, bottom(10))
+        val connected = sharing?.isConnected == true || connectedPeers.isNotEmpty()
+        content.addView(TextView(this).apply {
+            text = "Transfer centre"
+            textSize = 27f
+            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+            setTextColor(ink)
+            setPadding(dp(2), dp(12), dp(2), dp(3))
+        })
+        content.addView(TextView(this).apply {
+            text = "Manage your connection and keep track of file sharing."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(dp(3), 0, 0, dp(15))
+        })
+
+        val live = panel(card).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF8A243A.toInt())
+            ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0xFFFFD21F.toInt()) }
+            elevation = dp(5).toFloat()
         }
-        content.addView(TextView(this).apply { text = "Transfer centre"; textSize = 25f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
-        val live = panel(card)
-        live.addView(label("LIVE TRANSFER STATUS", 0xFF16A58A.toInt()))
-        val statusLine = TextView(this).apply { text = latestStatus; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(0, dp(8), 0, dp(6)) }
+        live.addView(label("LIVE SESSION", 0xFFFFD66B.toInt()))
+        val statusLine = TextView(this).apply {
+            text = latestStatus
+            textSize = 16f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1)
+            setPadding(0, dp(10), 0, dp(8))
+        }
         transferStatusView = statusLine
         live.addView(statusLine)
         val stepRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("SELECT", "FIND", "CONNECT", "SEND", "DONE").forEachIndexed { index, labelText ->
+        listOf("SELECT", "CONNECT", "SEND", "DONE").forEachIndexed { index, stepName ->
             val step = TextView(this).apply {
-                text = labelText
+                text = stepName
                 textSize = 8f
                 gravity = Gravity.CENTER
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setPadding(dp(3), dp(8), dp(3), dp(8))
-                val tint = intArrayOf(0xFF7357E8.toInt(), 0xFF168FE5.toInt(), 0xFFE69A35.toInt(), 0xFFE05C8A.toInt(), 0xFF16A58A.toInt())[index]
-                background = rounded(if (index < transferStage) tint else if (darkMode) 0xFF29445B.toInt() else 0xFFE8EEF5.toInt(), 10)
-                setTextColor(if (index < transferStage) -1 else muted)
+                setPadding(dp(3), dp(9), dp(3), dp(9))
+                val tint = intArrayOf(0xFFFFD21F.toInt(), 0xFF168FE5.toInt(), 0xFFE52B3A.toInt(), 0xFF16A58A.toInt())[index]
+                background = rounded(if (index < transferStage) tint else 0x553D5A7A, 9)
+                setTextColor(if (index < transferStage) if (index == 0) 0xFF10243B.toInt() else -1 else 0xFFD5E2EF.toInt())
             }
             transferStepViews.add(step)
-            stepRow.addView(step, LinearLayout.LayoutParams(0, dp(34), 1f).apply { leftMargin = dp(2); rightMargin = dp(2) })
+            stepRow.addView(step, LinearLayout.LayoutParams(0, dp(34), 1f).apply {
+                leftMargin = dp(2); rightMargin = dp(2)
+            })
         }
-        live.addView(stepRow, bottom(9))
+        live.addView(stepRow, bottom(10))
         val initialPercent = Regex("(\\d{1,3})%").find(latestStatus)?.groupValues?.getOrNull(1)?.toIntOrNull()
         val progressLine = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
-            progressTintList = android.content.res.ColorStateList.valueOf(0xFF16A58A.toInt())
-            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(if (darkMode) 0xFF29445B.toInt() else 0xFFE2EAF2.toInt())
+            progressTintList = android.content.res.ColorStateList.valueOf(0xFFFFD21F.toInt())
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x665D7897)
             isIndeterminate = initialPercent == null && (latestStatus.contains("sending", true) || latestStatus.contains("receiving", true))
-            progress = initialPercent ?: if (transferStage >= 5) 100 else 0
+            progress = initialPercent ?: if (transferStage >= 4) 100 else 0
         }
         transferProgressBar = progressLine
-        live.addView(progressLine, LinearLayout.LayoutParams(-1, dp(8)))
-        live.addView(button("BACK TO APPS", 0xFF1689D5.toInt()) { activeTab = "Media"; mediaCategory = "Apps"; render() })
-        content.addView(live, bottom(12))
+        live.addView(progressLine, LinearLayout.LayoutParams(-1, dp(7)))
+        content.addView(live, bottom(14))
+
         val devices = panel(card)
-        devices.addView(label("CONNECTED PHONES", 0xFF168FE5.toInt()))
-        if (connectedPeers.isEmpty()) {
+        devices.addView(label("CONNECTED DEVICES", 0xFF168FE5.toInt()))
+        if (!connected) {
             devices.addView(TextView(this).apply {
-                text = "No phones connected. Use Send to scan a receiver QR code, or Receive to show your QR code."
+                text = "No phone is connected yet. Connect first, then choose files to send. You can keep the same session for repeated transfers."
                 textSize = 12f
                 setTextColor(muted)
-                setPadding(0, dp(8), 0, dp(4))
+                setPadding(0, dp(9), 0, dp(5))
             })
+            devices.addView(button("SCAN A QR CODE", 0xFF0B4FB3.toInt()) { scanQrCode() }, bottom(4))
+            devices.addView(button("SHOW MY QR CODE", 0xFFE52B3A.toInt()) { openSendQr() })
         } else {
             devices.addView(TextView(this).apply {
-                text = connectedPeers.size.toString() + " phone(s) connected to this transfer session."
+                text = "Your NEXORA session is active."
                 textSize = 13f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 setTextColor(ink)
                 setPadding(0, dp(8), 0, dp(7))
             })
-            connectedPeers.forEach { endpointId ->
-                val peerName = discovered[endpointId] ?: "Wi-Fi Direct phone"
+            val names = if (connectedPeers.isNotEmpty()) connectedPeers.map { discovered[it] ?: "Wi-Fi Direct phone" }
+                else listOf("Connected phone")
+            names.forEach { peer ->
                 devices.addView(TextView(this).apply {
-                    text = "●  " + peerName + "  ·  CONNECTED"
+                    text = "●  " + peer + "  ·  CONNECTED"
                     textSize = 11f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(0xFF16A58A.toInt())
-                    setPadding(dp(9), dp(8), dp(9), dp(8))
-                    background = rounded(if (darkMode) 0xFF173C3B.toInt() else 0xFFE7F7F1.toInt(), 10)
-                }, bottom(5))
+                    setTextColor(0xFF168A68.toInt())
+                    setPadding(dp(10), dp(10), dp(10), dp(10))
+                    background = rounded(if (darkMode) 0xFF173C3B.toInt() else 0xFFE7F7F1.toInt(), 11)
+                }, bottom(6))
             }
+            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            actions.addView(button("SEND FILES", 0xFF0B4FB3.toInt()) {
+                activeTab = "Media"; mediaCategory = "Apps"; render()
+            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
+            actions.addView(button("RECEIVED", 0xFFE52B3A.toInt()) {
+                activeTab = "Received"; render()
+            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
+            devices.addView(actions, bottom(3))
         }
-        content.addView(devices, bottom(12))
-        if (connectedPeers.isNotEmpty() || sharing?.isConnected == true) {
+        content.addView(devices, bottom(14))
+
+        if (connected) {
             content.addView(button("DISCONNECT", 0xFFE52B3A.toInt()) {
                 android.app.AlertDialog.Builder(this)
-                    .setTitle("Disconnect from this phone?")
+                    .setTitle("Disconnect from this session?")
                     .setMessage("The active NEXORA connection will end. You can connect again later.")
                     .setNegativeButton("Keep connected", null)
                     .setPositiveButton("Disconnect") { _, _ ->
@@ -2088,15 +2114,25 @@ class MainActivity : Activity() {
                         render()
                     }
                     .show()
-            }, bottom(12))
+            }, bottom(14))
         }
+
         val history = panel(card)
-        history.addView(label("RECENTLY SENT", 0xFF7357E8.toInt()))
-        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
-        if (entries.isEmpty()) history.addView(TextView(this).apply { text = "Your sent files will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(5)) })
-        else addGroupedHistory(history, entries.take(30), 0xFF16A58A.toInt(), ink, muted)
+        history.addView(label("RECENTLY SENT", 0xFFE52B3A.toInt()))
+        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
+            .getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
+        if (entries.isEmpty()) {
+            history.addView(TextView(this).apply {
+                text = "Files you send will appear here."
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(8), 0, dp(5))
+            })
+        } else addGroupedHistory(history, entries.take(20), 0xFF0B4FB3.toInt(), ink, muted)
         content.addView(history, bottom(12))
-        content.addView(button("OPEN RECEIVED FILES", 0xFFE05C8A.toInt()) { activeTab = "Received"; render() })
+        content.addView(button("VIEW FULL TRANSFER HISTORY", 0xFF0B4FB3.toInt()) {
+            activeTab = "History"; render()
+        })
     }
 
     private fun addGroupedHistory(target: LinearLayout, entries: List<String>, accent: Int, ink: Int, muted: Int) {
