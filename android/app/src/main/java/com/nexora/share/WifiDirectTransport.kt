@@ -30,8 +30,8 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     interface Callbacks {
         fun onStatus(message: String)
         fun onQrReady(payload: String)
-        fun onConnected(peerName: String, localIsReceiver: Boolean)
-        fun onDisconnected()
+        fun onConnected(endpointId: String, peerName: String, localIsReceiver: Boolean)
+        fun onDisconnected(endpointId: String)
         fun onProgress(message: String)
         fun onReceived(name: String)
         fun onIncomingQueueChanged(items: List<IncomingQueueItem>)
@@ -69,6 +69,8 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private val permitLock = Any()
     private val sendPermit = java.util.concurrent.Semaphore(0)
     private val acknowledgementQueue = LinkedBlockingQueue<Boolean>()
+    private val groupPeers = java.util.concurrent.ConcurrentHashMap<String, GroupPeer>()
+    private val groupIncomingLock = Any()
     @Volatile private var localWaitingForTurn = false
     @Volatile private var localOwnsTurn = false
     @Volatile private var remoteOwnsTurn = false
@@ -101,7 +103,10 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private fun handleConnectionInfo(info: WifiP2pInfo?) {
         if (!active.get()) return
         if (info?.groupFormed == true) {
-            if (info.isGroupOwner) startServer()
+            if (info.isGroupOwner) {
+                localIsGroupOwner = true
+                startServer()
+            }
             else {
                 val host = info.groupOwnerAddress?.hostAddress
                 if (host.isNullOrBlank()) callbacks.onStatus("Wi-Fi Direct connected, but Android did not provide the receiver address.")
@@ -300,7 +305,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         s.soTimeout = 0
         acknowledgementQueue.clear()
         sendPermit.drainPermits()
-        callbacks.onConnected(peerName, localReceiver)
+        callbacks.onConnected("WIFI_DIRECT", peerName, localReceiver)
         callbacks.onStatus("Connected to " + peerName + ". You can send and receive over this connection.")
         io.execute { peerReadLoop(s, input, output) }
     }
@@ -399,7 +404,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 remoteRequestPending = false
                 acknowledgementQueue.offer(false)
                 sendPermit.release()
-                callbacks.onDisconnected()
+                callbacks.onDisconnected("WIFI_DIRECT")
             }
         }
     }
@@ -468,16 +473,6 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
 
     private fun handleIncoming(s: Socket) {
         try {
-            if (socket?.isConnected == true && socket?.isClosed == false) {
-                s.soTimeout = 5000
-                val rejectedInput = DataInputStream(BufferedInputStream(s.getInputStream()))
-                runCatching { rejectedInput.readUTF(); rejectedInput.readUTF() }
-                val reject = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
-                reject.writeBoolean(false)
-                reject.flush()
-                s.close()
-                return
-            }
             s.soTimeout = 15000
             val input = DataInputStream(BufferedInputStream(s.getInputStream()))
             val output = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
@@ -485,10 +480,228 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             output.writeBoolean(valid)
             output.flush()
             if (!valid) { s.close(); return }
-            startPeerSession(s, input, output, true)
+            startGroupPeerSession(s, input, output)
         } catch (e: Exception) {
             runCatching { s.close() }
             if (active.get()) callbacks.onStatus("Receive connection failed: " + (e.localizedMessage ?: "network error"))
+        }
+    }
+
+    private fun startGroupPeerSession(s: Socket, input: DataInputStream, output: DataOutputStream) {
+        val id = UUID.randomUUID().toString()
+        val peer = GroupPeer(id, peerName, s, input, output)
+        s.soTimeout = 0
+        groupPeers[id] = peer
+        callbacks.onConnected(id, peer.name, true)
+        callbacks.onStatus("Connected to " + peer.name + ". Group Share is ready for this phone.")
+        io.execute { groupPeerReadLoop(peer) }
+    }
+
+    private fun groupPeerReadLoop(peer: GroupPeer) {
+        val s = peer.socket
+        try {
+            while (active.get() && !s.isClosed) {
+                when (peer.input.readUnsignedByte()) {
+                    FRAME_BATCH -> synchronized(groupIncomingLock) {
+                        val count = peer.input.readInt()
+                        require(count in 1..MAX_FILES) { "Invalid file count." }
+                        data class IncomingMeta(val name: String, val mime: String, val size: Long)
+                        val metadata = ArrayList<IncomingMeta>(count)
+                        repeat(count) {
+                            val name = safeName(peer.input.readUTF())
+                            val mime = peer.input.readUTF().take(120).ifBlank { "application/octet-stream" }
+                            val size = peer.input.readLong()
+                            require(size in 0..(20L * 1024 * 1024 * 1024)) { "Invalid file size." }
+                            metadata.add(IncomingMeta(name, mime, size))
+                        }
+                        synchronized(incomingQueueLock) {
+                            incomingQueue.clear()
+                            cancelledIncomingItems.clear()
+                            metadata.forEachIndexed { index, item ->
+                                incomingQueue.add(IncomingQueueItem(index, item.name, item.size, "Queued", 0))
+                            }
+                        }
+                        publishIncomingQueue()
+                        metadata.forEachIndexed { index, item ->
+                            currentIncomingIndex = index
+                            if (cancelledIncomingItems.contains(index)) {
+                                skipIncomingBytes(peer.input, item.size)
+                                updateIncomingQueue(index, "Cancelled", 0)
+                                synchronized(peer.outputLock) {
+                                    peer.output.writeByte(FRAME_ACK)
+                                    peer.output.writeBoolean(false)
+                                    peer.output.flush()
+                                }
+                            } else {
+                                updateIncomingQueue(index, "Receiving", 0)
+                                val saved = saveIncoming(peer.input, item.name, item.mime, item.size, index)
+                                updateIncomingQueue(index, if (saved) "Completed" else "Cancelled", if (saved) 100 else incomingProgress(index))
+                                synchronized(peer.outputLock) {
+                                    peer.output.writeByte(FRAME_ACK)
+                                    peer.output.writeBoolean(saved)
+                                    peer.output.flush()
+                                }
+                                if (saved) callbacks.onReceived(item.name)
+                                else callbacks.onStatus("Incoming transfer cancelled: " + item.name)
+                            }
+                        }
+                        currentIncomingIndex = -1
+                        callbacks.onStatus("Incoming batch finished from " + peer.name + ".")
+                    }
+                    FRAME_ACK -> peer.acknowledgementQueue.offer(peer.input.readBoolean())
+                    FRAME_REQUEST_SEND -> {
+                        val grant = synchronized(peer.permitLock) {
+                            if (peer.localOwnsTurn || peer.localWaitingForTurn) {
+                                peer.remoteRequestPending = true
+                                false
+                            } else {
+                                peer.remoteOwnsTurn = true
+                                true
+                            }
+                        }
+                        if (grant) writeGroupControl(peer, FRAME_GRANT_SEND)
+                    }
+                    FRAME_GRANT_SEND -> peer.sendPermit.release()
+                    FRAME_RELEASE_SEND -> {
+                        var grantRemote = false
+                        var grantLocal = false
+                        synchronized(peer.permitLock) {
+                            peer.remoteOwnsTurn = false
+                            if (peer.remoteRequestPending && !peer.localOwnsTurn && !peer.localWaitingForTurn) {
+                                peer.remoteRequestPending = false
+                                peer.remoteOwnsTurn = true
+                                grantRemote = true
+                            } else if (peer.localWaitingForTurn && !peer.localOwnsTurn) {
+                                grantLocal = true
+                            }
+                        }
+                        if (grantRemote) writeGroupControl(peer, FRAME_GRANT_SEND)
+                        if (grantLocal) peer.sendPermit.release()
+                    }
+                    else -> throw IOException("The connected phone sent an unknown NEXORA transfer frame.")
+                }
+            }
+        } catch (e: Exception) {
+            if (active.get() && !s.isClosed) callbacks.onStatus("Group connection ended: " + (e.localizedMessage ?: "network closed"))
+        } finally {
+            runCatching { s.close() }
+            groupPeers.remove(peer.id)
+            peer.acknowledgementQueue.offer(false)
+            peer.sendPermit.release()
+            callbacks.onDisconnected(peer.id)
+            callbacks.onStatus(peer.name + " disconnected from the group.")
+        }
+    }
+
+    private fun writeGroupControl(peer: GroupPeer, frame: Int) {
+        synchronized(peer.outputLock) {
+            peer.output.writeByte(frame)
+            peer.output.flush()
+        }
+    }
+
+    private fun requestGroupSendTurn(peer: GroupPeer) {
+        peer.sendPermit.drainPermits()
+        synchronized(peer.permitLock) { peer.localWaitingForTurn = true }
+        writeGroupControl(peer, FRAME_REQUEST_SEND)
+        if (!peer.sendPermit.tryAcquire(120, TimeUnit.SECONDS)) {
+            synchronized(peer.permitLock) { peer.localWaitingForTurn = false }
+            throw IOException("The other phone is busy. Please try again.")
+        }
+        synchronized(peer.permitLock) {
+            peer.localWaitingForTurn = false
+            peer.localOwnsTurn = true
+        }
+    }
+
+    private fun releaseGroupSendTurn(peer: GroupPeer) {
+        runCatching { writeGroupControl(peer, FRAME_RELEASE_SEND) }
+        var grantRemote = false
+        synchronized(peer.permitLock) {
+            peer.localOwnsTurn = false
+            if (peer.remoteRequestPending && !peer.localWaitingForTurn) {
+                peer.remoteRequestPending = false
+                peer.remoteOwnsTurn = true
+                grantRemote = true
+            }
+        }
+        if (grantRemote) runCatching { writeGroupControl(peer, FRAME_GRANT_SEND) }
+    }
+
+    fun sendFilesToGroup(uris: List<Uri>, excludedPeerIds: Set<String> = emptySet()) {
+        if (!localIsGroupOwner) {
+            sendFiles(uris)
+            return
+        }
+        if (uris.isEmpty()) { callbacks.onStatus("Choose at least one item to send."); return }
+        val recipients = groupPeers.values.filter { it.id !in excludedPeerIds }.sortedBy { it.name }
+        if (recipients.isEmpty()) {
+            callbacks.onStatus("No group recipients are selected or connected.")
+            return
+        }
+        if (!sending.compareAndSet(false, true)) {
+            callbacks.onStatus("A transfer is already running.")
+            return
+        }
+        io.execute {
+            try {
+                recipients.forEach { peer ->
+                    var ownsTurn = false
+                    try {
+                        requestGroupSendTurn(peer)
+                        ownsTurn = true
+                        val metadata = uris.take(MAX_FILES).map { uri ->
+                            val name = safeName(queryName(uri))
+                            val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
+                            val size = querySize(uri)
+                            require(size >= 0) { "Could not determine the size of " + name }
+                            Triple(uri, name, Pair(mime.take(120), size))
+                        }
+                        synchronized(peer.outputLock) {
+                            peer.output.writeByte(FRAME_BATCH)
+                            peer.output.writeInt(metadata.size)
+                            metadata.forEach { item ->
+                                peer.output.writeUTF(item.second)
+                                peer.output.writeUTF(item.third.first)
+                                peer.output.writeLong(item.third.second)
+                            }
+                            peer.output.flush()
+                        }
+                        metadata.forEach { item ->
+                            val uri = item.first
+                            val name = item.second
+                            val size = item.third.second
+                            synchronized(peer.outputLock) {
+                                context.contentResolver.openInputStream(uri)?.use { input ->
+                                    val buffer = ByteArray(256 * 1024)
+                                    var remaining = size
+                                    var done = 0L
+                                    while (remaining > 0) {
+                                        val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                                        if (n < 0) throw EOFException("The file changed before " + name + " was sent.")
+                                        peer.output.write(buffer, 0, n)
+                                        remaining -= n
+                                        done += n
+                                        callbacks.onProgress("Sending to " + peer.name + ": " + name + " · " + (done * 100 / size.coerceAtLeast(1)) + "%")
+                                    }
+                                } ?: throw IOException("Could not open " + name)
+                                peer.output.flush()
+                            }
+                            val confirmed = peer.acknowledgementQueue.poll(10, TimeUnit.MINUTES)
+                                ?: throw IOException(peer.name + " did not acknowledge " + name)
+                            if (!confirmed) callbacks.onStatus(peer.name + " cancelled " + name)
+                        }
+                        callbacks.onStatus("Sent selected files to " + peer.name + ".")
+                    } catch (e: Exception) {
+                        callbacks.onStatus("Could not send to " + peer.name + ": " + (e.localizedMessage ?: "network error"))
+                    } finally {
+                        if (ownsTurn) releaseGroupSendTurn(peer)
+                    }
+                }
+                callbacks.onStatus("Group transfer finished.")
+            } finally {
+                sending.set(false)
+            }
         }
     }
 
@@ -603,6 +816,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     fun hasIncomingTransfer(): Boolean = incomingName != null
 
     fun sendFiles(uris: List<Uri>) {
+        if (localIsGroupOwner) { sendFilesToGroup(uris); return }
         val s = socket
         if (s == null || s.isClosed || peerOutput == null) {
             callbacks.onStatus("Connect to another phone before sending files.")
