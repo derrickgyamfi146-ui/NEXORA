@@ -114,7 +114,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 // Both sides have already deliberately entered Send or Receive mode.
                 // Accept this paired request on both phones so neither waits behind a hidden dialog.
-                if (pendingSelectedSend || receivingModeArmed || pendingQrDeviceName != null) {
+                if (pendingSelectedSend || receivingModeArmed || pendingQrDeviceName != null || pendingAutoConnectEndpointId != null) {
                     updateStatus("Confirming secure connection with $name…")
                     sharing?.accept(endpointId)
                 } else {
