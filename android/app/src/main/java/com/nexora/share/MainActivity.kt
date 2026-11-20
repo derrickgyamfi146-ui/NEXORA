@@ -972,14 +972,6 @@ class MainActivity : Activity() {
             })
             val spacer = View(this)
             page.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
-            page.addView(button("START RECEIVING", 0xFF0B9B75.toInt()) {
-                withWifiDirectPermissions {
-                    runWithSharingService { service ->
-                        service.startReceiving()
-                        Toast.makeText(this@MainActivity, "This phone is ready to receive.", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(9) })
             page.addView(button("CLOSE", 0xFF4C46A8.toInt()) {
                 dialog.dismiss()
                 activeTab = returnTab
