@@ -159,10 +159,14 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         }
         active.set(true)
         localIsGroupOwner = false
-        groupPeers.values.toList().forEach { runCatching { it.socket.close() } }
+        groupPeers.values.toList().forEach { peer ->
+            runCatching { peer.socket.close() }
+            callbacks.onDisconnected(peer.id)
+        }
         groupPeers.clear()
         currentQrPayload = null
         token = UUID.randomUUID().toString()
+        if (socket != null) callbacks.onDisconnected("WIFI_DIRECT")
         runCatching { socket?.close() }
         socket = null
         runCatching { server?.close() }
