@@ -28,7 +28,7 @@ class MainActivity : Activity() {
     private var pendingQrDeviceName: String? = null
     private var receivingModeArmed = false
     private var pendingAutoConnectEndpointId: String? = null
-    private var pendingNearbyAction: (() -> Unit)? = null
+    private var pendingWifiDirectAction: (() -> Unit)? = null
     private var sharing: TransferKeepAliveService? = null
     private var bound = false
     private var activeTab = "Media"
@@ -812,7 +812,7 @@ class MainActivity : Activity() {
             text = latestStatus; textSize = 12f; setTextColor(0xFFD4EDE5.toInt()); setPadding(0, 0, 0, dp(13))
         })
         ready.addView(button("↓   START RECEIVING", 0xFF0B9B75.toInt()) {
-            withNearbyPermissions {
+            withWifiDirectPermissions {
                 runWithSharingService { service ->
                     receivingModeArmed = true
                     service.setHighSpeedMode(highSpeedMode)
@@ -981,24 +981,6 @@ class MainActivity : Activity() {
                 setTextColor(0xFFB7C1C0.toInt())
                 setPadding(dp(12), dp(18), dp(12), dp(10))
             })
-            val speedMode = TextView(this).apply {
-                text = if (highSpeedMode) "⚡  HIGH-SPEED MODE  ·  ON" else "⚡  HIGH-SPEED MODE  ·  OFF"
-                textSize = 12f; gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(0xFFFFD66B.toInt())
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                background = rounded(0xFF26384A.toInt(), 14)
-                setOnClickListener {
-                    highSpeedMode = !highSpeedMode
-                    getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("high_speed_mode", highSpeedMode).apply()
-                    text = if (highSpeedMode) "⚡  HIGH-SPEED MODE  ·  ON" else "⚡  HIGH-SPEED MODE  ·  OFF"
-                    runWithSharingService { it.setHighSpeedMode(highSpeedMode) }
-                    Toast.makeText(this@MainActivity, if (highSpeedMode) "Enable high-speed mode on both phones." else "Standard compatibility mode selected.", Toast.LENGTH_LONG).show()
-                    animatePress(this)
-                }
-            }
-            page.addView(speedMode, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(7) })
-
             val spacer = View(this)
             page.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
             page.addView(button("START RECEIVING", 0xFF0B9B75.toInt()) {
@@ -2338,7 +2320,7 @@ class MainActivity : Activity() {
         }, bottom(8))
         content.addView(appearance, bottom(10))
         val prefs = panel(card); prefs.addView(label("TRANSFER & STORAGE", muted))
-        listOf("Save location\nDownload/NEXORA", "Connection\nNearby Connections", "Transfer mode\nDirect device-to-device", "Mobile data\nNot required for local transfers", "Privacy\nFiles are selected by you").forEach { value ->
+        listOf("Save location\nDownload/NEXORA", "Connection\nWi-Fi Direct", "Transfer mode\nDirect device-to-device", "Mobile data\nNot required for local transfers", "Privacy\nFiles are selected by you").forEach { value ->
             prefs.addView(TextView(this).apply { text = value; textSize = 12f; setTextColor(ink); setPadding(0, dp(10), 0, dp(4)) })
         }
         content.addView(prefs, bottom(10))
@@ -2573,7 +2555,7 @@ class MainActivity : Activity() {
         val missing = needed.distinct().filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isEmpty()) action() else {
             pendingNearbyAction = action
-            requestPermissions(missing.toTypedArray(), REQUEST_NEARBY)
+            requestPermissions(missing.toTypedArray(), REQUEST_WIFI_DIRECT)
         }
     }
 
@@ -2606,7 +2588,7 @@ class MainActivity : Activity() {
                 else Toast.makeText(this, "Permissions granted.", Toast.LENGTH_SHORT).show()
             } else {
                 pendingNearbyAction = null
-                updateStatus("Nearby permissions are needed to connect to phones.")
+                updateStatus("Wi-Fi Direct permission is needed to connect to phones.")
             }
         }
     }
