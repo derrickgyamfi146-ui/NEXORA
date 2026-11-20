@@ -40,6 +40,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private val io = Executors.newCachedThreadPool()
     private val active = AtomicBoolean(false)
     private val connecting = AtomicBoolean(false)
+    private val sending = AtomicBoolean(false)
     @Volatile private var server: ServerSocket? = null
     @Volatile private var socket: Socket? = null
     @Volatile private var token: String? = null
@@ -179,8 +180,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 if (!input.readBoolean()) throw IOException("The QR session was rejected or expired.")
                 callbacks.onConnected(peerName)
                 callbacks.onStatus("Connected to " + peerName + ". Select files to send.")
-            } catch (e: Exception) { if (active.get()) callbacks.onStatus("Wi-Fi Direct connection failed: " + e.localizedMessage) }
-            finally { connecting.set(false) }
+            } catch (e: Exception) {
+                runCatching { socket?.close() }
+                socket = null
+                if (active.get()) callbacks.onStatus("Wi-Fi Direct connection failed: " + e.localizedMessage)
+            } finally { connecting.set(false) }
         }
     }
 
@@ -244,6 +248,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
 
     fun sendFiles(uris: List<Uri>) {
         val s = socket ?: run { callbacks.onStatus("Connect by scanning the receiver's QR code first."); return }
+        if (!sending.compareAndSet(false, true)) { callbacks.onStatus("A transfer is already running."); return }
         io.execute {
             try {
                 val output = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
@@ -268,7 +273,12 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     callbacks.onStatus("Sent: " + name)
                 }
                 callbacks.onStatus("Transfer complete.")
-            } catch (e: Exception) { callbacks.onStatus("Send failed: " + e.localizedMessage) }
+            } catch (e: Exception) {
+                runCatching { s.close() }
+                if (socket === s) socket = null
+                callbacks.onDisconnected()
+                callbacks.onStatus("Send failed: " + e.localizedMessage)
+            } finally { sending.set(false) }
         }
     }
 
