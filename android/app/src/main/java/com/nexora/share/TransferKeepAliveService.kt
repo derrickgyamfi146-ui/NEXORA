@@ -233,6 +233,8 @@ class TransferKeepAliveService : Service() {
                 return
             } catch (e: Exception) {
                 runCatching { descriptor?.close() }
+                activeOutgoingUriKey?.let { queuedUriKeys.remove(it) }
+                activeOutgoingUriKey = null
                 outgoingFailed++
                 status("Could not send this file: ${e.localizedMessage}. Skipping to the next file…")
             }

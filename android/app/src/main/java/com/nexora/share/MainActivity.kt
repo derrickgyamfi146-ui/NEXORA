@@ -245,7 +245,7 @@ class MainActivity : Activity() {
             root.translationY = dp(6).toFloat()
             root.animate().alpha(1f).translationY(0f).setDuration(220)
                 .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
-        }, 2500)
+        }, 1650)
     }
     private fun showExitConfirmation() {
         android.app.AlertDialog.Builder(this)
@@ -1325,6 +1325,10 @@ class MainActivity : Activity() {
                     }
                     appTile.addView(selectionLabel)
                     appTile.setOnClickListener {
+                        if (preparingApps) {
+                            Toast.makeText(this@MainActivity, "Please wait until app preparation finishes.", Toast.LENGTH_SHORT).show()
+                            return@setOnClickListener
+                        }
                         animatePress(appTile)
                         val nowSelected = if (selectedAppPackages.contains(app.packageName)) {
                             selectedAppPackages.remove(app.packageName); false
