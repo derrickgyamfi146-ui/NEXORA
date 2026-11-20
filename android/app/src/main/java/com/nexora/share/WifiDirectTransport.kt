@@ -623,8 +623,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 ownsTurn = true
                 val output = peerOutput ?: throw IOException("The NEXORA connection ended.")
                 val outgoing = uris.take(MAX_FILES)
-                synchronized(outputLock) {
-                    data class OutgoingMeta(val uri: Uri, val name: String, val mime: String, val size: Long)
+                data class OutgoingMeta(val uri: Uri, val name: String, val mime: String, val size: Long)
                     val metadata = outgoing.map { uri ->
                         val name = safeName(queryName(uri))
                         val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
