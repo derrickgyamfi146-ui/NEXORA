@@ -903,8 +903,8 @@ class MainActivity : Activity() {
             withWifiDirectPermissions {
                 runWithSharingService { service ->
                     receivingModeArmed = true
-                    service.startReceiving()
                     updateStatus("Preparing your Wi-Fi Direct QR code…")
+                    service.startReceiving()
                 }
             }
         }
