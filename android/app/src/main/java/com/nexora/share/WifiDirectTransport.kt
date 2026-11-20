@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.IntentFilter
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
@@ -41,6 +42,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private val active = AtomicBoolean(false)
     private val connecting = AtomicBoolean(false)
     private val sending = AtomicBoolean(false)
+    private val serverStarting = AtomicBoolean(false)
     @Volatile private var server: ServerSocket? = null
     @Volatile private var socket: Socket? = null
     @Volatile private var token: String? = null
@@ -52,20 +54,52 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         override fun onReceive(ctx: Context?, intent: android.content.Intent?) {
             if (intent?.action != WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION) return
             @Suppress("DEPRECATION")
-            val info = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO) as? WifiP2pInfo
-            if (info?.groupFormed == true) {
-                if (info.isGroupOwner) startServer()
-                else connectSocket(info.groupOwnerAddress?.hostAddress ?: return)
-            } else if (socket != null) {
-                runCatching { socket?.close() }
-                socket = null
-                callbacks.onDisconnected()
-                if (active.get()) callbacks.onStatus("Wi-Fi Direct connection ended.")
+            val broadcastInfo = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO) as? WifiP2pInfo
+            if (broadcastInfo != null) {
+                handleConnectionInfo(broadcastInfo)
+            } else {
+                // Some Android builds omit the connection-info extra. Ask the P2P manager
+                // directly instead of silently leaving the QR session waiting forever.
+                runCatching {
+                    manager.requestConnectionInfo(channel) { info -> handleConnectionInfo(info) }
+                }.onFailure {
+                    if (active.get()) callbacks.onStatus("Android could not read Wi-Fi Direct connection details: " +
+                        (it.localizedMessage ?: "please retry"))
+                }
             }
         }
     }
 
+    private fun handleConnectionInfo(info: WifiP2pInfo?) {
+        if (!active.get()) return
+        if (info?.groupFormed == true) {
+            if (info.isGroupOwner) startServer()
+            else {
+                val host = info.groupOwnerAddress?.hostAddress
+                if (host.isNullOrBlank()) callbacks.onStatus("Wi-Fi Direct connected, but Android did not provide the receiver address.")
+                else connectSocket(host)
+            }
+        } else if (socket != null) {
+            runCatching { socket?.close() }
+            socket = null
+            callbacks.onDisconnected()
+            callbacks.onStatus("Wi-Fi Direct connection ended. Scan again to reconnect.")
+        }
+    }
+
+    private fun isWifiEnabled(): Boolean {
+        val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            ?: return false
+        return runCatching { wifi.isWifiEnabled }.getOrDefault(false)
+    }
+
     fun startReceiving() {
+        if (!isWifiEnabled()) {
+            active.set(false)
+            currentQrPayload = null
+            callbacks.onStatus("Wi-Fi is off. Turn Wi-Fi on, then tap Receive again.")
+            return
+        }
         // A previous attempt can leave the service active without ever producing a QR.
         // Reuse a valid QR, but fully restart an incomplete session instead of getting stuck.
         if (active.get() && !currentQrPayload.isNullOrBlank()) {
@@ -112,7 +146,13 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 override fun onSuccess() { requestGroupDetails(0) }
                 override fun onFailure(reason: Int) {
                     active.set(false)
-                    callbacks.onStatus("Could not create Wi-Fi Direct group (code " + reason + "). Check that Wi-Fi is on, then tap Receive again.")
+                    val detail = when (reason) {
+                        WifiP2pManager.P2P_UNSUPPORTED -> "This phone does not support Wi-Fi Direct."
+                        WifiP2pManager.BUSY -> "Android is busy. Close any active hotspot or Wi-Fi Direct session, wait a moment, and retry."
+                        WifiP2pManager.ERROR -> "Android reported a Wi-Fi Direct error. Check Wi-Fi and hotspot settings, then retry."
+                        else -> "Android could not create the group. Check Wi-Fi and hotspot settings, then retry."
+                    }
+                    callbacks.onStatus(detail + " (code " + reason + ").")
                 }
             })
         } catch (e: Exception) {
@@ -162,6 +202,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             require(ssid.length in 1..32 && password.length in 8..63 && host == "192.168.49.1" && port == PORT && session.length in 20..64) {
                 "The QR connection details are invalid."
             }
+            if (!isWifiEnabled()) {
+                active.set(false)
+                callbacks.onStatus("Wi-Fi is off. Turn Wi-Fi on, then scan the receiver QR code again.")
+                return
+            }
             token = session
             peerName = data.optString("name", "NEXORA device")
             active.set(true)
@@ -189,6 +234,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     }
 
     private fun startServer() {
+        if (!serverStarting.compareAndSet(false, true)) return
         io.execute {
             try {
                 if (server != null) return@execute
@@ -196,10 +242,21 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 server = listening
                 callbacks.onStatus("Waiting for the phone scanning your QR code…")
                 while (active.get() && !listening.isClosed) {
-                    try { val incoming = listening.accept(); socket = incoming; handleIncoming(incoming) }
-                    catch (_: SocketTimeoutException) { }
+                    try {
+                        val incoming = listening.accept()
+                        socket = incoming
+                        handleIncoming(incoming)
+                    } catch (_: SocketTimeoutException) { }
                 }
-            } catch (e: Exception) { active.set(false); callbacks.onStatus("Wi-Fi Direct receiver could not start: " + e.localizedMessage) }
+            } catch (e: Exception) {
+                if (active.get()) {
+                    active.set(false)
+                    callbacks.onStatus("Wi-Fi Direct receiver could not start: " + (e.localizedMessage ?: "socket error"))
+                }
+            } finally {
+                serverStarting.set(false)
+                if (server?.isClosed != false) server = null
+            }
         }
     }
 
@@ -303,10 +360,15 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     require(size >= 0) { "Could not determine the size of " + name }
                     output.writeUTF(name); output.writeUTF(mime.take(120)); output.writeLong(size)
                     context.contentResolver.openInputStream(uri)?.use { input ->
-                        val buffer = ByteArray(256 * 1024); var done = 0L
-                        while (true) {
-                            val n = input.read(buffer); if (n < 0) break
-                            output.write(buffer, 0, n); done += n
+                        val buffer = ByteArray(256 * 1024)
+                        var remaining = size
+                        var done = 0L
+                        while (remaining > 0) {
+                            val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                            if (n < 0) throw EOFException("The file changed or ended before all of " + name + " was sent.")
+                            output.write(buffer, 0, n)
+                            remaining -= n
+                            done += n
                             callbacks.onProgress("Sending " + name + " · " + (done * 100 / size.coerceAtLeast(1)) + "%")
                         }
                     } ?: throw IOException("Could not open " + name)
