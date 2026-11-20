@@ -79,6 +79,10 @@ class MainActivity : Activity() {
         override fun onStatus(message: String) {
             runOnUiThread {
                 if (message.startsWith("Sent: ")) rememberSentFileName(message.removePrefix("Sent: ").trim())
+                if (message.startsWith("Receiving ") || message.startsWith("Paused:")) {
+                    latestIncomingProgress = message
+                    incomingStatusView?.text = message
+                }
                 updateStatus(message)
                 showWifiDirectFailureHelp(message)
                 if (message.startsWith("Transfer queue finished:")) {
