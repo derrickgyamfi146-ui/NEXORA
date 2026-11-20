@@ -208,7 +208,7 @@ class MainActivity : Activity() {
             setPadding(dp(24), 0, dp(24), 0)
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF061321.toInt(), 0xFF0A3E42.toInt(), 0xFF172B48.toInt(), 0xFF493817.toInt())
+                intArrayOf(0xFF07142E.toInt(), 0xFF0B4FB3.toInt(), 0xFF172B48.toInt(), 0xFF7A1F36.toInt())
             )
         }
 
@@ -217,7 +217,7 @@ class MainActivity : Activity() {
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(0x00102030)
-                setStroke(dp(2), 0x6678E8D1)
+                setStroke(dp(2), 0xFFFFD21F)
             }
             alpha = 0f
             scaleX = .72f
@@ -247,7 +247,7 @@ class MainActivity : Activity() {
             setTextColor(0xFFFFD66B.toInt())
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0x443CCEB5)
+                setColor(0x443B67B5)
                 setStroke(dp(2), 0xAAFFD66B.toInt())
             }
             alpha = 0f
@@ -259,7 +259,7 @@ class MainActivity : Activity() {
 
         val sparkleViews = listOf(
             Triple("✦", Gravity.TOP or Gravity.START, 0xFFFFD66B.toInt()),
-            Triple("·", Gravity.BOTTOM or Gravity.END, 0xFF8AF2D2.toInt()),
+            Triple("·", Gravity.BOTTOM or Gravity.END, 0xFFE52B3A.toInt()),
             Triple("✧", Gravity.TOP or Gravity.END, 0xFFFFFFFF.toInt()),
             Triple("·", Gravity.BOTTOM or Gravity.START, 0xFFFFD66B.toInt())
         ).mapIndexed { index, item ->
