@@ -3,6 +3,7 @@ name: NEXORA APK build
 permissions:
   contents: read
   actions: read
+  statuses: write
 
 on: push
 
@@ -90,3 +91,25 @@ jobs:
           name: NEXORA-0.7.9-build76
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publish successful build status
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=success \
+            -f context="NEXORA APK build" \
+            -f description="APK built and signature verified" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+      - name: Publish failed build status
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=failure \
+            -f context="NEXORA APK build" \
+            -f description="Build failed; inspect the Actions log" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
