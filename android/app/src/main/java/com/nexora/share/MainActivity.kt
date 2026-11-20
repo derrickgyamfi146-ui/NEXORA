@@ -83,8 +83,7 @@ class MainActivity : Activity() {
                     java.io.File(cacheDir, "shared_apks").listFiles()?.forEach { it.delete() }
                 }
                 if (message.startsWith("Received and saved:")) {
-                    // Refresh the received list for each file, but do not interrupt a
-                    // multi-file transfer with a full-screen animation.
+                    rememberReceivedFileName(message.removePrefix("Received and saved:").trim())
                     refreshReceivedFiles()
                 }
                 if (message == "All files received successfully.") {
@@ -421,7 +420,7 @@ class MainActivity : Activity() {
             return
         }
         when {
-            activeTab == "Settings" || activeTab == "Transfers" || activeTab == "Receive" || activeTab == "Files" || activeTab == "Sent" || activeTab == "Received" || activeTab == "Contacts" -> {
+            activeTab == "Settings" || activeTab == "Transfers" || activeTab == "Receive" || activeTab == "Files" || activeTab == "Sent" || activeTab == "Received" || activeTab == "History" || activeTab == "Contacts" -> {
                 activeTab = "Media"; mediaCategory = "Apps"; render()
             }
             activeTab == "Media" && mediaCategory != "Apps" -> { mediaCategory = "Apps"; render() }
@@ -508,7 +507,7 @@ class MainActivity : Activity() {
             }
             listOf("History", "Apps", "Photos", "Videos", "Music", "Files", "Contacts").forEach { tab ->
                 val selected = when (tab) {
-                    "History" -> activeTab == "Sent" || activeTab == "Received"
+                    "History" -> activeTab == "History"
                     "Apps" -> activeTab == "Media" && mediaCategory == "Apps"
                     "Photos" -> activeTab == "Media" && mediaCategory == "Photos"
                     "Videos" -> activeTab == "Media" && mediaCategory == "Videos"
@@ -526,7 +525,7 @@ class MainActivity : Activity() {
                 chip.setOnClickListener {
                     animatePress(chip)
                     when (tab) {
-                        "History" -> { activeTab = "Sent"; render() }
+                        "History" -> { activeTab = "History"; render() }
                         "Apps" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
                         "Photos" -> openMediaLibrary("Photos")
                         "Videos" -> openMediaLibrary("Videos")
@@ -688,6 +687,7 @@ class MainActivity : Activity() {
             "Files" -> showFiles(card, ink, muted, blue)
             "Sent" -> showSent(card, ink, muted)
             "Received" -> showReceived(card, ink, muted)
+            "History" -> showHistory(card, ink, muted)
             "Transfers" -> showTransfers(card, ink, muted)
             "Receive" -> showReceive(card, ink, muted)
             "Settings" -> showSettings(card, ink, muted, blue)
@@ -2132,18 +2132,14 @@ class MainActivity : Activity() {
     }
 
     private fun showSent(card: Int, ink: Int, muted: Int) {
-        content.addView(TextView(this).apply { text = "History"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
-        val historyTabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        historyTabs.addView(button("SENT", if (activeTab == "Sent") 0xFF7357E8.toInt() else 0xFF334155.toInt()) { activeTab = "Sent"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(5) })
-        historyTabs.addView(button("RECEIVED", if (activeTab == "Received") 0xFF16A58A.toInt() else 0xFF334155.toInt()) { activeTab = "Received"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(5) })
-        content.addView(historyTabs, bottom(10))
+        content.addView(TextView(this).apply { text = "Sent"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
         val box = panel(card)
-        box.addView(label("SUCCESSFULLY SENT", muted))
+        box.addView(label("ITEMS SENT FROM THIS PHONE", muted))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(list)
         val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
-        if (entries.isEmpty()) list.addView(TextView(this).apply { text = "Files you send will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(8)) })
-        else addGroupedHistory(list, entries.take(100), 0xFF7357E8.toInt(), ink, muted)
+        if (entries.isEmpty()) list.addView(TextView(this).apply { text = "Items you send will appear here."; textSize = 12f; setTextColor(muted); setPadding(0, dp(8), 0, dp(8)) })
+        else addGroupedHistory(list, entries.take(100), 0xFF1755C9.toInt(), ink, muted)
         content.addView(box)
     }
 
@@ -2169,6 +2165,19 @@ class MainActivity : Activity() {
         val uri = prefs.getString("sent_uri_" + name.hashCode(), null)
         val entry = stamp + " · " + name + (uri?.let { " · " + it } ?: "")
         prefs.edit().putString("sent_items", (listOf(entry) + old.split("\n").filter { it.isNotBlank() }).take(100).joinToString("\n")).apply()
+        appendHistoryEvent("SENT", name)
+    }
+
+    private fun rememberReceivedFileName(name: String) {
+        if (name.isNotBlank()) appendHistoryEvent("RECEIVED", name)
+    }
+
+    private fun appendHistoryEvent(direction: String, name: String) {
+        val prefs = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
+        val old = prefs.getString("history_events", "") ?: ""
+        val safeName = name.replace("|", "_").replace("\n", " ").take(240)
+        val event = System.currentTimeMillis().toString() + "|" + direction + "|" + safeName
+        prefs.edit().putString("history_events", (listOf(event) + old.split("\n").filter { it.isNotBlank() }).take(200).joinToString("\n")).apply()
     }
 
     private fun rememberSentFiles(uris: List<Uri>) {
@@ -2183,14 +2192,47 @@ class MainActivity : Activity() {
         prefs.edit().putString("sent_items", (names + old.split("\n").filter { it.isNotBlank() }).take(100).joinToString("\n")).apply()
     }
     private fun showReceived(card: Int, ink: Int, muted: Int) {
+        content.addView(TextView(this).apply { text = "Received"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
+        val box = panel(card)
+        box.addView(label("ITEMS RECEIVED ON THIS PHONE", muted))
+        receivedList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(receivedList)
+        content.addView(box)
+        refreshReceivedFiles()
+    }
+
+    private fun showHistory(card: Int, ink: Int, muted: Int) {
         content.addView(TextView(this).apply { text = "History"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
-        val historyTabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        historyTabs.addView(button("SENT", if (activeTab == "Sent") 0xFF7357E8.toInt() else 0xFF334155.toInt()) { activeTab = "Sent"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(5) })
-        historyTabs.addView(button("RECEIVED", if (activeTab == "Received") 0xFF16A58A.toInt() else 0xFF334155.toInt()) { activeTab = "Received"; render() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(5) })
-        content.addView(historyTabs, bottom(10))
-        val box = panel(card); box.addView(label("SAVED ON THIS PHONE", muted))
-        receivedList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }; box.addView(receivedList)
-        content.addView(box); refreshReceivedFiles()
+        val box = panel(card)
+        box.addView(label("ALL TRANSFERS · SENT AND RECEIVED", muted))
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(list)
+        val events = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
+            .getString("history_events", "")?.split("\n")?.mapNotNull { line ->
+                val parts = line.split("|", limit = 3)
+                if (parts.size == 3) Triple(parts[0].toLongOrNull() ?: 0L, parts[1], parts[2]) else null
+            }?.sortedByDescending { it.first } ?: emptyList()
+        if (events.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = "Your sent and received transfers will appear here."
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(10), 0, dp(10))
+            })
+        } else {
+            events.take(200).forEach { event ->
+                val stamp = java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(event.first))
+                val sent = event.second == "SENT"
+                list.addView(TextView(this).apply {
+                    text = (if (sent) "↑  SENT" else "↓  RECEIVED") + "    " + event.third + "\n" + stamp
+                    textSize = 12f
+                    setTextColor(ink)
+                    setPadding(dp(10), dp(11), dp(10), dp(11))
+                    background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 12)
+                }, bottom(6))
+            }
+        }
+        content.addView(box)
     }
 
 
