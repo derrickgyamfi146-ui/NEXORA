@@ -74,7 +74,14 @@ class MainActivity : Activity() {
             runOnUiThread {
                 if (message.startsWith("Sent: ")) rememberSentFileName(message.removePrefix("Sent: ").trim())
                 updateStatus(message)
-                if (message.startsWith("Received and saved:")) refreshReceivedFiles()
+                if (message.startsWith("Received and saved:")) {
+                    refreshReceivedFiles()
+                    showReceivedRocketAnimation {
+                        activeTab = "Media"
+                        mediaCategory = "Apps"
+                        render()
+                    }
+                }
             }
         }
         override fun onPeerFound(endpointId: String, name: String) {
@@ -922,6 +929,42 @@ class MainActivity : Activity() {
             .withEndAction {
                 dialog.dismiss()
                 onLaunch()
+            }.start()
+    }
+
+    private fun showReceivedRocketAnimation(onComplete: () -> Unit) {
+        val dialog = android.app.Dialog(this)
+        val stage = android.widget.FrameLayout(this).apply {
+            setBackground(android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF071A2D.toInt(), 0xFF0B4A4A.toInt(), 0xFF4B3B17.toInt())
+            ))
+        }
+        val rocket = TextView(this).apply {
+            text = "🚀"; textSize = 58f; gravity = Gravity.CENTER
+            alpha = 0f; scaleX = .55f; scaleY = .55f
+        }
+        val caption = TextView(this).apply {
+            text = "RECEIVED SUCCESSFULLY"; textSize = 14f; letterSpacing = .12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(0xFF8AF2C8.toInt()); alpha = 0f
+        }
+        stage.addView(rocket, android.widget.FrameLayout.LayoutParams(dp(110), dp(110), Gravity.CENTER))
+        stage.addView(caption, android.widget.FrameLayout.LayoutParams(-1, dp(48), Gravity.CENTER).apply { topMargin = dp(150) })
+        dialog.setContentView(stage)
+        dialog.setCancelable(false)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(-1, -1)
+        caption.animate().alpha(1f).setDuration(180).start()
+        rocket.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(-dp(145).toFloat())
+            .setDuration(760).setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction {
+                caption.text = "RECEIVED"
+                android.os.Handler(mainLooper).postDelayed({
+                    dialog.dismiss()
+                    onComplete()
+                }, 850L)
             }.start()
     }
 
