@@ -21,6 +21,7 @@ class TransferKeepAliveService : Service() {
         fun onDisconnected(endpointId: String)
         fun onTransferProgress(message: String)
         fun onQrReady(payload: String)
+        fun onIncomingQueueChanged(items: List<IncomingQueueItem>)
     }
 
     inner class LocalBinder : Binder() {
@@ -64,6 +65,9 @@ class TransferKeepAliveService : Service() {
                 listener?.onTransferProgress(message)
             }
             override fun onReceived(name: String) { status("Received and saved: " + name) }
+            override fun onIncomingQueueChanged(items: List<IncomingQueueItem>) {
+                listener?.onIncomingQueueChanged(items)
+            }
         })
     }
     private val transport by transportDelegate
@@ -119,6 +123,9 @@ class TransferKeepAliveService : Service() {
     fun pauseIncoming() { if (transportDelegate.isInitialized()) transport.pauseIncoming() }
     fun resumeIncoming() { if (transportDelegate.isInitialized()) transport.resumeIncoming() }
     fun cancelIncoming() { if (transportDelegate.isInitialized()) transport.cancelIncoming() }
+    fun cancelIncomingItem(id: Int) { if (transportDelegate.isInitialized()) transport.cancelIncomingItem(id) }
+    fun incomingQueueSnapshot(): List<IncomingQueueItem> =
+        if (transportDelegate.isInitialized()) transport.incomingQueueSnapshot() else emptyList()
     fun isIncomingPaused(): Boolean = transportDelegate.isInitialized() && transport.isIncomingPaused()
     fun hasIncomingTransfer(): Boolean = transportDelegate.isInitialized() && transport.hasIncomingTransfer()
 
