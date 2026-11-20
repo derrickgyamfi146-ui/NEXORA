@@ -534,9 +534,12 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
-        floatingTransferAnimator?.cancel()
-        floatingTransferAnimator = null
-        floatingTransferIndicator = null
+        floatingArrowUpAnimator?.cancel()
+        floatingArrowDownAnimator?.cancel()
+        floatingArrowUpAnimator = null
+        floatingArrowDownAnimator = null
+        floatingArrowUp = null
+        floatingArrowDown = null
         receiveModeLabel = null
         mediaContinueButton = null
         transferStatusView = null
@@ -692,14 +695,9 @@ class MainActivity : Activity() {
             content.setPadding(dp(13), dp(7), dp(13), dp(84))
         }
         root.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
-        var floatingCentre: TextView? = null
+        var floatingCentre: View? = null
         if (libraryMode || connectedNow) {
-            val centre = TextView(this).apply {
-                text = if (connectedNow) "⇅" else "↔"
-                textSize = if (connectedNow) 27f else 25f
-                gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(-1)
+            val centre = android.widget.FrameLayout(this).apply {
                 background = if (connectedNow) android.graphics.drawable.GradientDrawable(
                     android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
                     intArrayOf(0xFF0B4FB3.toInt(), 0xFFE52B3A.toInt(), 0xFFFFD21F.toInt())
@@ -713,9 +711,35 @@ class MainActivity : Activity() {
                 alpha = 0f
                 scaleX = .68f
                 scaleY = .68f
-                floatingTransferIndicator = this
                 isHapticFeedbackEnabled = true
                 contentDescription = if (connectedNow) "Open transfer centre" else "Show Send and Receive actions"
+                if (connectedNow) {
+                    val arrows = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER
+                    }
+                    val up = TextView(this@MainActivity).apply {
+                        text = "↑"; textSize = 24f; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(-1)
+                    }
+                    val down = TextView(this@MainActivity).apply {
+                        text = "↓"; textSize = 24f; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(-1)
+                    }
+                    floatingArrowUp = up
+                    floatingArrowDown = down
+                    arrows.addView(up, LinearLayout.LayoutParams(dp(22), dp(42)))
+                    arrows.addView(down, LinearLayout.LayoutParams(dp(22), dp(42)))
+                    addView(arrows, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+                } else {
+                    addView(TextView(this@MainActivity).apply {
+                        text = "↔"; textSize = 25f; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(-1)
+                    }, android.widget.FrameLayout.LayoutParams(-1, -1))
+                }
                 setOnClickListener {
                     animatePress(this)
                     if (connectedNow) {
@@ -3157,8 +3181,10 @@ class MainActivity : Activity() {
     }
 
     private var quickActionPanel: LinearLayout? = null
-    private var floatingTransferIndicator: TextView? = null
-    private var floatingTransferAnimator: android.animation.ObjectAnimator? = null
+    private var floatingArrowUp: TextView? = null
+    private var floatingArrowDown: TextView? = null
+    private var floatingArrowUpAnimator: android.animation.ObjectAnimator? = null
+    private var floatingArrowDownAnimator: android.animation.ObjectAnimator? = null
     private var transferIsActive = false
     private val quickActionHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var quickActionHide: Runnable? = null
@@ -3292,20 +3318,30 @@ class MainActivity : Activity() {
     private var transferStage = 0
     private val transferStepViews = ArrayList<TextView>()
     private fun updateFloatingTransferAnimation() {
-        val indicator = floatingTransferIndicator ?: return
+        val up = floatingArrowUp ?: return
+        val down = floatingArrowDown ?: return
         if (transferIsActive) {
-            if (floatingTransferAnimator?.isRunning != true) {
-                floatingTransferAnimator = android.animation.ObjectAnimator.ofFloat(indicator, "rotation", 0f, 360f).apply {
-                    duration = 850L
+            if (floatingArrowUpAnimator?.isRunning != true) {
+                floatingArrowUpAnimator = android.animation.ObjectAnimator.ofFloat(up, "translationY", dp(4).toFloat(), -dp(4).toFloat()).apply {
+                    duration = 360L
                     repeatCount = android.animation.ValueAnimator.INFINITE
-                    interpolator = android.view.animation.LinearInterpolator()
+                    repeatMode = android.animation.ValueAnimator.REVERSE
+                    start()
+                }
+                floatingArrowDownAnimator = android.animation.ObjectAnimator.ofFloat(down, "translationY", -dp(4).toFloat(), dp(4).toFloat()).apply {
+                    duration = 360L
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    repeatMode = android.animation.ValueAnimator.REVERSE
                     start()
                 }
             }
         } else {
-            floatingTransferAnimator?.cancel()
-            floatingTransferAnimator = null
-            indicator.rotation = 0f
+            floatingArrowUpAnimator?.cancel()
+            floatingArrowDownAnimator?.cancel()
+            floatingArrowUpAnimator = null
+            floatingArrowDownAnimator = null
+            up.translationY = 0f
+            down.translationY = 0f
         }
     }
 
