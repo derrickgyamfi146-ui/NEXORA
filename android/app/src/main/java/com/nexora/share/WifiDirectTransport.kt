@@ -87,12 +87,16 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         manager.requestGroupInfo(channel) { group ->
             if (group == null) {
                 if (attempt < 12) io.execute { Thread.sleep(350); requestGroupDetails(attempt + 1) }
-                else callbacks.onStatus("Wi-Fi Direct group details were unavailable. Please retry.")
+                else {
+                    active.set(false)
+                    callbacks.onStatus("Wi-Fi Direct group details were unavailable. Please retry.")
+                }
                 return@requestGroupInfo
             }
             val ssid = group.networkName.orEmpty()
             val password = group.passphrase.orEmpty()
             if (ssid.isBlank() || password.isBlank()) {
+                active.set(false)
                 callbacks.onStatus("Android did not provide Wi-Fi Direct credentials. Please retry.")
                 return@requestGroupInfo
             }
