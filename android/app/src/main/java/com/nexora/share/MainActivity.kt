@@ -856,7 +856,7 @@ class MainActivity : Activity() {
         ready.background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF8A243A.toInt())
-        ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0xFFFFD21F) }
+        ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0xFFFFD21F.toInt()) }
         receiveModeLabel = TextView(this).apply {
             text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"
             textSize = 10f; letterSpacing = .12f
