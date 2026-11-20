@@ -46,6 +46,23 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         private const val FRAME_GRANT_SEND = 4
         private const val FRAME_RELEASE_SEND = 5
     }
+    private class GroupPeer(
+        val id: String,
+        val name: String,
+        val socket: Socket,
+        val input: DataInputStream,
+        val output: DataOutputStream
+    ) {
+        val outputLock = Any()
+        val acknowledgementQueue = LinkedBlockingQueue<Boolean>()
+        val sendPermit = java.util.concurrent.Semaphore(0)
+        val permitLock = Any()
+        @Volatile var localWaitingForTurn = false
+        @Volatile var localOwnsTurn = false
+        @Volatile var remoteOwnsTurn = false
+        @Volatile var remoteRequestPending = false
+    }
+
     private val manager = context.getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
     private val channel = manager.initialize(context, context.mainLooper, null)
     private val io = Executors.newCachedThreadPool()
