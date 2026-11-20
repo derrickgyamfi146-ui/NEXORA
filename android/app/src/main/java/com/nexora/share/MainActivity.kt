@@ -464,15 +464,6 @@ class MainActivity : Activity() {
         }
         root.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
         if (libraryMode || connectedNow) {
-            val nav = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(dp(8), dp(6), dp(8), dp(6))
-                background = android.graphics.drawable.GradientDrawable(
-                    android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
-                    intArrayOf(0xFF071B2D.toInt(), 0xFF123B43.toInt(), 0xFF4B3B17.toInt())
-                )
-            }
             val centre = TextView(this).apply {
                 text = if (connectedNow) "⇅" else "↔"
                 textSize = if (connectedNow) 27f else 25f
@@ -483,8 +474,12 @@ class MainActivity : Activity() {
                     android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
                     intArrayOf(0xFF00BFA5.toInt(), 0xFF168FE5.toInt(), 0xFF8B4DDF.toInt())
                 ).apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setStroke(dp(2), 0xAAFFFFFF.toInt()) }
-                else rounded(0xFF1C5360.toInt(), 22)
-                elevation = dp(8).toFloat()
+                else android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(0xFF176C78.toInt())
+                    setStroke(dp(1), 0xAAFFFFFF.toInt())
+                }
+                elevation = dp(12).toFloat()
                 isHapticFeedbackEnabled = true
                 contentDescription = if (connectedNow) "Open transfer centre" else "Show Send and Receive actions"
                 setOnClickListener {
@@ -500,23 +495,21 @@ class MainActivity : Activity() {
                 var startY = 0f
                 var dragged = false
                 setOnTouchListener { view, event ->
+                    val parent = view.parent as? View
                     when (event.actionMasked) {
                         android.view.MotionEvent.ACTION_DOWN -> {
                             downX = event.rawX; downY = event.rawY
-                            startX = view.translationX; startY = view.translationY
+                            startX = view.x; startY = view.y
                             dragged = false
                             true
                         }
                         android.view.MotionEvent.ACTION_MOVE -> {
                             val dx = event.rawX - downX
                             val dy = event.rawY - downY
-                            if (connectedNow && (kotlin.math.abs(dx) > dp(5) || kotlin.math.abs(dy) > dp(5))) {
+                            if (connectedNow && (kotlin.math.abs(dx) > dp(5) || kotlin.math.abs(dy) > dp(5)) && parent != null) {
                                 dragged = true
-                                val parent = view.parent as? View
-                                val maxX = ((parent?.width ?: view.width) - view.width) / 2f
-                                val maxY = ((parent?.height ?: view.height) - view.height) / 2f
-                                view.translationX = (startX + dx).coerceIn(-maxX, maxX)
-                                view.translationY = (startY + dy).coerceIn(-maxY, maxY)
+                                view.x = (startX + dx).coerceIn(0f, (parent.width - view.width).coerceAtLeast(0).toFloat())
+                                view.y = (startY + dy).coerceIn(0f, (parent.height - view.height).coerceAtLeast(0).toFloat())
                             }
                             true
                         }
@@ -529,10 +522,12 @@ class MainActivity : Activity() {
                     }
                 }
             }
-            nav.addView(centre, LinearLayout.LayoutParams(if (connectedNow) dp(58) else dp(62), if (connectedNow) dp(58) else dp(48)))
-            root.addView(nav, LinearLayout.LayoutParams(-1, -2))
+            contentFrame.addView(centre, android.widget.FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.END).apply {
+                rightMargin = dp(16)
+                bottomMargin = dp(88)
+            })
         }
-                setContentView(root)
+        setContentView(root)
         when (activeTab) {
             "Media" -> showMedia(card, ink, muted, blue)
             "Files" -> showFiles(card, ink, muted, blue)
