@@ -2442,34 +2442,96 @@ class MainActivity : Activity() {
 
     private fun showHistory(card: Int, ink: Int, muted: Int) {
         migrateLegacyTransferHistory()
-        content.addView(TextView(this).apply { text = "History"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
-        val box = panel(card)
-        box.addView(label("ALL TRANSFERS · SENT AND RECEIVED", muted))
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        box.addView(list)
         val events = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
             .getString("history_events", "")?.split("\n")?.mapNotNull { line ->
                 val parts = line.split("|", limit = 3)
                 if (parts.size == 3) Triple(parts[0].toLongOrNull() ?: 0L, parts[1], parts[2]) else null
             }?.sortedByDescending { it.first } ?: emptyList()
+        val sentCount = events.count { it.second == "SENT" }
+        val receivedCount = events.count { it.second == "RECEIVED" }
+
+        content.addView(TextView(this).apply {
+            text = "Transfer history"
+            textSize = 27f
+            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+            setTextColor(ink)
+            setPadding(dp(2), dp(12), dp(2), dp(3))
+        })
+        content.addView(TextView(this).apply {
+            text = "A timeline of files shared from and to this phone."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(dp(3), 0, 0, dp(14))
+        })
+
+        val summary = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf(
+            Triple("SENT", sentCount, 0xFF0B4FB3.toInt()),
+            Triple("RECEIVED", receivedCount, 0xFFE52B3A.toInt())
+        ).forEach { item ->
+            val tile = panel(card).apply {
+                addView(label(item.first, item.third))
+                addView(TextView(this@MainActivity).apply {
+                    text = item.second.toString()
+                    textSize = 25f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(ink)
+                    setPadding(0, dp(5), 0, 0)
+                })
+            }
+            summary.addView(tile, LinearLayout.LayoutParams(0, dp(82), 1f).apply {
+                if (item.first == "SENT") rightMargin = dp(5) else leftMargin = dp(5)
+            })
+        }
+        content.addView(summary, bottom(13))
+
+        val box = panel(card)
+        box.addView(label("ALL TRANSFERS · NEWEST FIRST", 0xFF0B4FB3.toInt()))
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(list)
         if (events.isEmpty()) {
             list.addView(TextView(this).apply {
                 text = "Your sent and received transfers will appear here."
                 textSize = 12f
                 setTextColor(muted)
-                setPadding(0, dp(10), 0, dp(10))
+                setPadding(0, dp(12), 0, dp(12))
             })
         } else {
             events.take(200).forEach { event ->
-                val stamp = java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(event.first))
+                val stamp = java.text.SimpleDateFormat("dd MMM yyyy · HH:mm", java.util.Locale.getDefault())
+                    .format(java.util.Date(event.first))
                 val sent = event.second == "SENT"
-                list.addView(TextView(this).apply {
-                    text = (if (sent) "↑  SENT" else "↓  RECEIVED") + "    " + event.third + "\n" + stamp
-                    textSize = 12f
-                    setTextColor(ink)
-                    setPadding(dp(10), dp(11), dp(10), dp(11))
+                val accent = if (sent) 0xFF0B4FB3.toInt() else 0xFFE52B3A.toInt()
+                val entry = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(11), dp(10), dp(11), dp(10))
                     background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 12)
-                }, bottom(6))
+                }
+                entry.addView(TextView(this).apply {
+                    text = if (sent) "↑" else "↓"
+                    textSize = 21f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    setTextColor(-1)
+                    background = rounded(accent, 10)
+                }, LinearLayout.LayoutParams(dp(38), dp(38)).apply { rightMargin = dp(10) })
+                val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                details.addView(TextView(this@MainActivity).apply {
+                    text = event.third
+                    textSize = 12f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(ink)
+                    maxLines = 2
+                })
+                details.addView(TextView(this@MainActivity).apply {
+                    text = (if (sent) "SENT" else "RECEIVED") + "  ·  " + stamp
+                    textSize = 10f
+                    setTextColor(muted)
+                    setPadding(0, dp(3), 0, 0)
+                })
+                entry.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+                list.addView(entry, bottom(6))
             }
         }
         content.addView(box)
