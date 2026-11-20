@@ -675,6 +675,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         }
         io.execute {
             try {
+                val completedNames = LinkedHashSet<String>()
                 recipients.forEach { peer ->
                     var ownsTurn = false
                     try {
@@ -719,7 +720,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             }
                             val confirmed = peer.acknowledgementQueue.poll(10, TimeUnit.MINUTES)
                                 ?: throw IOException(peer.name + " did not acknowledge " + name)
-                            if (confirmed) callbacks.onStatus("Sent: " + name)
+                            if (confirmed) completedNames.add(name)
                             else callbacks.onStatus(peer.name + " cancelled " + name)
                         }
                         callbacks.onStatus("Sent selected files to " + peer.name + ".")
@@ -729,6 +730,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         if (ownsTurn) releaseGroupSendTurn(peer)
                     }
                 }
+                completedNames.forEach { callbacks.onStatus("Sent: " + it) }
                 callbacks.onStatus("Group transfer finished.")
             } finally {
                 sending.set(false)
