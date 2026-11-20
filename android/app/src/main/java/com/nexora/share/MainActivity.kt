@@ -26,6 +26,7 @@ class MainActivity : Activity() {
     private val discovered = LinkedHashMap<String, String>()
     private val connectedPeers = LinkedHashSet<String>()
     private var pendingQrDeviceName: String? = null
+    private var receivingModeArmed = false
     private var pendingAutoConnectEndpointId: String? = null
     private var pendingNearbyAction: (() -> Unit)? = null
     private var sharing: TransferKeepAliveService? = null
@@ -111,17 +112,25 @@ class MainActivity : Activity() {
         }
         override fun onConnectionRequest(endpointId: String, name: String, digits: String) {
             runOnUiThread {
-                android.app.AlertDialog.Builder(this@MainActivity).setTitle("Connect to $name?")
-                    .setMessage("Compare this security code on both phones:\n\n$digits")
-                    .setPositiveButton("Accept") { _, _ -> sharing?.accept(endpointId) }
-                    .setNegativeButton("Reject") { _, _ -> sharing?.reject(endpointId) }
-                    .setCancelable(false).show()
+                // Both sides have already deliberately entered Send or Receive mode.
+                // Accept this paired request on both phones so neither waits behind a hidden dialog.
+                if (pendingSelectedSend || receivingModeArmed || pendingQrDeviceName != null) {
+                    updateStatus("Confirming secure connection with $name…")
+                    sharing?.accept(endpointId)
+                } else {
+                    android.app.AlertDialog.Builder(this@MainActivity).setTitle("Connect to $name?")
+                        .setMessage("Compare this security code on both phones:\n\n$digits")
+                        .setPositiveButton("Accept") { _, _ -> sharing?.accept(endpointId) }
+                        .setNegativeButton("Reject") { _, _ -> sharing?.reject(endpointId) }
+                        .setCancelable(false).show()
+                }
             }
         }
         override fun onConnected(endpointId: String) {
             runOnUiThread {
                 connectedPeers.add(endpointId)
                 pendingAutoConnectEndpointId = null
+                receivingModeArmed = false
                 if (::peerList.isInitialized) rebuildPeerList()
                 if (::sendButton.isInitialized) sendButton.isEnabled = true
                 if (pendingSelectedSend && selectedUris.isNotEmpty() && pendingConnectionSendUris == null) {
@@ -811,6 +820,7 @@ class MainActivity : Activity() {
         ready.addView(button("↓   START RECEIVING", 0xFF0B9B75.toInt()) {
             withNearbyPermissions {
                 runWithSharingService { service ->
+                    receivingModeArmed = true
                     service.setHighSpeedMode(highSpeedMode)
                     service.startReceiving()
                     Toast.makeText(this@MainActivity, "This phone is ready to receive.", Toast.LENGTH_SHORT).show()
@@ -897,6 +907,7 @@ class MainActivity : Activity() {
     private fun openSendQr() {
         withNearbyPermissions {
             runWithSharingService { service ->
+                receivingModeArmed = true
                 service.setHighSpeedMode(highSpeedMode)
                 service.startReceiving()
                 showQrCode()
@@ -1283,7 +1294,25 @@ class MainActivity : Activity() {
         mediaRows.clear(); mediaRows.addAll(cached)
         val matching = cached.filter { it.second.contains(mediaSearch, ignoreCase = true) }
         val filtered = if (mediaSort == "Name A-Z") matching.sortedWith(compareByDescending<Triple<Uri, String, Long>> { it.third }.thenBy { it.second.lowercase() }) else matching
-        if (filtered.isEmpty()) mediaList.addView(TextView(this).apply { text = if (cached.isEmpty()) "No " + kind.lowercase() + " found." else "No matching files."; textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12)) })
+        if (filtered.isEmpty()) {
+            val partialVideoAccess = kind == "Videos" && Build.VERSION.SDK_INT >= 34 &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+            mediaList.addView(TextView(this).apply {
+                text = if (cached.isEmpty() && partialVideoAccess) {
+                    "Android has given NEXORA access only to videos you selected. No videos are currently included. Allow full video access in Android settings to show your entire video library."
+                } else if (cached.isEmpty()) "No " + kind.lowercase() + " found." else "No matching files."
+                textSize = 12f; setTextColor(muted); setPadding(0, dp(12), 0, dp(12))
+            })
+            if (partialVideoAccess) mediaList.addView(button("OPEN VIDEO PERMISSIONS", blue) {
+                try {
+                    startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + packageName)))
+                } catch (_: Exception) {
+                    Toast.makeText(this, "Open Android Settings, then Apps → NEXORA → Permissions → Photos and videos.", Toast.LENGTH_LONG).show()
+                }
+            }, bottom(8))
+        }
         val useGrid = kind == "Photos" || kind == "Videos"
         var mediaGrid: android.widget.GridLayout? = null
         var currentMediaDay = ""
@@ -1916,7 +1945,7 @@ class MainActivity : Activity() {
                 activeTab = "Media"; mediaCategory = "Apps"; render()
             }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
             row.addView(button("RECEIVE", 0xFF0B9B75.toInt()) {
-                withNearbyPermissions { runWithSharingService { it.startReceiving(); updateStatus("Connected. Ready to receive.") } }
+                withNearbyPermissions { receivingModeArmed = true; runWithSharingService { it.startReceiving(); updateStatus("Connected. Ready to receive.") } }
             }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
             actions.addView(row)
             content.addView(actions, bottom(10))
