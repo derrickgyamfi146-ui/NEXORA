@@ -196,80 +196,188 @@ class MainActivity : Activity() {
             setPadding(dp(24), 0, dp(24), 0)
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF071526.toInt(), 0xFF0B4A43.toInt(), 0xFF493817.toInt())
+                intArrayOf(0xFF061321.toInt(), 0xFF0A3E42.toInt(), 0xFF172B48.toInt(), 0xFF493817.toInt())
             )
         }
-        val glow = TextView(this).apply {
-            text = "N"
-            textSize = 68f
-            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setTextColor(0xFFFFD66B.toInt())
+
+        val logoStage = android.widget.FrameLayout(this)
+        val outerRing = View(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0x33F6C85F.toInt())
-                setStroke(dp(1), 0x88F6C85F.toInt())
+                setColor(0x00102030)
+                setStroke(dp(2), 0x6678E8D1)
             }
             alpha = 0f
             scaleX = .72f
             scaleY = .72f
-            elevation = dp(8).toFloat()
         }
-        screen.addView(glow, LinearLayout.LayoutParams(dp(230), dp(230)))
-        val letters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        val word = "NEXORA"
-        val letterViews = word.mapIndexed { index, char ->
+        logoStage.addView(outerRing, android.widget.FrameLayout.LayoutParams(dp(218), dp(218), Gravity.CENTER))
+
+        val orbit = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0xFFFFD66B.toInt())
+                setStroke(dp(2), 0xFFFFF0B0.toInt())
+            }
+            elevation = dp(14).toFloat()
+        }
+        val orbitTrack = android.widget.FrameLayout(this)
+        orbitTrack.addView(orbit, android.widget.FrameLayout.LayoutParams(dp(13), dp(13), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+            topMargin = dp(4)
+        })
+        logoStage.addView(orbitTrack, android.widget.FrameLayout.LayoutParams(dp(230), dp(230), Gravity.CENTER))
+
+        val glow = TextView(this).apply {
+            text = "N"
+            textSize = 72f
+            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setTextColor(0xFFFFD66B.toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0x443CCEB5)
+                setStroke(dp(2), 0xAAFFD66B.toInt())
+            }
+            alpha = 0f
+            scaleX = .55f
+            scaleY = .55f
+            elevation = dp(9).toFloat()
+        }
+        logoStage.addView(glow, android.widget.FrameLayout.LayoutParams(dp(150), dp(150), Gravity.CENTER))
+
+        val sparkleViews = listOf(
+            Triple("✦", Gravity.TOP or Gravity.START, 0xFFFFD66B.toInt()),
+            Triple("·", Gravity.BOTTOM or Gravity.END, 0xFF8AF2D2.toInt()),
+            Triple("✧", Gravity.TOP or Gravity.END, 0xFFFFFFFF.toInt()),
+            Triple("·", Gravity.BOTTOM or Gravity.START, 0xFFFFD66B.toInt())
+        ).mapIndexed { index, item ->
+            TextView(this).apply {
+                text = item.first
+                textSize = if (index == 0 || index == 2) 22f else 28f
+                setTextColor(item.third)
+                alpha = 0f
+                scaleX = .3f
+                scaleY = .3f
+                logoStage.addView(this, android.widget.FrameLayout.LayoutParams(dp(34), dp(34), item.second).apply {
+                    leftMargin = if (index == 0 || index == 3) dp(22) else 0
+                    rightMargin = if (index == 1 || index == 2) dp(22) else 0
+                    topMargin = if (index == 0 || index == 2) dp(25) else 0
+                    bottomMargin = if (index == 1 || index == 3) dp(25) else 0
+                })
+            }
+        }
+        screen.addView(logoStage, LinearLayout.LayoutParams(dp(250), dp(250)).apply {
+            bottomMargin = dp(8)
+        })
+
+        val letters = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val letterViews = "NEXORA".mapIndexed { index, char ->
             TextView(this).apply {
                 text = char.toString()
                 gravity = Gravity.CENTER
-                textSize = 39f
+                textSize = 38f
                 typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
                 setTextColor(if (index == 2) 0xFFFFD66B.toInt() else -1)
                 alpha = 0f
-                translationY = -dp(72).toFloat()
-                elevation = dp(12).toFloat()
-            }.also { letters.addView(it, LinearLayout.LayoutParams(-2, dp(62)).apply { leftMargin = dp(1); rightMargin = dp(1) }) }
+                translationY = -dp(35).toFloat()
+                scaleX = .82f
+                scaleY = .82f
+            }.also { letters.addView(it, LinearLayout.LayoutParams(-2, dp(58)).apply {
+                leftMargin = dp(1)
+                rightMargin = dp(1)
+            }) }
         }
-        screen.addView(letters, LinearLayout.LayoutParams(-1, dp(74)))
+        screen.addView(letters, LinearLayout.LayoutParams(-1, dp(64)))
+
         val subtitle = TextView(this).apply {
             text = "SHARE WITHOUT LIMITS"
             textSize = 10f
-            letterSpacing = .24f
+            letterSpacing = .28f
             gravity = Gravity.CENTER
-            setTextColor(0xFFB9D8EA.toInt())
+            setTextColor(0xFFC6E8E8.toInt())
             alpha = 0f
-            setPadding(0, dp(14), 0, 0)
+            setPadding(0, dp(8), 0, dp(13))
         }
         screen.addView(subtitle)
+
+        val featureLine = TextView(this).apply {
+            text = "FAST  •  SIMPLE  •  NEARBY"
+            textSize = 9f
+            letterSpacing = .16f
+            gravity = Gravity.CENTER
+            setTextColor(0xFFFFD66B.toInt())
+            alpha = 0f
+            background = rounded(0x3327DDB0, 18)
+            setPadding(dp(17), dp(9), dp(17), dp(9))
+        }
+        screen.addView(featureLine)
+
+        val footer = TextView(this).apply {
+            text = "GETTING EVERYTHING READY…"
+            textSize = 9f
+            letterSpacing = .12f
+            gravity = Gravity.CENTER
+            setTextColor(0x88FFFFFF.toInt())
+            alpha = 0f
+        }
+        screen.addView(footer, LinearLayout.LayoutParams(-1, dp(48)).apply {
+            topMargin = dp(34)
+        })
+
         setContentView(screen)
-        val set = android.animation.AnimatorSet()
-        val animations = ArrayList<android.animation.Animator>()
+        val animators = ArrayList<android.animation.Animator>()
+        animators.add(android.animation.ObjectAnimator.ofFloat(outerRing, "alpha", 0f, .85f).apply { duration = 550; startDelay = 100 })
+        animators.add(android.animation.ObjectAnimator.ofFloat(outerRing, "scaleX", .72f, 1.08f, 1f).apply { duration = 1050; startDelay = 100; interpolator = android.view.animation.OvershootInterpolator() })
+        animators.add(android.animation.ObjectAnimator.ofFloat(outerRing, "scaleY", .72f, 1.08f, 1f).apply { duration = 1050; startDelay = 100; interpolator = android.view.animation.OvershootInterpolator() })
+        animators.add(android.animation.ObjectAnimator.ofFloat(orbitTrack, "rotation", 0f, 360f).apply { duration = 2100; interpolator = android.view.animation.LinearInterpolator() })
+        animators.add(android.animation.ObjectAnimator.ofFloat(glow, "alpha", 0f, 1f, .78f, 1f).apply { duration = 1250; startDelay = 120 })
+        animators.add(android.animation.ObjectAnimator.ofFloat(glow, "scaleX", .55f, 1.08f, 1f).apply { duration = 1050; startDelay = 120; interpolator = android.view.animation.OvershootInterpolator() })
+        animators.add(android.animation.ObjectAnimator.ofFloat(glow, "scaleY", .55f, 1.08f, 1f).apply { duration = 1050; startDelay = 120; interpolator = android.view.animation.OvershootInterpolator() })
         letterViews.forEachIndexed { index, view ->
-            animations.add(android.animation.ObjectAnimator.ofFloat(view, "translationY", -dp(72).toFloat(), 0f).apply {
-                duration = 360
-                startDelay = index * 55L
+            animators.add(android.animation.ObjectAnimator.ofFloat(view, "translationY", -dp(35).toFloat(), 0f).apply {
+                duration = 430
+                startDelay = 600L + index * 65L
                 interpolator = android.view.animation.DecelerateInterpolator()
             })
-            animations.add(android.animation.ObjectAnimator.ofFloat(view, "alpha", 0f, 1f).apply {
-                duration = 260
-                startDelay = index * 105L
+            animators.add(android.animation.ObjectAnimator.ofFloat(view, "alpha", 0f, 1f).apply {
+                duration = 300
+                startDelay = 600L + index * 65L
             })
+            animators.add(android.animation.ObjectAnimator.ofFloat(view, "scaleX", .82f, 1f).apply { duration = 430; startDelay = 600L + index * 65L; interpolator = android.view.animation.OvershootInterpolator() })
+            animators.add(android.animation.ObjectAnimator.ofFloat(view, "scaleY", .82f, 1f).apply { duration = 430; startDelay = 600L + index * 65L; interpolator = android.view.animation.OvershootInterpolator() })
         }
-        animations.add(android.animation.ObjectAnimator.ofFloat(glow, "alpha", 0f, 1f, .35f, 1f, .55f).apply { duration = 1550; startDelay = 220 })
-        animations.add(android.animation.ObjectAnimator.ofFloat(glow, "scaleX", .72f, 1f, .9f, 1f).apply { duration = 1550; startDelay = 220; interpolator = android.view.animation.OvershootInterpolator() })
-        animations.add(android.animation.ObjectAnimator.ofFloat(glow, "scaleY", .72f, 1f, .9f, 1f).apply { duration = 1550; startDelay = 220; interpolator = android.view.animation.OvershootInterpolator() })
-        animations.add(android.animation.ObjectAnimator.ofFloat(subtitle, "alpha", 0f, 1f).apply { duration = 420; startDelay = 850 })
-        set.playTogether(animations)
-        set.start()
+        sparkleViews.forEachIndexed { index, view ->
+            animators.add(android.animation.ObjectAnimator.ofFloat(view, "alpha", 0f, 1f, .55f).apply { duration = 900; startDelay = 350L + index * 150L })
+            animators.add(android.animation.ObjectAnimator.ofFloat(view, "scaleX", .3f, 1.15f, .85f).apply { duration = 900; startDelay = 350L + index * 150L })
+            animators.add(android.animation.ObjectAnimator.ofFloat(view, "scaleY", .3f, 1.15f, .85f).apply { duration = 900; startDelay = 350L + index * 150L })
+        }
+        animators.add(android.animation.ObjectAnimator.ofFloat(subtitle, "alpha", 0f, 1f).apply { duration = 500; startDelay = 1050 })
+        animators.add(android.animation.ObjectAnimator.ofFloat(featureLine, "alpha", 0f, 1f).apply { duration = 500; startDelay = 1350 })
+        animators.add(android.animation.ObjectAnimator.ofFloat(footer, "alpha", 0f, .7f).apply { duration = 450; startDelay = 1550 })
+        android.animation.AnimatorSet().apply {
+            playTogether(animators)
+            start()
+        }
+
         android.os.Handler(mainLooper).postDelayed({
-            render()
-            refreshReceivedFiles()
-            root.alpha = 0f
-            root.translationY = dp(6).toFloat()
-            root.animate().alpha(1f).translationY(0f).setDuration(220)
-                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
-        }, 1650)
+            if (!isFinishing && !isDestroyed) {
+                render()
+                refreshReceivedFiles()
+                root.alpha = 0f
+                root.scaleX = .985f
+                root.scaleY = .985f
+                root.translationY = dp(10).toFloat()
+                root.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+                    .setDuration(320)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator())
+                    .start()
+            }
+        }, 2450L)
     }
+
     private fun showExitConfirmation() {
         android.app.AlertDialog.Builder(this)
             .setTitle("Exit NEXORA?")
@@ -557,9 +665,21 @@ class MainActivity : Activity() {
             "Settings" -> showSettings(card, ink, muted, blue)
             "Contacts" -> showContacts(card, ink, muted)
         }
-        content.alpha = 0f
-        content.translationY = dp(10).toFloat()
-        content.animate().alpha(1f).translationY(0f).setDuration(175).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        header.alpha = 0f
+        header.translationY = -dp(9).toFloat()
+        header.animate().alpha(1f).translationY(0f).setDuration(260)
+            .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        content.alpha = 1f
+        for (index in 0 until content.childCount) {
+            val child = content.getChildAt(index)
+            child.alpha = 0f
+            child.translationY = dp(14).toFloat()
+            child.animate().alpha(1f).translationY(0f)
+                .setStartDelay(index * 42L)
+                .setDuration(280)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+        }
     }
 
     private fun showHome(card: Int, ink: Int, muted: Int, blue: Int) {
