@@ -108,3 +108,6 @@ The source inventory and all Kotlin app classes, app manifest, Gradle configurat
 - Kept per-item receiver pause/cancel behaviour in the new receiving path; cancelled items are drained and negatively acknowledged so the peer can continue with the next item without intentionally closing the session.
 - Bumped the Wi-Fi Direct QR/session protocol marker to v2 so older builds fail clearly instead of interpreting the new framed messages as the old unframed protocol. Both phones must run the upgraded NEXORA build to use this protocol.
 - [ ] This architecture is not yet marked complete: integrated build, two-device tests, repeated transfers in both directions, pause/resume/cancel, disconnect/reconnect, and Android 12/14 vendor behaviour still need verification.
+
+- CI validation: the framed duplex reader/session and send-turn implementation in commit 6e86a5e compiled, built, passed the strict original-certificate check, and uploaded an APK. Subsequent protocol-version, rejection-handshake, and disconnect-cleanup hardening changes are in later commits and require their own final successful build.
+- [ ] Still outstanding for step 2: test the same session in both directions on two physical Android devices, including repeated batches, cancellation, reconnect and screen-off behaviour. A successful compile does not prove socket behaviour.
