@@ -19,6 +19,8 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.UUID
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** QR-authenticated Wi-Fi Direct file transport. */
@@ -35,6 +37,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         private const val PORT = 43821
         private const val MAGIC = "NEXORA-WFD-1"
         private const val MAX_FILES = 200
+        private const val FRAME_BATCH = 1
+        private const val FRAME_ACK = 2
+        private const val FRAME_REQUEST_SEND = 3
+        private const val FRAME_GRANT_SEND = 4
+        private const val FRAME_RELEASE_SEND = 5
     }
     private val manager = context.getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
     private val channel = manager.initialize(context, context.mainLooper, null)
@@ -48,6 +55,17 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     @Volatile private var incomingName: String? = null
     @Volatile private var server: ServerSocket? = null
     @Volatile private var socket: Socket? = null
+    @Volatile private var peerInput: DataInputStream? = null
+    @Volatile private var peerOutput: DataOutputStream? = null
+    @Volatile private var localIsGroupOwner = false
+    private val outputLock = Any()
+    private val permitLock = Any()
+    private val sendPermit = java.util.concurrent.Semaphore(0)
+    private val acknowledgementQueue = LinkedBlockingQueue<Boolean>()
+    @Volatile private var localWaitingForTurn = false
+    @Volatile private var localOwnsTurn = false
+    @Volatile private var remoteOwnsTurn = false
+    @Volatile private var remoteRequestPending = false
     @Volatile private var token: String? = null
     @Volatile private var receiverRegistered = false
     @Volatile private var peerName = "NEXORA device"
