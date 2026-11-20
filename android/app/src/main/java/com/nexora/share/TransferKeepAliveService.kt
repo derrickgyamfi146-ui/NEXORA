@@ -30,14 +30,18 @@ class TransferKeepAliveService : Service() {
     private val binder = LocalBinder()
     private var listener: Listener? = null
     private var lastStatusMessage = "NEXORA is ready."
-    private var receiving = false
-    private var connected = false
-    private var peerName = "NEXORA device"
+    @Volatile private var receiving = false
+    @Volatile private var connected = false
+    @Volatile private var peerName = "NEXORA device"
     private var transferWakeLock: android.os.PowerManager.WakeLock? = null
 
     private val transportDelegate = lazy {
         WifiDirectTransport(this, object : WifiDirectTransport.Callbacks {
-            override fun onStatus(message: String) { status(message) }
+            override fun onStatus(message: String) {
+                if (message.startsWith("Could not create Wi-Fi Direct group") ||
+                    message.startsWith("Wi-Fi Direct group details were unavailable")) receiving = false
+                status(message)
+            }
             override fun onQrReady(payload: String) { listener?.onQrReady(payload) }
             override fun onConnected(peer: String) {
                 connected = true
