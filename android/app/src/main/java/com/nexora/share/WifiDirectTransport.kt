@@ -503,7 +503,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             ?: throw IOException("Could not create the Downloads file.")
         incomingName = name
         incomingPaused.set(false)
-        incomingCancelled.set(false)
+        incomingCancelled.set(cancelledIncomingItems.contains(queueId))
         try {
             context.contentResolver.openOutputStream(uri)?.use { out ->
                 val buffer = ByteArray(256 * 1024)
