@@ -26,7 +26,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     interface Callbacks {
         fun onStatus(message: String)
         fun onQrReady(payload: String)
-        fun onConnected(peerName: String)
+        fun onConnected(peerName: String, localIsReceiver: Boolean)
         fun onDisconnected()
         fun onProgress(message: String)
         fun onReceived(name: String)
@@ -277,7 +277,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 output.writeUTF(MAGIC); output.writeUTF(token ?: ""); output.flush()
                 val input = DataInputStream(BufferedInputStream(s.getInputStream()))
                 if (!input.readBoolean()) throw IOException("The QR session was rejected or expired.")
-                callbacks.onConnected(peerName)
+                callbacks.onConnected(peerName, false)
                 callbacks.onStatus("Connected to " + peerName + ". Select files to send.")
             } catch (e: Exception) {
                 runCatching { socket?.close() }
@@ -295,7 +295,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             val valid = input.readUTF() == MAGIC && input.readUTF() == token
             output.writeBoolean(valid); output.flush()
             if (!valid) { s.close(); return }
-            callbacks.onConnected("NEXORA sender")
+            callbacks.onConnected("NEXORA sender", true)
             s.soTimeout = 0
             while (active.get() && !s.isClosed) {
                 val count = try { input.readInt() } catch (_: EOFException) { break }
