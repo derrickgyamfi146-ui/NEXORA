@@ -63,3 +63,10 @@ No upgrade feature has been marked complete yet. The initial audit is underway. 
 
 The source inventory and all Kotlin app classes, app manifest, Gradle configuration, launcher icon vectors and both GitHub Actions workflows have now been inspected. The audit confirms that the requested upgrade is not a cosmetic-only change: the current transport is structurally one-way and must be redesigned before the requested user interface can honestly claim two-way or group sharing. The CI signing step currently prints historical/current fingerprints but does not itself fail on a mismatch; this must be hardened before a new APK is distributed.
 
+
+## Follow-up implementation work
+
+- Removed the full-screen received-file rocket replay from the "All files received successfully" status handler. The connection animation must be tied to a connection event, never to every completed transfer. This is a targeted correction; the full animation-role redesign remains open.
+- Hardened the APK workflow: it now refuses to generate a replacement signing key when the original key is unavailable, verifies the restored signing certificate against the known NEXORA certificate fingerprint, and verifies the built APK against the same fingerprint before artifact upload. This protects update installation instead of silently producing an APK signed with a different key.
+- Signing-workflow validation run: pending at the time of this tracker update.
+- Step 2 remains in progress. The new duplex protocol must have one inbound frame reader per socket, correlated acknowledgements, synchronized writes, and independent send/receive queues. The current one-way transport remains in place until the duplex implementation is integrated and compiled.
