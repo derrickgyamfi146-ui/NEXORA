@@ -22,6 +22,7 @@ class MainActivity : Activity() {
     private lateinit var peerList: LinearLayout
     private lateinit var receivedList: LinearLayout
     private var incomingStatusView: TextView? = null
+    private var latestIncomingProgress = "No active incoming transfers."
     private lateinit var sendButton: Button
     private val selectedUris = ArrayList<Uri>()
     private val discovered = LinkedHashMap<String, String>()
@@ -85,11 +86,13 @@ class MainActivity : Activity() {
                 }
                 if (message.startsWith("Received and saved:")) {
                     rememberReceivedFileName(message.removePrefix("Received and saved:").trim())
-                    incomingStatusView?.text = "No active incoming transfers."
+                    latestIncomingProgress = "No active incoming transfers."
+                    incomingStatusView?.text = latestIncomingProgress
                     refreshReceivedFiles()
                 }
                 if (message.startsWith("Incoming transfer cancelled:")) {
-                    incomingStatusView?.text = "Transfer cancelled. The connection is still available."
+                    latestIncomingProgress = "Transfer cancelled. The connection is still available."
+                    incomingStatusView?.text = latestIncomingProgress
                 }
                 if (message == "All files received successfully.") {
                     // Connection animation belongs to the connection event only.
@@ -196,6 +199,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 updateStatus(message)
                 if (message.startsWith("Receiving ") || message.startsWith("Paused:")) {
+                    latestIncomingProgress = message
                     incomingStatusView?.text = message
                 }
             }
@@ -480,6 +484,7 @@ class MainActivity : Activity() {
         mediaContinueButton = null
         transferStatusView = null
         transferProgressBar = null
+        incomingStatusView = null
         transferStepViews.clear()
         val page = if (darkMode) 0xFF071526.toInt() else 0xFFF3F7FC.toInt()
         val card = if (darkMode) 0xFF142A40.toInt() else -1
@@ -2243,7 +2248,7 @@ class MainActivity : Activity() {
         val incoming = panel(card)
         incoming.addView(label("INCOMING TRANSFERS", 0xFFE52B3A.toInt()))
         incomingStatusView = TextView(this).apply {
-            text = if (sharing?.hasIncomingTransfer() == true) "Incoming transfer active." else "No active incoming transfers."
+            text = if (sharing?.hasIncomingTransfer() == true) latestIncomingProgress else latestIncomingProgress
             textSize = 12f
             setTextColor(ink)
             setPadding(0, dp(9), 0, dp(9))
