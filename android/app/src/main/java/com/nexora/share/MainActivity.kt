@@ -1108,7 +1108,7 @@ class MainActivity : Activity() {
             )
             val bitmap = android.graphics.Bitmap.createBitmap(560, 560, android.graphics.Bitmap.Config.ARGB_8888)
             for (x in 0 until 560) for (y in 0 until 560) {
-                bitmap.setPixel(x, y, if (matrix[x, y]) 0xFF008F68.toInt() else android.graphics.Color.WHITE)
+                bitmap.setPixel(x, y, if (matrix[x, y]) 0xFF0B4FB3.toInt() else android.graphics.Color.WHITE)
             }
 
             val page = LinearLayout(this).apply {
@@ -1139,12 +1139,12 @@ class MainActivity : Activity() {
                 textSize = 11f
                 letterSpacing = .08f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(0xFF55D9AE.toInt())
+                setTextColor(0xFFFFD21F.toInt())
             })
             page.addView(top, LinearLayout.LayoutParams(-1, dp(52)))
 
             val instruction = TextView(this).apply {
-                text = "Scan this code with the other phone to join your private Wi-Fi Direct group"
+                text = "Other phones can scan this same code to join your private Wi-Fi Direct group"
                 textSize = 13f
                 gravity = Gravity.CENTER
                 setTextColor(0xFFD5D9D8.toInt())
