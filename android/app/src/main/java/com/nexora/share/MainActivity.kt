@@ -460,6 +460,13 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (bound || binding) {
+            sharing?.setListener(null)
+            runCatching { unbindService(serviceConnection) }
+        }
+        sharing = null
+        bound = false
+        binding = false
         thumbnailExecutor.shutdownNow()
         super.onDestroy()
     }
@@ -475,13 +482,8 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
-        if (bound || binding) {
-            sharing?.setListener(null)
-            runCatching { unbindService(serviceConnection) }
-        }
-        sharing = null
-        bound = false
-        binding = false
+        // Keep the service binding across the QR scanner and other temporary
+        // activities. Rebinding here rebuilt the whole screen and caused flicker.
         super.onStop()
     }
 
