@@ -2224,143 +2224,95 @@ class MainActivity : Activity() {
     }
 
     private fun showTransfers(card: Int, ink: Int, muted: Int) {
-        val connected = sharing?.isConnected == true || connectedPeers.isNotEmpty()
-        content.addView(TextView(this).apply {
-            text = "Transfer centre"
-            textSize = 27f
-            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-            setTextColor(ink)
-            setPadding(dp(2), dp(12), dp(2), dp(3))
-        })
-        content.addView(TextView(this).apply {
-            text = "Manage your connection and keep track of file sharing."
-            textSize = 12f
-            setTextColor(muted)
-            setPadding(dp(3), 0, 0, dp(15))
-        })
-
-        val live = panel(card).apply {
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF8A243A.toInt())
-            ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0xFFFFD21F.toInt()) }
-            elevation = dp(5).toFloat()
-        }
-        live.addView(label("LIVE SESSION", 0xFFFFD66B.toInt()))
-        val statusLine = TextView(this).apply {
-            text = latestStatus
-            textSize = 16f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(-1)
-            setPadding(0, dp(10), 0, dp(8))
-        }
-        transferStatusView = statusLine
-        live.addView(statusLine)
-        val stepRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("SELECT", "CONNECT", "SEND", "DONE").forEachIndexed { index, stepName ->
-            val step = TextView(this).apply {
-                text = stepName
-                textSize = 8f
-                gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setPadding(dp(3), dp(9), dp(3), dp(9))
-                val tint = intArrayOf(0xFFFFD21F.toInt(), 0xFF168FE5.toInt(), 0xFFE52B3A.toInt(), 0xFF16A58A.toInt())[index]
-                background = rounded(if (index < transferStage) tint else 0x553D5A7A, 9)
-                setTextColor(if (index < transferStage) if (index == 0) 0xFF10243B.toInt() else -1 else 0xFFD5E2EF.toInt())
-            }
-            transferStepViews.add(step)
-            stepRow.addView(step, LinearLayout.LayoutParams(0, dp(34), 1f).apply {
-                leftMargin = dp(2); rightMargin = dp(2)
-            })
-        }
-        live.addView(stepRow, bottom(10))
-        val initialPercent = Regex("(\\d{1,3})%").find(latestStatus)?.groupValues?.getOrNull(1)?.toIntOrNull()
-        val progressLine = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            progressTintList = android.content.res.ColorStateList.valueOf(0xFFFFD21F.toInt())
-            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x665D7897)
-            isIndeterminate = initialPercent == null && (latestStatus.contains("sending", true) || latestStatus.contains("receiving", true))
-            progress = initialPercent ?: if (transferStage >= 4) 100 else 0
-        }
-        transferProgressBar = progressLine
-        live.addView(progressLine, LinearLayout.LayoutParams(-1, dp(7)))
-        content.addView(live, bottom(14))
-
-        val devices = panel(card)
-        devices.addView(label("CONNECTED DEVICES", 0xFF168FE5.toInt()))
-        if (!connected) {
-            devices.addView(TextView(this).apply {
-                text = "No phone is connected yet. Connect first, then choose files to send. You can keep the same session for repeated transfers."
-                textSize = 12f
-                setTextColor(muted)
-                setPadding(0, dp(9), 0, dp(5))
-            })
-            devices.addView(button("SCAN A QR CODE", 0xFF0B4FB3.toInt()) { scanQrCode() }, bottom(4))
-            devices.addView(button("SHOW MY QR CODE", 0xFFE52B3A.toInt()) { openSendQr() })
-        } else {
-            devices.addView(TextView(this).apply {
-                text = "Your NEXORA session is active."
-                textSize = 13f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(ink)
-                setPadding(0, dp(8), 0, dp(7))
-            })
-            val names = if (connectedPeers.isNotEmpty()) connectedPeers.map { discovered[it] ?: "Wi-Fi Direct phone" }
-                else listOf("Connected phone")
-            names.forEach { peer ->
-                devices.addView(TextView(this).apply {
-                    text = "●  " + peer + "  ·  CONNECTED"
-                    textSize = 11f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(0xFF168A68.toInt())
-                    setPadding(dp(10), dp(10), dp(10), dp(10))
-                    background = rounded(if (darkMode) 0xFF173C3B.toInt() else 0xFFE7F7F1.toInt(), 11)
-                }, bottom(6))
-            }
-            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            actions.addView(button("SEND FILES", 0xFF0B4FB3.toInt()) {
-                activeTab = "Media"; mediaCategory = "Apps"; render()
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
-            actions.addView(button("RECEIVED", 0xFFE52B3A.toInt()) {
-                activeTab = "Received"; render()
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
-            devices.addView(actions, bottom(3))
-        }
-        content.addView(devices, bottom(14))
-
-        if (connected) {
-            content.addView(button("DISCONNECT", 0xFFE52B3A.toInt()) {
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("Disconnect from this session?")
-                    .setMessage("The active NEXORA connection will end. You can connect again later.")
-                    .setNegativeButton("Keep connected", null)
-                    .setPositiveButton("Disconnect") { _, _ ->
-                        sharing?.stopSharing()
-                        connectedPeers.clear()
-                        activeTab = "Media"
-                        mediaCategory = "Apps"
-                        render()
-                    }
-                    .show()
-            }, bottom(14))
-        }
-
-        val history = panel(card)
-        history.addView(label("RECENTLY SENT", 0xFFE52B3A.toInt()))
-        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
+        // Keep this screen deliberately simple: only incoming and outgoing items.
+        val sentEntries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
             .getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
-        if (entries.isEmpty()) {
-            history.addView(TextView(this).apply {
-                text = "Files you send will appear here."
+
+        content.addView(TextView(this).apply {
+            text = "Transfers"
+            textSize = 25f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink)
+            setPadding(dp(2), dp(12), dp(2), dp(12))
+        })
+
+        val sending = panel(card)
+        sending.addView(label("SENT", 0xFF0B4FB3.toInt()))
+        if (sentEntries.isEmpty()) {
+            sending.addView(TextView(this).apply {
+                text = "Items you send will appear here."
                 textSize = 12f
                 setTextColor(muted)
-                setPadding(0, dp(8), 0, dp(5))
+                setPadding(0, dp(10), 0, dp(8))
             })
-        } else addGroupedHistory(history, entries.take(20), 0xFF0B4FB3.toInt(), ink, muted)
-        content.addView(history, bottom(12))
-        content.addView(button("VIEW FULL TRANSFER HISTORY", 0xFF0B4FB3.toInt()) {
-            activeTab = "History"; render()
-        })
+        } else {
+            sentEntries.take(20).forEach { entry ->
+                sending.addView(TextView(this).apply {
+                    text = "↑  " + entry.substringAfter(" · ", entry).substringAfter(" · ", entry)
+                    textSize = 12f
+                    maxLines = 2
+                    setTextColor(ink)
+                    setPadding(dp(8), dp(9), dp(8), dp(9))
+                    background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 10)
+                }, bottom(5))
+            }
+        }
+        content.addView(sending, bottom(12))
+
+        val receiving = panel(card)
+        receiving.addView(label("RECEIVED", 0xFFE52B3A.toInt()))
+        if (incomingQueueItems.isNotEmpty()) {
+            incomingQueueItems.forEach { item ->
+                receiving.addView(TextView(this).apply {
+                    text = "↓  " + item.name + "  ·  " + item.status +
+                        if (item.progress > 0) "  " + item.progress + "%" else ""
+                    textSize = 12f
+                    maxLines = 2
+                    setTextColor(ink)
+                    setPadding(dp(8), dp(9), dp(8), dp(9))
+                    background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 10)
+                }, bottom(5))
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            var count = 0
+            runCatching {
+                val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
+                contentResolver.query(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    projection,
+                    MediaStore.MediaColumns.RELATIVE_PATH + " = ?",
+                    arrayOf("Download/NEXORA/"),
+                    MediaStore.MediaColumns.DATE_ADDED + " DESC"
+                )?.use { cursor ->
+                    while (cursor.moveToNext() && count < 20) {
+                        val name = cursor.getString(0) ?: "Received file"
+                        receiving.addView(TextView(this).apply {
+                            text = "↓  " + name
+                            textSize = 12f
+                            maxLines = 2
+                            setTextColor(ink)
+                            setPadding(dp(8), dp(9), dp(8), dp(9))
+                            background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 10)
+                        }, bottom(5))
+                        count++
+                    }
+                }
+            }
+            if (count == 0) receiving.addView(TextView(this).apply {
+                text = "Items you receive will appear here."
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(10), 0, dp(8))
+            })
+        } else {
+            receiving.addView(TextView(this).apply {
+                text = latestIncomingProgress
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(10), 0, dp(8))
+            })
+        }
+        content.addView(receiving)
     }
 
     private fun addGroupedHistory(target: LinearLayout, entries: List<String>, accent: Int, ink: Int, muted: Int) {
