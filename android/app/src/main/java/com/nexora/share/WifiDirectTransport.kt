@@ -161,6 +161,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     }
 
     private fun connectSocket(host: String) {
+        if (socket?.isConnected == true && socket?.isClosed == false) return
         if (!connecting.compareAndSet(false, true)) return
         io.execute {
             try {
