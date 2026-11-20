@@ -952,81 +952,110 @@ class MainActivity : Activity() {
     }
 
     private fun showRocketConnectAnimation(onLaunch: () -> Unit) {
-        val dialog = android.app.Dialog(this)
-        val stage = android.widget.FrameLayout(this).apply {
-            setBackground(android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF071A2D.toInt(), 0xFF0B4A4A.toInt(), 0xFF4B3B17.toInt())
-            ))
-        }
-        val rocket = TextView(this).apply {
-            text = "🚀"
-            textSize = 58f
-            gravity = Gravity.CENTER
-            alpha = 0f
-            scaleX = .55f
-            scaleY = .55f
-        }
-        val caption = TextView(this).apply {
-            text = "CONNECTED SUCCESSFULLY"
-            textSize = 13f
-            letterSpacing = .12f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            setTextColor(0xFFFFD66B.toInt())
-            alpha = 0f
-        }
-        stage.addView(rocket, android.widget.FrameLayout.LayoutParams(dp(110), dp(110), Gravity.CENTER))
-        stage.addView(caption, android.widget.FrameLayout.LayoutParams(-1, dp(48), Gravity.CENTER).apply {
-            topMargin = dp(150)
-        })
-        dialog.setContentView(stage)
-        dialog.setCancelable(false)
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        dialog.show()
-        dialog.window?.setLayout(-1, -1)
-        caption.animate().alpha(1f).setDuration(180).start()
-        rocket.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(-dp(145).toFloat())
-            .setDuration(760).setInterpolator(android.view.animation.AccelerateInterpolator())
-            .withEndAction {
-                dialog.dismiss()
-                onLaunch()
-            }.start()
+        showRocketFlight(received = false, onComplete = onLaunch)
     }
 
     private fun showReceivedRocketAnimation(onComplete: () -> Unit) {
+        showRocketFlight(received = true, onComplete = onComplete)
+    }
+
+    // Shared, full-screen launch sequence used only after a real Nearby connection
+    // or a confirmed successful receive.
+    private fun showRocketFlight(received: Boolean, onComplete: () -> Unit) {
         val dialog = android.app.Dialog(this)
         val stage = android.widget.FrameLayout(this).apply {
             setBackground(android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF071A2D.toInt(), 0xFF0B4A4A.toInt(), 0xFF4B3B17.toInt())
+                intArrayOf(0xFF071526.toInt(), 0xFF07564D.toInt(), 0xFF493817.toInt())
             ))
         }
+        val halo = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0x3327DDB0)
+                setStroke(dp(2), 0x8878F4D1.toInt())
+            }
+            alpha = 0f
+            scaleX = .65f
+            scaleY = .65f
+        }
+        stage.addView(halo, android.widget.FrameLayout.LayoutParams(dp(190), dp(190), Gravity.CENTER))
+        val flame = TextView(this).apply {
+            text = "🔥"
+            textSize = 27f
+            gravity = Gravity.CENTER
+            alpha = 0f
+            translationY = dp(42).toFloat()
+        }
+        stage.addView(flame, android.widget.FrameLayout.LayoutParams(dp(70), dp(70), Gravity.CENTER))
         val rocket = TextView(this).apply {
-            text = "🚀"; textSize = 58f; gravity = Gravity.CENTER
-            alpha = 0f; scaleX = .55f; scaleY = .55f
+            text = "🚀"
+            textSize = 66f
+            gravity = Gravity.CENTER
+            alpha = 0f
+            scaleX = .45f
+            scaleY = .45f
         }
+        stage.addView(rocket, android.widget.FrameLayout.LayoutParams(dp(120), dp(120), Gravity.CENTER))
         val caption = TextView(this).apply {
-            text = "RECEIVED SUCCESSFULLY"; textSize = 14f; letterSpacing = .12f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(0xFF8AF2C8.toInt()); alpha = 0f
+            text = if (received) "FILE RECEIVED" else "CONNECTED SUCCESSFULLY"
+            textSize = 14f
+            letterSpacing = .13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(if (received) 0xFF8AF2C8.toInt() else 0xFFFFD66B.toInt())
+            alpha = 0f
         }
-        stage.addView(rocket, android.widget.FrameLayout.LayoutParams(dp(110), dp(110), Gravity.CENTER))
-        stage.addView(caption, android.widget.FrameLayout.LayoutParams(-1, dp(48), Gravity.CENTER).apply { topMargin = dp(150) })
+        stage.addView(caption, android.widget.FrameLayout.LayoutParams(-1, dp(54), Gravity.CENTER).apply {
+            topMargin = dp(155)
+            leftMargin = dp(18)
+            rightMargin = dp(18)
+        })
+        val subcaption = TextView(this).apply {
+            text = if (received) "Your files are ready" else "Your phones are now connected"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(0xFFD5E9E8.toInt())
+            alpha = 0f
+        }
+        stage.addView(subcaption, android.widget.FrameLayout.LayoutParams(-1, dp(38), Gravity.CENTER).apply {
+            topMargin = dp(205)
+        })
         dialog.setContentView(stage)
         dialog.setCancelable(false)
+        dialog.setCanceledOnTouchOutside(false)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.show()
         dialog.window?.setLayout(-1, -1)
-        caption.animate().alpha(1f).setDuration(180).start()
-        rocket.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(-dp(145).toFloat())
-            .setDuration(760).setInterpolator(android.view.animation.AccelerateInterpolator())
+
+        halo.animate().alpha(1f).scaleX(1.12f).scaleY(1.12f)
+            .setDuration(520).setInterpolator(android.view.animation.OvershootInterpolator()).start()
+        halo.animate().alpha(.45f).scaleX(.88f).scaleY(.88f)
+            .setStartDelay(520).setDuration(520).start()
+        flame.animate().alpha(1f).translationY(dp(60).toFloat())
+            .setDuration(320).setInterpolator(android.view.animation.AccelerateInterpolator()).start()
+        rocket.animate().alpha(1f).scaleX(1f).scaleY(1f)
+            .setDuration(360).setInterpolator(android.view.animation.OvershootInterpolator()).start()
+        caption.animate().alpha(1f).setStartDelay(180).setDuration(300).start()
+        subcaption.animate().alpha(1f).setStartDelay(360).setDuration(300).start()
+        rocket.animate().translationY(-dp(190).toFloat())
+            .setStartDelay(420).setDuration(920)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
             .withEndAction {
-                caption.text = "RECEIVED"
+                flame.animate().alpha(0f).setDuration(120).start()
+                if (received) {
+                    caption.text = "RECEIVED"
+                    subcaption.text = "Returning to NEXORA…"
+                } else {
+                    caption.text = "CONNECTED"
+                    subcaption.text = "Returning to NEXORA…"
+                }
                 android.os.Handler(mainLooper).postDelayed({
-                    dialog.dismiss()
-                    onComplete()
-                }, 850L)
+                    if (!isFinishing && !isDestroyed) {
+                        dialog.dismiss()
+                        onComplete()
+                    }
+                }, if (received) 900L else 650L)
             }.start()
     }
 
