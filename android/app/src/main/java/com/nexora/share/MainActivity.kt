@@ -2252,7 +2252,76 @@ class MainActivity : Activity() {
             stamp + " · " + name
         }
         prefs.edit().putString("sent_items", (names + old.split("\n").filter { it.isNotBlank() }).take(100).joinToString("\n")).apply()
+        names.forEach { entry ->
+            val transferredName = entry.substringAfter(" · ", entry).substringBefore(" · ")
+            if (transferredName.isNotBlank()) appendHistoryEvent("SENT", transferredName)
+        }
     }
+
+    /**
+     * Imports records created by older NEXORA builds into the combined History view.
+     * It runs once, keeps existing events, and reads the app's own Downloads/NEXORA folder.
+     */
+    private fun migrateLegacyTransferHistory() {
+        val prefs = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
+        if (prefs.getBoolean("legacy_history_migrated_v1", false)) return
+
+        val events = (prefs.getString("history_events", "") ?: "")
+            .split("\n").filter { it.isNotBlank() }.toMutableList()
+        val existing = events.mapNotNull { line ->
+            val parts = line.split("|", limit = 3)
+            if (parts.size == 3) parts[1] + "|" + parts[2] else null
+        }.toMutableSet()
+
+        fun addLegacyEvent(timestamp: Long, direction: String, rawName: String) {
+            val name = rawName.replace("|", "_").replace("\n", " ").take(240)
+            if (name.isBlank() || !existing.add(direction + "|" + name)) return
+            events.add(timestamp.toString() + "|" + direction + "|" + name)
+        }
+
+        val sentStamp = java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault())
+        val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        (prefs.getString("sent_items", "") ?: "").split("\n").filter { it.isNotBlank() }.forEach { entry ->
+            val stampText = entry.substringBefore(" · ")
+            val name = entry.substringAfter(" · ", "").substringBefore(" · ")
+            val parsed = runCatching { sentStamp.parse(stampText)?.time }.getOrNull()
+            val timestamp = parsed?.let {
+                java.util.Calendar.getInstance().apply {
+                    timeInMillis = it
+                    set(java.util.Calendar.YEAR, currentYear)
+                }.timeInMillis
+            } ?: System.currentTimeMillis()
+            addLegacyEvent(timestamp, "SENT", name)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching {
+                val projection = arrayOf(
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.DATE_ADDED
+                )
+                contentResolver.query(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    projection,
+                    MediaStore.MediaColumns.RELATIVE_PATH + " = ?",
+                    arrayOf("Download/NEXORA/"),
+                    MediaStore.MediaColumns.DATE_ADDED + " DESC"
+                )?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val name = cursor.getString(0) ?: "Received file"
+                        val addedAt = cursor.getLong(1)
+                        addLegacyEvent(addedAt * 1000L, "RECEIVED", name)
+                    }
+                }
+            }
+        }
+
+        prefs.edit()
+            .putString("history_events", events.sortedByDescending { it.substringBefore("|").toLongOrNull() ?: 0L }.take(200).joinToString("\n"))
+            .putBoolean("legacy_history_migrated_v1", true)
+            .apply()
+    }
+
     private fun showReceived(card: Int, ink: Int, muted: Int) {
         content.addView(TextView(this).apply { text = "Received"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
 
@@ -2297,6 +2366,7 @@ class MainActivity : Activity() {
     }
 
     private fun showHistory(card: Int, ink: Int, muted: Int) {
+        migrateLegacyTransferHistory()
         content.addView(TextView(this).apply { text = "History"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
         val box = panel(card)
         box.addView(label("ALL TRANSFERS · SENT AND RECEIVED", muted))
