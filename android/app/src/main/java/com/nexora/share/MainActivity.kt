@@ -39,6 +39,7 @@ class MainActivity : Activity() {
     private var appSelectionButton: Button? = null
     private var selectionSendButton: TextView? = null
     private var pendingCameraScan = false
+    private var connectionArrivalAnimationRunning = false
     private var preparingApps = false
     private val appIconCache = java.util.concurrent.ConcurrentHashMap<String, android.graphics.drawable.Drawable>()
     private lateinit var mediaList: LinearLayout
@@ -80,9 +81,8 @@ class MainActivity : Activity() {
                 val wanted = pendingQrDeviceName
                 if (wanted != null && name.equals(wanted, ignoreCase = true)) {
                     pendingQrDeviceName = null
-                    showRocketConnectAnimation {
-                        sharing?.connect(endpointId, name)
-                    }
+                    // Connect immediately; only show the animation after Nearby confirms success.
+                    sharing?.connect(endpointId, name)
                 }
             }
         }
@@ -103,6 +103,16 @@ class MainActivity : Activity() {
                 connectedPeers.add(endpointId)
                 if (::peerList.isInitialized) rebuildPeerList()
                 if (::sendButton.isInitialized) sendButton.isEnabled = true
+                if (!connectionArrivalAnimationRunning) {
+                    connectionArrivalAnimationRunning = true
+                    updateStatus("Connected successfully.")
+                    showRocketConnectAnimation {
+                        connectionArrivalAnimationRunning = false
+                        activeTab = "Media"
+                        mediaCategory = "Apps"
+                        render()
+                    }
+                }
                 if (pendingSelectedSend && selectedUris.isNotEmpty()) {
                     pendingSelectedSend = false
                     val outgoing = ArrayList(LinkedHashSet(selectedUris))
@@ -844,7 +854,7 @@ class MainActivity : Activity() {
             scaleY = .55f
         }
         val caption = TextView(this).apply {
-            text = "CONNECTING SECURELY"
+            text = "CONNECTED SUCCESSFULLY"
             textSize = 13f
             letterSpacing = .12f
             typeface = android.graphics.Typeface.DEFAULT_BOLD

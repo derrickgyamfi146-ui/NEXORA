@@ -49,6 +49,8 @@ class TransferKeepAliveService : Service() {
     private val outgoingPayloadSuccesses = ConcurrentHashMap.newKeySet<Long>()
     private val outgoingEndpointProgress = ConcurrentHashMap<Long, ConcurrentHashMap<String, Int>>()
     private val outgoingQueue = ArrayDeque<Uri>()
+    private val queuedUriKeys = LinkedHashSet<String>()
+    private var activeOutgoingUriKey: String? = null
     private var sending = false
     private var outgoingSucceeded = 0
     private var outgoingFailed = 0
@@ -62,6 +64,8 @@ class TransferKeepAliveService : Service() {
     fun setListener(value: Listener?) { listener = value; value?.onStatus(lastStatusMessage) }
 
     val isAdvertising: Boolean get() = advertising
+    val isConnected: Boolean get() = synchronized(connectedEndpoints) { connectedEndpoints.isNotEmpty() }
+    fun connectedEndpointCount(): Int = synchronized(connectedEndpoints) { connectedEndpoints.size }
 
     @Synchronized
     fun setHighSpeedMode(enabled: Boolean) {
@@ -158,8 +162,18 @@ class TransferKeepAliveService : Service() {
             outgoingSucceeded = 0
             outgoingFailed = 0
         }
-        outgoingQueue.addAll(uris)
-        status("${outgoingQueue.size} file(s) queued. Starting transfer…")
+        var added = 0
+        uris.distinctBy { it.toString() }.forEach { uri ->
+            if (queuedUriKeys.add(uri.toString())) {
+                outgoingQueue.addLast(uri)
+                added++
+            }
+        }
+        if (added == 0) {
+            status("These items are already queued or transferring.")
+            return
+        }
+        status("$added new item(s) queued. Starting transfer…")
         sendNextFile()
     }
 
@@ -180,6 +194,7 @@ class TransferKeepAliveService : Service() {
                 status("Transfer queue finished: $outgoingSucceeded sent, $outgoingFailed not sent.")
                 return
             }
+            activeOutgoingUriKey = uri.toString()
             var descriptor: android.os.ParcelFileDescriptor? = null
             try {
                 val openedDescriptor = contentResolver.openFileDescriptor(uri, "r")
@@ -206,6 +221,8 @@ class TransferKeepAliveService : Service() {
                     outgoingEndpointProgress.remove(payload.id)
                     openFiles.remove(payload.id)?.close()
                     currentOutgoingPayloadId = null
+                    activeOutgoingUriKey?.let { queuedUriKeys.remove(it) }
+                    activeOutgoingUriKey = null
                     sending = false
                     outgoingFailed++
                     status("Could not start $name: ${it.localizedMessage}. Trying the next file…")
@@ -235,6 +252,8 @@ class TransferKeepAliveService : Service() {
         outgoingEndpointProgress.clear()
         endpointNames.clear()
         outgoingQueue.clear()
+        queuedUriKeys.clear()
+        activeOutgoingUriKey = null
         sending = false
         currentOutgoingPayloadId = null
         incomingFiles.clear()
@@ -388,6 +407,8 @@ class TransferKeepAliveService : Service() {
         openFiles.remove(payloadId)?.let { runCatching { it.close() } }
         if (currentOutgoingPayloadId == payloadId) {
             currentOutgoingPayloadId = null
+            activeOutgoingUriKey?.let { queuedUriKeys.remove(it) }
+            activeOutgoingUriKey = null
             sending = false
             if (hadSuccess) {
                 outgoingSucceeded++
