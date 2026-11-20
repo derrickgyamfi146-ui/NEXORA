@@ -34,6 +34,7 @@ class MainActivity : Activity() {
     private var darkMode = false
     private var mediaCategory: String? = null
     private var pendingSelectedSend = false
+    private var pendingConnectionSendUris: List<Uri>? = null
     private var highSpeedMode = false
     private var pendingServiceAction: ((TransferKeepAliveService) -> Unit)? = null
     private var appSelectionButton: Button? = null
@@ -116,6 +117,13 @@ class MainActivity : Activity() {
                 connectedPeers.add(endpointId)
                 if (::peerList.isInitialized) rebuildPeerList()
                 if (::sendButton.isInitialized) sendButton.isEnabled = true
+                if (pendingSelectedSend && selectedUris.isNotEmpty() && pendingConnectionSendUris == null) {
+                    pendingSelectedSend = false
+                    pendingConnectionSendUris = ArrayList(LinkedHashSet(selectedUris))
+                    selectedUris.clear()
+                    selectedAppPackages.clear()
+                    updateSelectionAction()
+                }
                 if (!connectionArrivalAnimationRunning) {
                     connectionArrivalAnimationRunning = true
                     updateStatus("Connected successfully.")
@@ -124,18 +132,15 @@ class MainActivity : Activity() {
                         activeTab = "Media"
                         mediaCategory = "Apps"
                         render()
+                        val outgoing = pendingConnectionSendUris
+                        pendingConnectionSendUris = null
+                        if (!outgoing.isNullOrEmpty() && sharing?.isConnected == true) {
+                            rememberOutgoingUris(outgoing)
+                            sharing?.sendFiles(outgoing)
+                            updateStatus("Connected. Sending your selected files…")
+                            if (::root.isInitialized) render()
+                        }
                     }
-                }
-                if (pendingSelectedSend && selectedUris.isNotEmpty()) {
-                    pendingSelectedSend = false
-                    val outgoing = ArrayList(LinkedHashSet(selectedUris))
-                    rememberOutgoingUris(outgoing)
-                    sharing?.sendFiles(outgoing)
-                    selectedUris.clear()
-                    selectedAppPackages.clear()
-                    updateSelectionAction()
-                    updateStatus("Connected. Sending your selected files…")
-                    if (::root.isInitialized) render()
                 }
             }
         }
@@ -144,6 +149,7 @@ class MainActivity : Activity() {
                 connectedPeers.remove(endpointId)
                 if (sharing?.connectedEndpointIds()?.isEmpty() != false && connectedPeers.isEmpty()) {
                     pendingSelectedSend = false
+                    pendingConnectionSendUris = null
                     selectedUris.clear()
                     selectedAppPackages.clear()
                     updateSelectionAction()
@@ -480,6 +486,14 @@ class MainActivity : Activity() {
                     setStroke(dp(1), 0xAAFFFFFF.toInt())
                 }
                 elevation = dp(12).toFloat()
+                if (connectedNow) {
+                    android.animation.ObjectAnimator.ofFloat(this, "translationY", -dp(3).toFloat(), dp(3).toFloat()).apply {
+                        duration = 900
+                        repeatCount = android.animation.ValueAnimator.INFINITE
+                        repeatMode = android.animation.ValueAnimator.REVERSE
+                        start()
+                    }
+                }
                 isHapticFeedbackEnabled = true
                 contentDescription = if (connectedNow) "Open transfer centre" else "Show Send and Receive actions"
                 setOnClickListener {
