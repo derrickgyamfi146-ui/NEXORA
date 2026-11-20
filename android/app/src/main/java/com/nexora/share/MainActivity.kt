@@ -46,6 +46,7 @@ class MainActivity : Activity() {
     private var appSelectionButton: Button? = null
     private var selectionSendButton: TextView? = null
     private var pendingCameraScan = false
+    private var pendingInstallUri: Uri? = null
     private var connectionArrivalAnimationRunning = false
     private var connectionSessionAnimationShown = false
     private var preparingApps = false
@@ -83,7 +84,11 @@ class MainActivity : Activity() {
     private val serviceListener = object : TransferKeepAliveService.Listener {
         override fun onStatus(message: String) {
             runOnUiThread {
-                if (message.startsWith("Sent: ")) rememberSentFileName(message.removePrefix("Sent: ").trim())
+                if (message.startsWith("Sent: ")) {
+                    rememberSentFileName(message.removePrefix("Sent: ").trim())
+                    successFeedback()
+                }
+                if (message.startsWith("Received and saved:")) successFeedback()
                 if (message.startsWith("Receiving ") || message.startsWith("Paused:")) {
                     latestIncomingProgress = message
                     incomingStatusView?.text = message
@@ -150,6 +155,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 discovered[endpointId] = name
                 connectedPeers.add(endpointId)
+                successFeedback()
                 pendingAutoConnectEndpointId = null
                 receivingModeArmed = false
                 if (::peerList.isInitialized) rebuildPeerList()
@@ -222,6 +228,15 @@ class MainActivity : Activity() {
                 incomingQueueItems = items
                 renderIncomingQueue()
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val pending = pendingInstallUri
+        if (pending != null && (Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls())) {
+            pendingInstallUri = null
+            launchApkInstaller(pending)
         }
     }
 
@@ -1508,7 +1523,11 @@ class MainActivity : Activity() {
             }
             val preview = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(if (darkMode) 0xFF263650.toInt() else 0xFFE8EDF5.toInt()) }
             row.addView(preview, LinearLayout.LayoutParams(if (useGrid) dp(88) else dp(66), if (useGrid) dp(88) else dp(66)))
-            if (kind == "Videos") preview.setOnClickListener { previewVideo(item.first, item.second) }
+            when (kind) {
+                "Photos" -> preview.setOnClickListener { previewImage(item.first, item.second) }
+                "Videos" -> preview.setOnClickListener { previewVideo(item.first, item.second) }
+                "Music" -> preview.setOnClickListener { previewAudio(item.first, item.second) }
+            }
             row.addView(TextView(this).apply {
                 text = item.second; textSize = if (useGrid) 9f else 12f; maxLines = if (useGrid) 2 else 3
                 gravity = if (useGrid) Gravity.CENTER else Gravity.START
@@ -1575,6 +1594,74 @@ class MainActivity : Activity() {
                     if (!launchSplashVisible && activeTab == "Media" && mediaCategory == "Apps") render()
                 }
             }.start()
+        }
+    }
+
+    private fun previewImage(uri: Uri, title: String) {
+        val image = ImageView(this).apply {
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(0xFF081522.toInt())
+            setImageURI(uri)
+        }
+        val dialog = android.app.Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = rounded(0xFF12243A.toInt(), 18)
+        }
+        panel.addView(TextView(this).apply {
+            text = title; textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1); setPadding(dp(3), 0, dp(3), dp(8))
+        })
+        panel.addView(image, LinearLayout.LayoutParams(-1, dp(360)))
+        panel.addView(button("CLOSE PREVIEW", 0xFFE05C8A.toInt()) { dialog.dismiss() })
+        dialog.setContentView(panel)
+        dialog.show()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(-1, -2)
+    }
+
+    private fun previewAudio(uri: Uri, title: String) {
+        val player = android.media.MediaPlayer()
+        val dialog = android.app.Dialog(this)
+        var prepared = false
+        val play = button("PLAY", 0xFF168A68.toInt()) {
+            if (!prepared) {
+                Toast.makeText(this, "Audio is still loading.", Toast.LENGTH_SHORT).show()
+            } else if (player.isPlaying) {
+                player.pause()
+                (it as? Button)?.text = "RESUME"
+            } else {
+                player.start()
+                (it as? Button)?.text = "PAUSE"
+            }
+        }
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = rounded(0xFF12243A.toInt(), 18)
+        }
+        panel.addView(TextView(this).apply {
+            text = title; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1); setPadding(0, 0, 0, dp(12))
+        })
+        panel.addView(play, bottom(8))
+        panel.addView(button("CLOSE PLAYER", 0xFFE05C8A.toInt()) {
+            runCatching { player.stop() }; runCatching { player.release() }; dialog.dismiss()
+        })
+        dialog.setOnDismissListener { runCatching { player.release() } }
+        dialog.setContentView(panel)
+        dialog.show()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(-1, -2)
+        try {
+            player.setDataSource(this, uri)
+            player.setOnPreparedListener { prepared = true; play.text = "PLAY" }
+            player.setOnCompletionListener { play.text = "PLAY" }
+            player.prepareAsync()
+        } catch (_: Exception) {
+            Toast.makeText(this, "This audio file cannot be previewed.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1807,6 +1894,30 @@ class MainActivity : Activity() {
                 beginSendSelected()
             }
         }.start()
+    }
+
+    private fun launchApkInstaller(uri: Uri) {
+        try {
+            val intent = Intent(Intent.ACTION_INSTALL_PACKAGE)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Android could not start the installer: " + (e.localizedMessage ?: "unknown error"), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun successFeedback() {
+        runCatching {
+            val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 65)
+            tone.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 140)
+            android.os.Handler(mainLooper).postDelayed({ runCatching { tone.release() } }, 350L)
+        }
+        runCatching {
+            val vibrator = getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator
+            if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(android.os.VibrationEffect.createOneShot(45L, 75))
+            else @Suppress("DEPRECATION") vibrator.vibrate(45L)
+        }
     }
 
     private fun installReceivedApkGroup(prefix: String) {
@@ -3452,12 +3563,11 @@ class MainActivity : Activity() {
                                 Toast.makeText(this@MainActivity, "This is one part of an app. Tap Install app on its BASE file.", Toast.LENGTH_LONG).show()
                             } else if (isApk) {
                                 if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                                    pendingInstallUri = uri
                                     startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName)))
-                                    Toast.makeText(this@MainActivity, "Allow NEXORA to install apps, then tap Open again.", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(this@MainActivity, "Allow NEXORA to install apps. Installation will continue when you return.", Toast.LENGTH_LONG).show()
                                 } else {
-                                    val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType(uri, "application/vnd.android.package-archive")
-                                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    startActivity(intent)
+                                    launchApkInstaller(uri)
                                 }
                             } else {
                                 val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
