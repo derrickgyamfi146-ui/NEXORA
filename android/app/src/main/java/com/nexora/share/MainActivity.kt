@@ -177,6 +177,7 @@ class MainActivity : Activity() {
             }
         }
         override fun onTransferProgress(message: String) { runOnUiThread { updateStatus(message) } }
+        override fun onQrReady(payload: String) { runOnUiThread { showQrCode(payload) } }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -883,8 +884,8 @@ class MainActivity : Activity() {
                     service.setHighSpeedMode(highSpeedMode)
                     activeTab = "Transfers"
                     render()
-                    updateStatus("Searching for a receiving phone. On the other phone, tap RECEIVE / START RECEIVING.")
-                    service.startFinding()
+                    updateStatus("Scan the receiving phone QR code to connect over Wi-Fi Direct.")
+                    scanQrCode()
                 }
             }
         }
@@ -910,20 +911,17 @@ class MainActivity : Activity() {
                 receivingModeArmed = true
                 service.setHighSpeedMode(highSpeedMode)
                 service.startReceiving()
-                showQrCode()
+                updateStatus("Preparing your Wi-Fi Direct QR code…")
             }
         }
     }
 
-    private fun showQrCode() {
+    private fun showQrCode(payload: String) {
         val returnTab = activeTab
         val dialog = android.app.Dialog(this)
-        // Keep the QR name identical to TransferKeepAliveService.deviceName().
-        // A different fallback here makes scanning succeed visually but never match discovery.
         val deviceName = (getSharedPreferences("nexora_preferences", MODE_PRIVATE)
             .getString("device_name", null)?.trim()?.takeIf { it.isNotEmpty() }
             ?: (Build.MODEL ?: "Android device").take(24)).take(24)
-        val payload = "NEXORA|$deviceName"
         try {
             val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(
                 payload, com.google.zxing.BarcodeFormat.QR_CODE, 560, 560
@@ -2661,18 +2659,15 @@ class MainActivity : Activity() {
             val scan = com.google.zxing.integration.android.IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
             val contents = scan?.contents
             if (!contents.isNullOrBlank()) {
-                val parts = contents.split("|", limit = 2)
-                if (parts.size == 2 && parts[0] == "NEXORA" && parts[1].isNotBlank()) {
-                    pendingQrDeviceName = parts[1]
+                if (contents.startsWith("NEXORA-WFD:")) {
+                    pendingQrDeviceName = null
                     withNearbyPermissions {
-                        discovered.clear()
                         runWithSharingService { service ->
-                            service.setHighSpeedMode(highSpeedMode)
-                            service.startFinding()
-                            updateStatus("QR accepted. Looking for " + parts[1] + " nearby…")
+                            service.connectWithQr(contents)
+                            updateStatus("QR accepted. Joining the Wi-Fi Direct group…")
                         }
                     }
-                } else Toast.makeText(this, "That is not a NEXORA connection code.", Toast.LENGTH_LONG).show()
+                } else Toast.makeText(this, "That is not a NEXORA Wi-Fi Direct QR code.", Toast.LENGTH_LONG).show()
             } else {
                 pendingQrDeviceName = null
                 pendingSelectedSend = false
