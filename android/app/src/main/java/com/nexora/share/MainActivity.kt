@@ -22,6 +22,8 @@ class MainActivity : Activity() {
     private lateinit var peerList: LinearLayout
     private lateinit var receivedList: LinearLayout
     private var incomingStatusView: TextView? = null
+    private var incomingQueueView: LinearLayout? = null
+    private var incomingQueueItems: List<IncomingQueueItem> = emptyList()
     private var latestIncomingProgress = "No active incoming transfers."
     private lateinit var sendButton: Button
     private val selectedUris = ArrayList<Uri>()
@@ -65,6 +67,7 @@ class MainActivity : Activity() {
             binding = false
             bound = sharing != null
             sharing?.setListener(serviceListener)
+            incomingQueueItems = sharing?.incomingQueueSnapshot().orEmpty()
             connectedPeers.clear()
             connectedPeers.addAll(sharing?.connectedEndpointIds().orEmpty())
             if (::sendButton.isInitialized) sendButton.isEnabled = true
@@ -210,6 +213,12 @@ class MainActivity : Activity() {
             }
         }
         override fun onQrReady(payload: String) { runOnUiThread { showQrCode(payload) } }
+        override fun onIncomingQueueChanged(items: List<IncomingQueueItem>) {
+            runOnUiThread {
+                incomingQueueItems = items
+                renderIncomingQueue()
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -2521,12 +2530,72 @@ class MainActivity : Activity() {
         incoming.addView(controls)
         content.addView(incoming, bottom(13))
 
+        val queuePanel = panel(card)
+        queuePanel.addView(label("TRANSFER QUEUE", 0xFFFFD21F.toInt()))
+        incomingQueueView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        queuePanel.addView(incomingQueueView)
+        content.addView(queuePanel, bottom(12))
+        renderIncomingQueue()
+
         val box = panel(card)
         box.addView(label("SAVED ON THIS PHONE", 0xFF0B4FB3.toInt()))
         receivedList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(receivedList)
         content.addView(box)
         refreshReceivedFiles()
+    }
+
+    private fun renderIncomingQueue() {
+        val target = incomingQueueView ?: return
+        target.removeAllViews()
+        if (incomingQueueItems.isEmpty()) {
+            target.addView(TextView(this).apply {
+                text = "Files in a batch will appear here, with individual progress and cancel controls."
+                textSize = 12f
+                setTextColor(if (darkMode) 0xFFCAD5E2.toInt() else 0xFF64748B.toInt())
+                setPadding(0, dp(8), 0, dp(4))
+            })
+            return
+        }
+        incomingQueueItems.forEach { item ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(9), 0, dp(9))
+            }
+            val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            details.addView(TextView(this).apply {
+                text = item.name
+                textSize = 12f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(if (darkMode) -1 else 0xFF172B45.toInt())
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            details.addView(TextView(this).apply {
+                text = item.status + "  ·  " + readableSize(item.size) +
+                    if (item.status == "Receiving") "  ·  " + item.progress + "%" else ""
+                textSize = 10f
+                setTextColor(if (darkMode) 0xFFB8C7D8.toInt() else 0xFF64748B.toInt())
+                setPadding(0, dp(3), 0, 0)
+            })
+            row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+            val cancel = button("CANCEL", 0xFFE52B3A.toInt()) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Cancel " + item.name + "?")
+                    .setMessage("This item will be skipped or cancelled. Other queued files can continue.")
+                    .setNegativeButton("Keep", null)
+                    .setPositiveButton("Cancel item") { _, _ -> sharing?.cancelIncomingItem(item.id) }
+                    .show()
+            }
+            cancel.textSize = 10f
+            cancel.isEnabled = item.status == "Queued" || item.status == "Receiving"
+            row.addView(cancel, LinearLayout.LayoutParams(dp(82), dp(38)))
+            target.addView(row)
+            target.addView(View(this).apply {
+                setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
+            }, LinearLayout.LayoutParams(-1, dp(1)))
+        }
     }
 
     private fun showHistory(card: Int, ink: Int, muted: Int) {
