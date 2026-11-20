@@ -1339,6 +1339,7 @@ class MainActivity : Activity() {
     }
 
     private fun openMediaLibrary(kind: String) {
+        activeTab = "Media"
         mediaCategory = kind
         mediaSearch = ""
         mediaDisplayLimit = 20
@@ -1347,7 +1348,15 @@ class MainActivity : Activity() {
             "Videos" -> if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
             else -> if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_AUDIO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-        if (hasMediaPermission(kind)) render() else {
+        val fullPermission = when (kind) {
+            "Photos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
+            "Videos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
+            else -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        val hasFullPermission = ContextCompat.checkSelfPermission(this, fullPermission) == PackageManager.PERMISSION_GRANTED
+        if (hasFullPermission) render() else {
+            // Ask for the full media permission instead of accepting Android 14's
+            // selected-media-only grant as if it covered the entire Videos library.
             val missing = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
             requestPermissions(missing.toTypedArray(), REQUEST_MEDIA)
         }
@@ -1853,7 +1862,12 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 34) {
             val permission = if (kind == "Photos") Manifest.permission.READ_MEDIA_IMAGES else if (kind == "Videos") Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_MEDIA_AUDIO
             if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) return true
-            if (kind == "Photos" || kind == "Videos") return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+            // Android 14's selected-photos/videos permission may grant access to only
+            // a subset of media. It must not be treated as full library access: for
+            // example, a user may have selected photos but no videos at all.
+            if (kind == "Photos" || kind == "Videos") {
+                return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+            }
             return false
         }
         val permission = when (kind) {
