@@ -73,3 +73,5 @@ The source inventory and all Kotlin app classes, app manifest, Gradle configurat
 
 - Changed Wi-Fi readiness behaviour: Wi-Fi-off is still checked before attempting a session, but hotspot is no longer presented as a presumed problem before connection. Hotspot guidance now appears only after a Wi-Fi Direct group/join/socket failure that suggests a radio conflict, and only while Wi-Fi itself is enabled.
 - Build validation for the code changes is running in GitHub Actions; no APK from these intermediate commits is approved for installation.
+
+- Extended the startup splash to 5 seconds. The installed-app library is already preloaded on a background thread, so this keeps the visual intro running while that preparation proceeds. This is an initial timing change; visual polish and ad/loading integration remain to be reviewed.
