@@ -1,119 +1,72 @@
 # NEXORA Master Upgrade Tracker
 
 Last updated: 2026-11-20
-Baseline: NEXORA 0.8.2 (versionCode 79), applicationId `com.nexora.share`
-Rule: preserve the existing applicationId and original signing certificate. Do not instruct the user to uninstall the installed app.
 
-## User-approved target behaviour
+Baseline: NEXORA 0.8.2, versionCode 79  
+Application ID: `com.nexora.share`
 
-- Establish a persistent connection before selecting any files.
-- Once connected, either phone can send and receive repeatedly over the same session.
-- The connection remains open until a user explicitly disconnects or the connection is genuinely lost.
-- The receiver has an Incoming manager showing live transfers with progress and per-item pause/resume/cancel controls; completed items remain available in Received.
-- Both devices enter the connected dashboard only after the transport handshake succeeds.
-- Connection animation runs once per new connection, not after each file; upright rocket appears only on receiving device.
-- Sender navigation waits for the connection animation; receiver leaves its QR screen after verified connection.
-- Startup splash lasts about five seconds while essential preparation happens; do not add a second blocking ad-loading screen.
-- Wi-Fi/hotspot guidance is shown in response to a real setup failure, with the specific cause and relevant settings action; do not prompt about hotspot prematurely.
-- Group Share: one join QR, multiple participants, any member may send, sender can exclude selected recipients.
-- Floating control is draggable across the full app content area, in both axes.
-- Redesign the UI with a yellow/red/blue palette inspired by the visual direction of the 2C TV icon, without copying its logo.
-- Sent and Received screens show actual sent/received items; History is a combined chronological record.
-- Provide explicit Disconnect and confirmation when leaving an active session.
+**Release protection:** preserve the existing application ID and original signing certificate. Never tell the user to uninstall the installed NEXORA app. Only provide a new APK after the latest integrated build, signing check and artifact upload all pass.
 
-## Ordered checklist
+## Ordered upgrade checklist
 
-- [x] 1. Full source audit: connection lifecycle, socket protocol, permissions, service lifecycle, navigation, transfer history and build/signing workflow.
-- [ ] 2. Persistent two-way connection/session architecture.
-- [ ] 3. Repeated bidirectional transfers without reconnecting.
-- [ ] 4. Connect-first workflow with no file selection required.
-- [ ] 5. Incoming transfer manager: live queue, progress, pause, resume, cancel, completed list.
-- [ ] 6. Redesign Sent and Received views as actual item lists.
-- [ ] 7. Combined chronological History view.
-- [ ] 8. Verified-connection navigation on both devices and explicit disconnect flow.
-- [ ] 9. Connection animation: once per connection; upright receiver-only rocket; correct timing.
-- [ ] 10. Five-second splash, background preparation and eliminate unintended Activity restarts/blinking.
-- [ ] 11. Failure-driven Wi-Fi readiness diagnostics and actionable prompts.
-- [ ] 12. Group Share with multi-device routing, recipient selection/exclusion and group lifecycle.
-- [ ] 13. Fully draggable floating control, constrained to app screen.
-- [ ] 14. Full visual redesign using yellow/red/blue palette and consistent components.
-- [ ] 15. Build, signature continuity verification, automated checks, then real-device test checklist.
+| # | Work item | Current status |
+|---:|---|---|
+| 1 | Full source audit: Activity, transport, service, permissions, manifest, UI and CI workflow | **Complete** |
+| 2 | Persistent two-way connection/session architecture | **Implemented; physical-device verification pending** |
+| 3 | Repeated sending in either direction without rescanning | **Implemented in framed protocol; physical-device verification pending** |
+| 4 | Connect first without selecting files; select and send later | **UI path available; verify with new session on devices** |
+| 5 | Incoming transfer manager with progress, pause, resume and cancel | **Partially implemented: one active incoming item at a time** |
+| 6 | Separate Sent and Received item lists | **Implemented; physical-device verification pending** |
+| 7 | Combined chronological History | **Implemented for new transfers; legacy history migration pending** |
+| 8 | Verified connection navigation, both devices leave QR screen, explicit disconnect | **Implemented; physical-device verification pending** |
+| 9 | One connection animation per session; upright receiver-only rocket | **Implemented; visual verification pending** |
+| 10 | Five-second splash, background preload and reduce screen blinking | **Implemented; device verification pending** |
+| 11 | Wi-Fi/hotspot prompts only after relevant failure | **Implemented; device verification pending** |
+| 12 | Group Share: one QR, multiple active peers, broadcast and recipient exclusions | **Not started** |
+| 13 | Floating control draggable across full app screen | **Implemented; touch-boundary verification pending** |
+| 14 | Full visual redesign using yellow/red/blue direction inspired by 2C TV icon | **First colour pass implemented; detailed screen redesign pending** |
+| 15 | Final build, original signing-certificate check, APK verification and device test plan | **In progress** |
 
-## Initial audit findings (2026-11-20)
+## Technical decisions and safeguards
 
-1. `WifiDirectTransport` currently implements a one-way protocol: the group-owner side accepts and receives files; the joining side initiates the socket and sends files. The accepted socket is not exposed as a symmetric send/receive session. This is the main blocker for the requested bridge.
-2. The socket protocol has no transfer IDs, direction-neutral message frames, queue model, or resumable chunk offsets. Current receiver writes directly to MediaStore while reading the socket, so per-item pause/resume/cancel cannot be implemented reliably as a UI-only change.
-3. `TransferKeepAliveService` reports at most one Wi-Fi Direct endpoint and a single connected boolean. Group Share requires a participant/session model and a multi-recipient transfer layer.
-4. `MainActivity` triggers the rocket from connection callbacks on both peers, and also has a second received-file animation tied to the literal “All files received successfully.” status. Animation and navigation need a single connection-state owner, separated from transfer-completion events.
-5. The QR flow creates a group and displays credentials, while the readiness helper currently prompts about hotspot settings before there is evidence that hotspot state caused a failure. The prompt must move to diagnostic failure handling.
-6. Existing Sent and Received views are separate lists under a “History” heading; there is no true combined chronological history.
-7. The current floating control is constrained to the content frame, and its vertical drag is therefore limited to that frame. A redesigned overlay must remain within the app window and avoid covering essential controls.
-8. The startup splash already uses an approximately 1.5–2.1 second animation and a delayed transition; its loading work and navigation should be measured before changing timing.
-9. The current workflow builds and verifies an APK, but certificate continuity must be explicitly compared and enforced before distributing each update.
+- The new Wi-Fi Direct protocol marker is `NEXORA-WFD-2`. Both phones must use the upgraded NEXORA version; old protocol builds are intentionally not treated as compatible.
+- The duplex session uses one inbound reader per socket, framed file batches, acknowledgements, and a send-turn request/grant/release handshake. Only one device sends payload data at a time; either device can request the next turn.
+- Incoming pause uses TCP back-pressure. Cancel drains and discards only the current item, then negatively acknowledges it so the peer can continue with the next item. This is not yet a multi-item resumable queue.
+- Group Share is deliberately not exposed as a working feature yet. The current transport supports one active peer session, not multi-peer routing or broadcast.
+- Android controls Wi-Fi Direct and hotspot behaviour. NEXORA can detect failures and open system settings, but cannot silently switch hotspot off.
+- The startup splash remains visible for five seconds even if installed-app discovery finishes earlier. App discovery runs on a background thread.
+- The service remains bound while temporary scanner/system activities are open to avoid rebuilding the whole UI when returning.
+- The CI workflow refuses to create a replacement signing key. It checks the known original certificate fingerprint against both the restored key and the produced APK.
 
-## Implementation and verification log
+## Verification log
 
-No upgrade feature has been marked complete yet. The initial audit is underway. Build success alone does not count as device-level verification.
-
-| Date | Work | Result |
+| Commit | Change verified | CI result |
 |---|---|---|
-| 2026-11-20 | Read baseline Activity, transport, service, manifest, Gradle and CI workflow | Initial architecture findings recorded; full audit remains open |
+| `9f529c9` | Failure-driven Wi-Fi readiness prompt | Build, signature and artifact upload passed |
+| `6c5715a` | Five-second splash | Build, signature and artifact upload passed |
+| `442e954` | Sent, Received and combined History | Build, signature and artifact upload passed |
+| `832111d` | Main yellow/red/blue visual theme | Build, signature and artifact upload passed |
+| `183508e` | Corrected splash colour type and integrated receiver-role animation code | Build, signature and artifact upload passed |
+| `3cb997e` | Incoming manager pause/resume/cancel controls | Build, signature and artifact upload passed |
+| `6e86a5e` | Initial framed duplex send/receive session | Build, signature and artifact upload passed |
+| `324768b` | Protocol v2 marker | Build, signature and artifact upload passed |
+| `60726f9` | Disconnect cleanup and wake pending sends | Build, signature and artifact upload passed |
 
-## Audit completion note
+The newest commits after this table are still being validated by GitHub Actions. A successful CI build proves compilation and signing, not real-world Wi-Fi Direct operation.
 
-The source inventory and all Kotlin app classes, app manifest, Gradle configuration, launcher icon vectors and both GitHub Actions workflows have now been inspected. The audit confirms that the requested upgrade is not a cosmetic-only change: the current transport is structurally one-way and must be redesigned before the requested user interface can honestly claim two-way or group sharing. The CI signing step currently prints historical/current fingerprints but does not itself fail on a mismatch; this must be hardened before a new APK is distributed.
+## Release acceptance tests
 
+Do not mark the upgrade finished until these tests pass on the actual Android devices:
 
-## Follow-up implementation work
-
-- Removed the full-screen received-file rocket replay from the "All files received successfully" status handler. The connection animation must be tied to a connection event, never to every completed transfer. This is a targeted correction; the full animation-role redesign remains open.
-- Hardened the APK workflow: it now refuses to generate a replacement signing key when the original key is unavailable, verifies the restored signing certificate against the known NEXORA certificate fingerprint, and verifies the built APK against the same fingerprint before artifact upload. This protects update installation instead of silently producing an APK signed with a different key.
-- Signing-workflow validation run: pending at the time of this tracker update.
-- Step 2 remains in progress. The new duplex protocol must have one inbound frame reader per socket, correlated acknowledgements, synchronized writes, and independent send/receive queues. The current one-way transport remains in place until the duplex implementation is integrated and compiled.
-
-- Changed Wi-Fi readiness behaviour: Wi-Fi-off is still checked before attempting a session, but hotspot is no longer presented as a presumed problem before connection. Hotspot guidance now appears only after a Wi-Fi Direct group/join/socket failure that suggests a radio conflict, and only while Wi-Fi itself is enabled.
-- Build validation for the code changes is running in GitHub Actions; no APK from these intermediate commits is approved for installation.
-
-- Extended the startup splash to 5 seconds. The installed-app library is already preloaded on a background thread, so this keeps the visual intro running while that preparation proceeds. This is an initial timing change; visual polish and ad/loading integration remain to be reviewed.
-
-## Additional progress (2026-11-20)
-
-- [x] Targeted animation correction: removed the post-transfer rocket replay. The connection animation is no longer intentionally triggered by the "All files received successfully" status.
-- [x] Startup timing: splash now lasts approximately 5 seconds; installed-app discovery remains on a background thread.
-- [x] Wi-Fi failure diagnostics: removed the premature hotspot confirmation; show hotspot guidance only after a relevant Wi-Fi Direct failure while Wi-Fi is enabled.
-- [x] History/navigation groundwork: added distinct Sent, Received and combined History destinations. New successful send/receive events are recorded in a shared timestamped event list and shown newest-first in History. This is UI/history groundwork; legacy transfer entries and live Incoming queue integration still need further work.
-- [x] CI checks for commits 9f529c9, 6c5715a and 78edc95 completed successfully, including the original signing-key fingerprint check and APK certificate compatibility check.
-- [ ] The newest Sent/Received/History navigation commit is currently being built and has not yet passed CI.
-- [ ] The persistent duplex transfer architecture remains the next major implementation task. The old transport has not been replaced, so two-way send/receive is not complete.
-
-- [x] Added separate Sent and Received navigation destinations and a dedicated combined History screen. Successful send and receive events are timestamped and shown newest-first in History. The latest CI run for this code reached APK upload; final job completion is still pending.
-- [x] Updated the launcher icon artwork to use NEXORA's yellow/red/blue direction while retaining its own NEXORA symbol.
-- [x] Applied the yellow/red/blue direction to the main app background, top header, navigation strip, selected navigation chip, cards and shared button styling. This is the first visual-theme pass; screen-by-screen spacing, typography, and component redesign remains open.
-- [ ] Incoming transfer queue with pause/resume/cancel is not implemented yet.
-- [ ] Persistent bidirectional and group transfer protocols are not implemented yet.
-
-- [x] Added local connection-role information through the Wi-Fi Direct transport and service callbacks. The receiver now runs the connection rocket; the sender waits for the same transition window without displaying a rocket, then both navigate to the main library.
-- [x] Rotated the receiver connection rocket toward an upright orientation.
-- [x] Added an explicit Disconnect button in the connected transfer centre, with confirmation before ending the session.
-- [x] Moved the floating control into the app content overlay so its drag bounds cover the full app screen instead of only the scrollable content region.
-- CI caught a Kotlin integer-literal type error in the new splash ring colour; it has been corrected with an explicit integer conversion. The corrected commit is undergoing a fresh build. Intermediate commits made while changing the connection callback signature also caused expected temporary compile mismatches before all three layers were updated; final integrated callback build is pending.
-
-- [x] Incoming manager groundwork: the receiver screen now shows current incoming progress and exposes Pause, Resume and Cancel controls. Pause uses TCP back-pressure; Cancel drains and discards only the current file, returns a negative acknowledgement, and keeps the existing connection available for the next item. Completed items remain in Received, where the existing Delete action removes saved items.
-- [ ] This is currently a single active incoming item at a time, not a multi-peer/multi-transfer queue. It does not yet provide chunk-level resume after a broken connection. Device testing is required to confirm pause/cancel behaviour across different Android vendors.
-
-## Persistent connection architecture work
-
-- Replaced the one-way post-handshake socket handling with a persistent framed session on both QR roles.
-- Added a single inbound reader loop on each device, framed file batches, per-file acknowledgements, and a send-turn request/grant/release handshake. This prevents both devices from writing file payloads at the same time and allows either side to request the next send turn without scanning another QR.
-- Kept per-item receiver pause/cancel behaviour in the new receiving path; cancelled items are drained and negatively acknowledged so the peer can continue with the next item without intentionally closing the session.
-- Bumped the Wi-Fi Direct QR/session protocol marker to v2 so older builds fail clearly instead of interpreting the new framed messages as the old unframed protocol. Both phones must run the upgraded NEXORA build to use this protocol.
-- [ ] This architecture is not yet marked complete: integrated build, two-device tests, repeated transfers in both directions, pause/resume/cancel, disconnect/reconnect, and Android 12/14 vendor behaviour still need verification.
-
-- CI validation: the framed duplex reader/session and send-turn implementation in commit 6e86a5e compiled, built, passed the strict original-certificate check, and uploaded an APK. Subsequent protocol-version, rejection-handshake, and disconnect-cleanup hardening changes are in later commits and require their own final successful build.
-- [ ] Still outstanding for step 2: test the same session in both directions on two physical Android devices, including repeated batches, cancellation, reconnect and screen-off behaviour. A successful compile does not prove socket behaviour.
-
-- [x] Fixed splash timing so background app discovery cannot replace the splash screen early; the five-second minimum now controls when the main screen appears.
-- [x] Connected Transfer Centre's Receive action now opens the Incoming/Received manager instead of trying to create another QR session.
-- [ ] Group Share (multiple simultaneous participants, relay/broadcast, recipient exclusion) remains unimplemented. The current transport deliberately permits one active peer session; do not present Group Share as available yet.
-
-- [x] Reduced a likely source of screen blinking: MainActivity now keeps its transfer-service binding across temporary QR scanner/system activities instead of unbinding and rebuilding the whole screen on every return. It releases the binding in onDestroy. This needs real-device verification because Android lifecycle behaviour can vary by vendor.
+1. Connect Phone A and Phone B with no files selected.
+2. Send an app from A to B, then send a different app from B to A without rescanning.
+3. Send multiple files in repeated batches over the same connection.
+4. Pause, resume and cancel an incoming item; confirm cancellation does not close the connection.
+5. Turn the screen off during a transfer and confirm it continues or reports a recoverable failure.
+6. Disconnect from the Transfer Centre and confirm both devices return to a disconnected state.
+7. Verify only the receiving phone shows the upright connection rocket, and neither phone replays it after each file.
+8. Verify the splash stays visible for five seconds and the app does not blink when returning from the QR scanner.
+9. Verify Wi-Fi/hotspot guidance appears only after the relevant failure.
+10. Verify floating control can move vertically and horizontally throughout the app area.
+11. Test Group Share separately after multi-peer routing and recipient exclusion are implemented.
+12. Install the final APK as an update over the existing installation; do not uninstall the old app.
