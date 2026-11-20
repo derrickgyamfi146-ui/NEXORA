@@ -74,6 +74,9 @@ class MainActivity : Activity() {
             runOnUiThread {
                 if (message.startsWith("Sent: ")) rememberSentFileName(message.removePrefix("Sent: ").trim())
                 updateStatus(message)
+                if (message.startsWith("Transfer queue finished:")) {
+                    java.io.File(cacheDir, "shared_apks").listFiles()?.forEach { it.delete() }
+                }
                 if (message.startsWith("Received and saved:")) {
                     refreshReceivedFiles()
                     showReceivedRocketAnimation {
@@ -139,6 +142,12 @@ class MainActivity : Activity() {
         override fun onDisconnected(endpointId: String) {
             runOnUiThread {
                 connectedPeers.remove(endpointId)
+                if (sharing?.connectedEndpointIds()?.isEmpty() != false && connectedPeers.isEmpty()) {
+                    pendingSelectedSend = false
+                    selectedUris.clear()
+                    selectedAppPackages.clear()
+                    updateSelectionAction()
+                }
                 if (::peerList.isInitialized) rebuildPeerList()
                 if (::sendButton.isInitialized) sendButton.isEnabled = true
                 if (::root.isInitialized) render()
@@ -481,21 +490,34 @@ class MainActivity : Activity() {
                 var downY = 0f
                 var startX = 0f
                 var startY = 0f
+                var dragged = false
                 setOnTouchListener { view, event ->
                     when (event.actionMasked) {
                         android.view.MotionEvent.ACTION_DOWN -> {
                             downX = event.rawX; downY = event.rawY
                             startX = view.translationX; startY = view.translationY
-                            false
+                            dragged = false
+                            true
                         }
                         android.view.MotionEvent.ACTION_MOVE -> {
-                            if (connectedNow) {
-                                view.translationX = startX + event.rawX - downX
-                                view.translationY = startY + event.rawY - downY
+                            val dx = event.rawX - downX
+                            val dy = event.rawY - downY
+                            if (connectedNow && (kotlin.math.abs(dx) > dp(5) || kotlin.math.abs(dy) > dp(5))) {
+                                dragged = true
+                                val parent = view.parent as? View
+                                val maxX = ((parent?.width ?: view.width) - view.width) / 2f
+                                val maxY = ((parent?.height ?: view.height) - view.height) / 2f
+                                view.translationX = (startX + dx).coerceIn(-maxX, maxX)
+                                view.translationY = (startY + dy).coerceIn(-maxY, maxY)
                             }
-                            false
+                            true
                         }
-                        else -> false
+                        android.view.MotionEvent.ACTION_UP -> {
+                            if (!dragged) view.performClick()
+                            true
+                        }
+                        android.view.MotionEvent.ACTION_CANCEL -> true
+                        else -> true
                     }
                 }
             }
@@ -1396,7 +1418,10 @@ class MainActivity : Activity() {
             var totalParts = 0
             var failure: String? = null
             try {
-                val folder = java.io.File(cacheDir, "shared_apks").apply { mkdirs() }
+                val folder = java.io.File(cacheDir, "shared_apks").apply {
+                    if (exists()) listFiles()?.forEach { it.delete() }
+                    mkdirs()
+                }
                 val batch = System.currentTimeMillis().toString()
                 apps.distinctBy { it.packageName }.forEach { app ->
                     val prefix = "NEXORA_APP_" + app.packageName + "_" + batch
