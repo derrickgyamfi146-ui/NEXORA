@@ -35,7 +35,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     }
     companion object {
         private const val PORT = 43821
-        private const val MAGIC = "NEXORA-WFD-1"
+        private const val MAGIC = "NEXORA-WFD-2"
         private const val MAX_FILES = 200
         private const val FRAME_BATCH = 1
         private const val FRAME_ACK = 2
