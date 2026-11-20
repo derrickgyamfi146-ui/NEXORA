@@ -115,3 +115,5 @@ The source inventory and all Kotlin app classes, app manifest, Gradle configurat
 - [x] Fixed splash timing so background app discovery cannot replace the splash screen early; the five-second minimum now controls when the main screen appears.
 - [x] Connected Transfer Centre's Receive action now opens the Incoming/Received manager instead of trying to create another QR session.
 - [ ] Group Share (multiple simultaneous participants, relay/broadcast, recipient exclusion) remains unimplemented. The current transport deliberately permits one active peer session; do not present Group Share as available yet.
+
+- [x] Reduced a likely source of screen blinking: MainActivity now keeps its transfer-service binding across temporary QR scanner/system activities instead of unbinding and rebuilding the whole screen on every return. It releases the binding in onDestroy. This needs real-device verification because Android lifecycle behaviour can vary by vendor.
