@@ -66,19 +66,46 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     }
 
     fun startReceiving() {
-        if (!active.compareAndSet(false, true)) {
-            currentQrPayload?.let { callbacks.onQrReady(it) }
-            callbacks.onStatus("Wi-Fi Direct is already active.")
+        // A previous attempt can leave the service active without ever producing a QR.
+        // Reuse a valid QR, but fully restart an incomplete session instead of getting stuck.
+        if (active.get() && !currentQrPayload.isNullOrBlank()) {
+            callbacks.onQrReady(currentQrPayload!!)
+            callbacks.onStatus("Wi-Fi Direct is ready. Show the QR code to the sending phone.")
             return
         }
+        active.set(true)
+        currentQrPayload = null
         token = UUID.randomUUID().toString()
+        runCatching { socket?.close() }
+        socket = null
+        runCatching { server?.close() }
+        server = null
         register()
+        callbacks.onStatus("Preparing a fresh private Wi-Fi Direct connection…")
+
+        // Android may retain a group from an earlier failed attempt. Remove it first;
+        // createGroup commonly returns BUSY while that stale group still exists.
+        manager.requestGroupInfo(channel) { existing ->
+            if (existing != null) {
+                manager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() { createReceiverGroup() }
+                    override fun onFailure(reason: Int) {
+                        // Some Android builds report failure when there was no removable group.
+                        createReceiverGroup()
+                    }
+                })
+            } else createReceiverGroup()
+        }
+    }
+
+    private fun createReceiverGroup() {
+        if (!active.get()) return
         callbacks.onStatus("Creating a private Wi-Fi Direct connection…")
         manager.createGroup(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() { requestGroupDetails(0) }
             override fun onFailure(reason: Int) {
                 active.set(false)
-                callbacks.onStatus("Could not create Wi-Fi Direct group (code " + reason + "). Turn Wi-Fi on and retry.")
+                callbacks.onStatus("Could not create Wi-Fi Direct group (code " + reason + "). Check that Wi-Fi is on, then tap Receive again.")
             }
         })
     }
@@ -145,7 +172,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private fun register() {
         if (receiverRegistered) return
         val filter = IntentFilter(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
-        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
         else context.registerReceiver(receiver, filter)
         receiverRegistered = true
     }
