@@ -2032,6 +2032,22 @@ class MainActivity : Activity() {
             }
         }
         content.addView(devices, bottom(12))
+        if (connectedPeers.isNotEmpty() || sharing?.isConnected == true) {
+            content.addView(button("DISCONNECT", 0xFFE52B3A.toInt()) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Disconnect from this phone?")
+                    .setMessage("The active NEXORA connection will end. You can connect again later.")
+                    .setNegativeButton("Keep connected", null)
+                    .setPositiveButton("Disconnect") { _, _ ->
+                        sharing?.stopSharing()
+                        connectedPeers.clear()
+                        activeTab = "Media"
+                        mediaCategory = "Apps"
+                        render()
+                    }
+                    .show()
+            }, bottom(12))
+        }
         val history = panel(card)
         history.addView(label("RECENTLY SENT", 0xFF7357E8.toInt()))
         val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE).getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
