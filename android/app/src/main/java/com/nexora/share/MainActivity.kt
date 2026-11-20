@@ -976,6 +976,8 @@ class MainActivity : Activity() {
             lower.contains("could not create wi-fi direct group") ||
             lower.contains("android reported a wi-fi direct error") ||
             lower.contains("could not join wi-fi direct group") ||
+            lower.contains("connection failed") ||
+            lower.contains("did not respond") ||
             lower.contains("wi-fi direct receiver could not start")
         if (!likelyRadioConflict || isFinishing || isDestroyed) return
         val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
