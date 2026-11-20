@@ -257,7 +257,7 @@ class MainActivity : Activity() {
         val orbit = View(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0xFFFFD66B.toInt())
+                setColor(0xFFFFD21F.toInt())
                 setStroke(dp(2), 0xFFFFF0B0.toInt())
             }
             elevation = dp(14).toFloat()
@@ -770,8 +770,8 @@ class MainActivity : Activity() {
         val connection = panel(card).apply {
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF123A4C.toInt(), 0xFF0B5A50.toInt(), 0xFF514018.toInt())
-            ).apply { cornerRadius = dp(24).toFloat(); setStroke(dp(1), 0x88E9C65B.toInt()) }
+                intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF8A243A.toInt())
+            ).apply { cornerRadius = dp(24).toFloat(); setStroke(dp(1), 0xFFFFD21F.toInt()) }
             elevation = dp(8).toFloat()
         }
         connection.addView(TextView(this).apply {
@@ -800,11 +800,11 @@ class MainActivity : Activity() {
         quickAccess.addView(label("QUICK ACCESS", 0xFFE6B94D.toInt()))
         val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         listOf(
-            Triple("Apps", "▦", 0xFFB89BFF.toInt()),
-            Triple("Photos", "▧", 0xFF55B9F0.toInt()),
-            Triple("Videos", "▷", 0xFFFF8EAC.toInt()),
-            Triple("Music", "♫", 0xFFFFC45D.toInt()),
-            Triple("Files", "▤", 0xFF52D4B3.toInt())
+            Triple("Apps", "▦", 0xFFFFD21F.toInt()),
+            Triple("Photos", "▧", 0xFF0B4FB3.toInt()),
+            Triple("Videos", "▷", 0xFFE52B3A.toInt()),
+            Triple("Music", "♫", 0xFFFFD21F.toInt()),
+            Triple("Files", "▤", 0xFF0B4FB3.toInt())
         ).forEach { item ->
             val shortcut = TextView(this).apply {
                 text = item.second + "\\n" + item.first
@@ -855,8 +855,8 @@ class MainActivity : Activity() {
         val ready = panel(card)
         ready.background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf(0xFF073B39.toInt(), 0xFF08745F.toInt(), 0xFF123E4A.toInt())
-        ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0x6656E5B6) }
+            intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF8A243A.toInt())
+        ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0xFFFFD21F) }
         receiveModeLabel = TextView(this).apply {
             text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"
             textSize = 10f; letterSpacing = .12f
