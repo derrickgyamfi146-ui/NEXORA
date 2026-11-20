@@ -864,7 +864,7 @@ class MainActivity : Activity() {
             setPadding(dp(2), dp(12), dp(2), dp(4))
         })
         content.addView(TextView(this).apply {
-            text = "Get ready to receive files directly from another phone."
+            text = "Share one QR code so several nearby phones can join your Wi-Fi Direct group."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(3), 0, 0, dp(15))
@@ -907,7 +907,7 @@ class MainActivity : Activity() {
         steps.addView(label("HOW TO CONNECT", 0xFF0B4FB3.toInt()))
         listOf(
             Triple("01", "Start receiving", "NEXORA creates a private Wi-Fi Direct session."),
-            Triple("02", "Show your QR code", "The other phone scans your code to connect."),
+            Triple("02", "Show your QR code", "Other phones can scan the same code to join your group."),
             Triple("03", "Receive your files", "Received files are saved in Download/NEXORA.")
         ).forEach { item ->
             val row = LinearLayout(this).apply {
@@ -944,7 +944,7 @@ class MainActivity : Activity() {
         val connect = panel(card)
         connect.addView(label("ALREADY HAVE A QR CODE?", 0xFFE52B3A.toInt()))
         connect.addView(TextView(this).apply {
-            text = "Scan another NEXORA phone's QR code to join its receiving session."
+            text = "Scan a NEXORA group QR code to join its receiving session."
             textSize = 12f
             setTextColor(muted)
             setPadding(0, dp(7), 0, dp(11))
