@@ -44,6 +44,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     @Volatile private var token: String? = null
     @Volatile private var receiverRegistered = false
     @Volatile private var peerName = "NEXORA device"
+    @Volatile private var currentQrPayload: String? = null
 
     private val receiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: android.content.Intent?) {
@@ -53,12 +54,21 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             if (info?.groupFormed == true) {
                 if (info.isGroupOwner) startServer()
                 else connectSocket(info.groupOwnerAddress?.hostAddress ?: return)
+            } else if (socket != null) {
+                runCatching { socket?.close() }
+                socket = null
+                callbacks.onDisconnected()
+                if (active.get()) callbacks.onStatus("Wi-Fi Direct connection ended.")
             }
         }
     }
 
     fun startReceiving() {
-        if (!active.compareAndSet(false, true)) { callbacks.onStatus("Wi-Fi Direct is already active."); return }
+        if (!active.compareAndSet(false, true)) {
+            currentQrPayload?.let { callbacks.onQrReady(it) }
+            callbacks.onStatus("Wi-Fi Direct is already active.")
+            return
+        }
         token = UUID.randomUUID().toString()
         register()
         callbacks.onStatus("Creating a private Wi-Fi Direct connection…")
@@ -88,7 +98,8 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             val json = JSONObject().put("type", MAGIC).put("ssid", ssid).put("password", password)
                 .put("host", "192.168.49.1").put("port", PORT).put("token", token).put("name", peerName).toString()
             val encoded = Base64.encodeToString(json.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-            callbacks.onQrReady("NEXORA-WFD:" + encoded)
+            currentQrPayload = "NEXORA-WFD:" + encoded
+            callbacks.onQrReady(currentQrPayload!!)
             callbacks.onStatus("Wi-Fi Direct is ready. Show the QR code to the sending phone.")
         }
     }
@@ -262,6 +273,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
 
     fun stop() {
         active.set(false)
+        currentQrPayload = null
         runCatching { socket?.close() }; socket = null
         runCatching { server?.close() }; server = null
         runCatching { manager.removeGroup(channel, null) }
