@@ -70,3 +70,6 @@ The source inventory and all Kotlin app classes, app manifest, Gradle configurat
 - Hardened the APK workflow: it now refuses to generate a replacement signing key when the original key is unavailable, verifies the restored signing certificate against the known NEXORA certificate fingerprint, and verifies the built APK against the same fingerprint before artifact upload. This protects update installation instead of silently producing an APK signed with a different key.
 - Signing-workflow validation run: pending at the time of this tracker update.
 - Step 2 remains in progress. The new duplex protocol must have one inbound frame reader per socket, correlated acknowledgements, synchronized writes, and independent send/receive queues. The current one-way transport remains in place until the duplex implementation is integrated and compiled.
+
+- Changed Wi-Fi readiness behaviour: Wi-Fi-off is still checked before attempting a session, but hotspot is no longer presented as a presumed problem before connection. Hotspot guidance now appears only after a Wi-Fi Direct group/join/socket failure that suggests a radio conflict, and only while Wi-Fi itself is enabled.
+- Build validation for the code changes is running in GitHub Actions; no APK from these intermediate commits is approved for installation.
