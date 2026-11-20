@@ -608,6 +608,7 @@ class MainActivity : Activity() {
             content.setPadding(dp(13), dp(7), dp(13), dp(84))
         }
         root.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
+        var floatingCentre: TextView? = null
         if (libraryMode || connectedNow) {
             val centre = TextView(this).apply {
                 text = if (connectedNow) "⇅" else "↔"
@@ -678,14 +679,18 @@ class MainActivity : Activity() {
                     }
                 }
             }
-            contentFrame.addView(centre, android.widget.FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.END).apply {
-                rightMargin = dp(16)
-                bottomMargin = dp(88)
-            })
+            floatingCentre = centre
             centre.animate().alpha(1f).scaleX(1f).scaleY(1f)
                 .setDuration(320).setInterpolator(android.view.animation.OvershootInterpolator()).start()
         }
         setContentView(root)
+        floatingCentre?.let { fab ->
+            val appContent = findViewById<android.widget.FrameLayout>(android.R.id.content)
+            appContent.addView(fab, android.widget.FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.END).apply {
+                rightMargin = dp(16)
+                bottomMargin = dp(88)
+            })
+        }
         when (activeTab) {
             "Media" -> showMedia(card, ink, muted, blue)
             "Files" -> showFiles(card, ink, muted, blue)
