@@ -82,6 +82,11 @@ class MainActivity : Activity() {
                     java.io.File(cacheDir, "shared_apks").listFiles()?.forEach { it.delete() }
                 }
                 if (message.startsWith("Received and saved:")) {
+                    // Refresh the received list for each file, but do not interrupt a
+                    // multi-file transfer with a full-screen animation.
+                    refreshReceivedFiles()
+                }
+                if (message == "All files received successfully.") {
                     refreshReceivedFiles()
                     showReceivedRocketAnimation {
                         activeTab = "Media"
@@ -894,13 +899,53 @@ class MainActivity : Activity() {
     }
 
     private fun openSendQr() {
-        withWifiDirectPermissions {
-            runWithSharingService { service ->
-                receivingModeArmed = true
-                service.startReceiving()
-                updateStatus("Preparing your Wi-Fi Direct QR code…")
+        withWifiDirectReadiness {
+            withWifiDirectPermissions {
+                runWithSharingService { service ->
+                    receivingModeArmed = true
+                    service.startReceiving()
+                    updateStatus("Preparing your Wi-Fi Direct QR code…")
+                }
             }
         }
+    }
+
+    private fun withWifiDirectReadiness(action: () -> Unit) {
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+        val wifiEnabled = runCatching { wifiManager?.isWifiEnabled == true }.getOrDefault(false)
+        if (!wifiEnabled) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Turn on Wi-Fi")
+                .setMessage("NEXORA needs Wi-Fi enabled to create or join a Wi-Fi Direct connection.")
+                .setPositiveButton("Turn on Wi-Fi") { _, _ ->
+                    try {
+                        if (Build.VERSION.SDK_INT >= 29) startActivity(Intent(android.provider.Settings.Panel.ACTION_WIFI))
+                        else startActivity(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))
+                    } catch (_: Exception) {
+                        startActivity(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            updateStatus("Wi-Fi is off. Turn it on, then try again.")
+            return
+        }
+
+        // Android does not expose a reliable public hotspot-state switch for ordinary apps.
+        // Let the user check it and open the system tethering page when necessary.
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Check hotspot")
+            .setMessage("Wi-Fi Direct may not work while your mobile hotspot is active. If hotspot is on, turn it off before continuing.")
+            .setNeutralButton("Turn off hotspot") { _, _ ->
+                try {
+                    startActivity(Intent(android.provider.Settings.ACTION_TETHER_SETTINGS))
+                } catch (_: Exception) {
+                    startActivity(Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS))
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Continue") { _, _ -> action() }
+            .show()
     }
 
     private fun showQrCode(payload: String) {
@@ -1113,12 +1158,14 @@ class MainActivity : Activity() {
     }
 
     private fun scanQrCode() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            pendingCameraScan = true
-            requestPermissions(arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
-            return
+        withWifiDirectReadiness {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                pendingCameraScan = true
+                requestPermissions(arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
+                return@withWifiDirectReadiness
+            }
+            launchQrScanner()
         }
-        launchQrScanner()
     }
 
     private fun launchQrScanner() {
@@ -2616,8 +2663,8 @@ class MainActivity : Activity() {
                     pendingQrDeviceName = null
                     withWifiDirectPermissions {
                         runWithSharingService { service ->
+                            updateStatus("QR recognised. Checking the Wi-Fi Direct connection…")
                             service.connectWithQr(contents)
-                            updateStatus("QR accepted. Joining the Wi-Fi Direct group…")
                         }
                     }
                 } else Toast.makeText(this, "That is not a NEXORA Wi-Fi Direct QR code.", Toast.LENGTH_LONG).show()
