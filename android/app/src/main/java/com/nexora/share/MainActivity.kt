@@ -46,6 +46,7 @@ class MainActivity : Activity() {
     private var pendingCameraScan = false
     private var connectionArrivalAnimationRunning = false
     private var preparingApps = false
+    private var launchSplashVisible = true
     private val appIconCache = java.util.concurrent.ConcurrentHashMap<String, android.graphics.drawable.Drawable>()
     private lateinit var mediaList: LinearLayout
     private var mediaContinueButton: Button? = null
@@ -404,6 +405,7 @@ class MainActivity : Activity() {
 
         android.os.Handler(mainLooper).postDelayed({
             if (!isFinishing && !isDestroyed) {
+                launchSplashVisible = false
                 render()
                 refreshReceivedFiles()
                 root.alpha = 0f
@@ -1460,7 +1462,7 @@ class MainActivity : Activity() {
                     installedApps.addAll(result)
                     appsLoaded = true
                     appsLoading = false
-                    if (activeTab == "Media" && mediaCategory == "Apps") render()
+                    if (!launchSplashVisible && activeTab == "Media" && mediaCategory == "Apps") render()
                 }
             }.start()
         }
