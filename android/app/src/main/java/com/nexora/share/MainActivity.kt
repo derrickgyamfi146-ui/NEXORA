@@ -3317,8 +3317,7 @@ class MainActivity : Activity() {
         val lower = message.lowercase()
         transferIsActive = when {
             lower.contains("sending") || lower.contains("receiving") -> true
-            lower.startsWith("sent selected files") ||
-                lower.contains("all files received successfully") ||
+            lower.contains("all files received successfully") ||
                 lower.contains("transfer finished") || lower.contains("queue finished") ||
                 lower.contains("transfer cancelled") || lower.contains("connection ended") ||
                 lower.contains("disconnected") -> false
