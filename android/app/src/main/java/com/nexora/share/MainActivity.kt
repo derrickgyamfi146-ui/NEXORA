@@ -516,6 +516,9 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        floatingTransferAnimator?.cancel()
+        floatingTransferAnimator = null
+        floatingTransferIndicator = null
         receiveModeLabel = null
         mediaContinueButton = null
         transferStatusView = null
@@ -690,14 +693,7 @@ class MainActivity : Activity() {
                 alpha = 0f
                 scaleX = .68f
                 scaleY = .68f
-                if (connectedNow) {
-                    android.animation.ObjectAnimator.ofFloat(this, "translationY", -dp(3).toFloat(), dp(3).toFloat()).apply {
-                        duration = 900
-                        repeatCount = android.animation.ValueAnimator.INFINITE
-                        repeatMode = android.animation.ValueAnimator.REVERSE
-                        start()
-                    }
-                }
+                floatingTransferIndicator = this
                 isHapticFeedbackEnabled = true
                 contentDescription = if (connectedNow) "Open transfer centre" else "Show Send and Receive actions"
                 setOnClickListener {
@@ -743,6 +739,7 @@ class MainActivity : Activity() {
             floatingCentre = centre
         }
         setContentView(root)
+        updateFloatingTransferAnimation()
         floatingCentre?.let { fab ->
             val appContent = findViewById<android.widget.FrameLayout>(android.R.id.content)
             appContent.addView(fab, android.widget.FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.END).apply {
@@ -3117,6 +3114,9 @@ class MainActivity : Activity() {
     }
 
     private var quickActionPanel: LinearLayout? = null
+    private var floatingTransferIndicator: TextView? = null
+    private var floatingTransferAnimator: android.animation.ObjectAnimator? = null
+    private var transferIsActive = false
     private val quickActionHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var quickActionHide: Runnable? = null
 
@@ -3248,12 +3248,40 @@ class MainActivity : Activity() {
     private var transferProgressBar: android.widget.ProgressBar? = null
     private var transferStage = 0
     private val transferStepViews = ArrayList<TextView>()
+    private fun updateFloatingTransferAnimation() {
+        val indicator = floatingTransferIndicator ?: return
+        if (transferIsActive) {
+            if (floatingTransferAnimator?.isRunning != true) {
+                floatingTransferAnimator = android.animation.ObjectAnimator.ofFloat(indicator, View.ROTATION, 0f, 360f).apply {
+                    duration = 850L
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    interpolator = android.view.animation.LinearInterpolator()
+                    start()
+                }
+            }
+        } else {
+            floatingTransferAnimator?.cancel()
+            floatingTransferAnimator = null
+            indicator.rotation = 0f
+        }
+    }
+
     private fun updateStatus(message: String) {
         latestStatus = message
         if (::status.isInitialized) status.text = message
         transferStatusView?.text = message
         receiveModeLabel?.text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"
         val lower = message.lowercase()
+        transferIsActive = when {
+            lower.contains("sending") || lower.contains("receiving") -> true
+            lower.startsWith("sent:") || lower.startsWith("sent selected files") ||
+                lower.startsWith("received and saved:") || lower.contains("all files received successfully") ||
+                lower.contains("transfer finished") || lower.contains("queue finished") ||
+                lower.contains("transfer cancelled") || lower.contains("connection ended") ||
+                lower.contains("disconnected") -> false
+            else -> transferIsActive
+        }
+        updateFloatingTransferAnimation()
         transferStage = when {
             lower.contains("queue finished") || lower.contains("all selected files") || lower.startsWith("sent:") || lower.contains("file sent") || lower.contains("received and saved") -> 5
             lower.contains("sending") || lower.contains("receiving") -> 4
