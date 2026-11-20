@@ -1886,7 +1886,7 @@ class MainActivity : Activity() {
                 activeTab = "Media"; mediaCategory = "Apps"; render()
             }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
             row.addView(button("RECEIVE", 0xFF0B9B75.toInt()) {
-                withWifiDirectPermissions { receivingModeArmed = true; runWithSharingService { it.startReceiving(); updateStatus("Connected. Ready to receive.") } }
+                openSendQr()
             }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
             actions.addView(row)
             content.addView(actions, bottom(10))
