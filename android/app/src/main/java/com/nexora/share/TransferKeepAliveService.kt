@@ -17,7 +17,7 @@ class TransferKeepAliveService : Service() {
         fun onPeerFound(endpointId: String, name: String)
         fun onPeerLost(endpointId: String)
         fun onConnectionRequest(endpointId: String, name: String, digits: String)
-        fun onConnected(endpointId: String)
+        fun onConnected(endpointId: String, isReceiver: Boolean)
         fun onDisconnected(endpointId: String)
         fun onTransferProgress(message: String)
         fun onQrReady(payload: String)
@@ -49,10 +49,10 @@ class TransferKeepAliveService : Service() {
                 status(message)
             }
             override fun onQrReady(payload: String) { listener?.onQrReady(payload) }
-            override fun onConnected(peer: String) {
+            override fun onConnected(peer: String, localIsReceiver: Boolean) {
                 connected = true
                 peerName = peer
-                listener?.onConnected(ENDPOINT_ID)
+                listener?.onConnected(ENDPOINT_ID, localIsReceiver)
                 status("Connected to " + peer + " over Wi-Fi Direct.")
             }
             override fun onDisconnected() {
