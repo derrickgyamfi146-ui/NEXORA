@@ -85,3 +85,9 @@ The source inventory and all Kotlin app classes, app manifest, Gradle configurat
 - [x] CI checks for commits 9f529c9, 6c5715a and 78edc95 completed successfully, including the original signing-key fingerprint check and APK certificate compatibility check.
 - [ ] The newest Sent/Received/History navigation commit is currently being built and has not yet passed CI.
 - [ ] The persistent duplex transfer architecture remains the next major implementation task. The old transport has not been replaced, so two-way send/receive is not complete.
+
+- [x] Added separate Sent and Received navigation destinations and a dedicated combined History screen. Successful send and receive events are timestamped and shown newest-first in History. The latest CI run for this code reached APK upload; final job completion is still pending.
+- [x] Updated the launcher icon artwork to use NEXORA's yellow/red/blue direction while retaining its own NEXORA symbol.
+- [x] Applied the yellow/red/blue direction to the main app background, top header, navigation strip, selected navigation chip, cards and shared button styling. This is the first visual-theme pass; screen-by-screen spacing, typography, and component redesign remains open.
+- [ ] Incoming transfer queue with pause/resume/cancel is not implemented yet.
+- [ ] Persistent bidirectional and group transfer protocols are not implemented yet.
