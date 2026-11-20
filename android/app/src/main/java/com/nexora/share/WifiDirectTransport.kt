@@ -281,6 +281,128 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         }
     }
 
+    private fun startPeerSession(
+        s: Socket,
+        input: DataInputStream,
+        output: DataOutputStream,
+        localReceiver: Boolean
+    ) {
+        socket = s
+        peerInput = input
+        peerOutput = output
+        localIsGroupOwner = localReceiver
+        s.soTimeout = 0
+        acknowledgementQueue.clear()
+        sendPermit.drainPermits()
+        callbacks.onConnected(peerName, localReceiver)
+        callbacks.onStatus("Connected to " + peerName + ". You can send and receive over this connection.")
+        io.execute { peerReadLoop(s, input, output) }
+    }
+
+    private fun peerReadLoop(s: Socket, input: DataInputStream, output: DataOutputStream) {
+        try {
+            while (active.get() && !s.isClosed) {
+                when (input.readUnsignedByte()) {
+                    FRAME_BATCH -> {
+                        remoteOwnsTurn = true
+                        val count = input.readInt()
+                        require(count in 1..MAX_FILES) { "Invalid file count." }
+                        repeat(count) {
+                            val name = safeName(input.readUTF())
+                            val mime = input.readUTF().take(120).ifBlank { "application/octet-stream" }
+                            val size = input.readLong()
+                            require(size in 0..(20L * 1024 * 1024 * 1024)) { "Invalid file size." }
+                            val saved = saveIncoming(input, name, mime, size)
+                            synchronized(outputLock) {
+                                output.writeByte(FRAME_ACK)
+                                output.writeBoolean(saved)
+                                output.flush()
+                            }
+                            if (saved) callbacks.onReceived(name)
+                            else callbacks.onStatus("Incoming transfer cancelled: " + name)
+                        }
+                        callbacks.onStatus("All files received successfully.")
+                    }
+                    FRAME_ACK -> acknowledgementQueue.offer(input.readBoolean())
+                    FRAME_REQUEST_SEND -> {
+                        val grantNow = synchronized(permitLock) {
+                            if (localOwnsTurn || (localWaitingForTurn && localIsGroupOwner)) {
+                                remoteRequestPending = true
+                                false
+                            } else {
+                                remoteOwnsTurn = true
+                                true
+                            }
+                        }
+                        if (grantNow) writeControl(FRAME_GRANT_SEND)
+                    }
+                    FRAME_GRANT_SEND -> sendPermit.release()
+                    FRAME_RELEASE_SEND -> {
+                        val grantQueuedPeer = synchronized(permitLock) {
+                            remoteOwnsTurn = false
+                            if (remoteRequestPending && !localOwnsTurn && !localWaitingForTurn) {
+                                remoteRequestPending = false
+                                remoteOwnsTurn = true
+                                true
+                            } else false
+                        }
+                        if (grantQueuedPeer) writeControl(FRAME_GRANT_SEND)
+                    }
+                    else -> throw IOException("The connected phone sent an unknown NEXORA transfer frame.")
+                }
+            }
+        } catch (e: Exception) {
+            if (active.get() && !s.isClosed) callbacks.onStatus("Connection ended: " + (e.localizedMessage ?: "network closed"))
+        } finally {
+            runCatching { s.close() }
+            if (socket === s) {
+                socket = null
+                peerInput = null
+                peerOutput = null
+                localWaitingForTurn = false
+                localOwnsTurn = false
+                remoteOwnsTurn = false
+                remoteRequestPending = false
+                callbacks.onDisconnected()
+            }
+        }
+    }
+
+    private fun writeControl(frame: Int) {
+        val output = peerOutput ?: throw IOException("The NEXORA connection is not ready.")
+        synchronized(outputLock) {
+            output.writeByte(frame)
+            output.flush()
+        }
+    }
+
+    private fun requestSendTurn() {
+        sendPermit.drainPermits()
+        synchronized(permitLock) { localWaitingForTurn = true }
+        writeControl(FRAME_REQUEST_SEND)
+        if (!sendPermit.tryAcquire(120, TimeUnit.SECONDS)) {
+            synchronized(permitLock) { localWaitingForTurn = false }
+            throw IOException("The other phone is busy. Please try sending again.")
+        }
+        synchronized(permitLock) {
+            localWaitingForTurn = false
+            localOwnsTurn = true
+        }
+    }
+
+    private fun releaseSendTurn() {
+        runCatching { writeControl(FRAME_RELEASE_SEND) }
+        val grantQueuedPeer = synchronized(permitLock) {
+            localOwnsTurn = false
+            if (remoteRequestPending && !localWaitingForTurn) {
+                remoteRequestPending = false
+                remoteOwnsTurn = true
+                true
+            } else false
+        }
+        if (grantQueuedPeer) runCatching { writeControl(FRAME_GRANT_SEND) }
+    }
+
     private fun connectSocket(host: String) {
         if (socket?.isConnected == true && socket?.isClosed == false) return
         if (!connecting.compareAndSet(false, true)) return
