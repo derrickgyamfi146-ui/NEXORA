@@ -47,6 +47,7 @@ class MainActivity : Activity() {
     private var selectionSendButton: TextView? = null
     private var pendingCameraScan = false
     private var pendingInstallUri: Uri? = null
+    private var qrDialog: android.app.Dialog? = null
     private var connectionArrivalAnimationRunning = false
     private var connectionSessionAnimationShown = false
     private var preparingApps = false
@@ -156,6 +157,12 @@ class MainActivity : Activity() {
                 discovered[endpointId] = name
                 connectedPeers.add(endpointId)
                 successFeedback()
+                // A one-to-one QR receiver closes its QR once connected. A group
+                // host keeps the same QR visible so additional phones can join.
+                if (endpointId == "WIFI_DIRECT") {
+                    qrDialog?.dismiss()
+                    qrDialog = null
+                }
                 pendingAutoConnectEndpointId = null
                 receivingModeArmed = false
                 if (::peerList.isInitialized) rebuildPeerList()
@@ -1122,6 +1129,8 @@ class MainActivity : Activity() {
     private fun showQrCode(payload: String) {
         val returnTab = activeTab
         val dialog = android.app.Dialog(this)
+        qrDialog?.dismiss()
+        qrDialog = dialog
         val deviceName = (getSharedPreferences("nexora_preferences", MODE_PRIVATE)
             .getString("device_name", null)?.trim()?.takeIf { it.isNotEmpty() }
             ?: (Build.MODEL ?: "Android device").take(24)).take(24)
@@ -1211,6 +1220,7 @@ class MainActivity : Activity() {
                 render()
             }, LinearLayout.LayoutParams(-1, dp(44)))
             dialog.setContentView(page)
+            dialog.setOnDismissListener { if (qrDialog === dialog) qrDialog = null }
             dialog.setCancelable(true)
             dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
             dialog.show()
