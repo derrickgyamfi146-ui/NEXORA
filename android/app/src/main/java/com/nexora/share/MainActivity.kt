@@ -2735,31 +2735,116 @@ class MainActivity : Activity() {
     }
 
     private fun showSettings(card: Int, ink: Int, muted: Int, blue: Int) {
-        content.addView(button("‹  BACK TO APPS", 0xFF4C46A8.toInt()) { activeTab = "Media"; mediaCategory = "Apps"; render() }, bottom(8))
-        content.addView(TextView(this).apply { text = "Preferences"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(12)) })
-        val appearance = panel(card); appearance.addView(label("APPEARANCE", muted))
-        appearance.addView(button(if (darkMode) "Switch to light theme" else "Switch to dark theme", blue) { darkMode = !darkMode; getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply(); render() })
-        content.addView(appearance, bottom(10))
-        val prefs = panel(card); prefs.addView(label("TRANSFER & STORAGE", muted))
-        listOf("Save location\nDownload/NEXORA", "Connection\nWi-Fi Direct", "Transfer mode\nDirect device-to-device", "Mobile data\nNot required for local transfers", "Privacy\nFiles are selected by you").forEach { value ->
-            prefs.addView(TextView(this).apply { text = value; textSize = 12f; setTextColor(ink); setPadding(0, dp(10), 0, dp(4)) })
+        content.addView(TextView(this).apply {
+            text = "Settings"
+            textSize = 27f
+            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+            setTextColor(ink)
+            setPadding(dp(2), dp(12), dp(2), dp(3))
+        })
+        content.addView(TextView(this).apply {
+            text = "Make NEXORA feel right on your phone."
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(dp(3), 0, 0, dp(15))
+        })
+
+        val appearance = panel(card).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF8A243A.toInt())
+            ).apply { cornerRadius = dp(22).toFloat(); setStroke(dp(1), 0xFFFFD21F.toInt()) }
         }
-        content.addView(prefs, bottom(10))
-        val currentName = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getString("device_name", Build.MODEL) ?: "Android device"
-        content.addView(button("Device name: " + currentName + "  ·  Change", blue) {
-            val field = EditText(this@MainActivity).apply { setText(currentName); setSelection(text.length); hint = "Phone name" }
+        appearance.addView(label("APPEARANCE", 0xFFFFD66B.toInt()))
+        appearance.addView(TextView(this).apply {
+            text = if (darkMode) "Dark theme is on" else "Light theme is on"
+            textSize = 17f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1)
+            setPadding(0, dp(7), 0, dp(9))
+        })
+        appearance.addView(button(if (darkMode) "SWITCH TO LIGHT THEME" else "SWITCH TO DARK THEME", 0xFF0B4FB3.toInt()) {
+            darkMode = !darkMode
+            getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply()
+            render()
+        })
+        content.addView(appearance, bottom(13))
+
+        val currentName = getSharedPreferences("nexora_preferences", MODE_PRIVATE)
+            .getString("device_name", Build.MODEL) ?: "Android device"
+        val device = panel(card)
+        device.addView(label("YOUR DEVICE", 0xFF0B4FB3.toInt()))
+        device.addView(TextView(this).apply {
+            text = currentName
+            textSize = 18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink)
+            setPadding(0, dp(7), 0, dp(3))
+        })
+        device.addView(TextView(this).apply {
+            text = "This name is shown to phones that connect with you."
+            textSize = 11f
+            setTextColor(muted)
+            setPadding(0, 0, 0, dp(10))
+        })
+        device.addView(button("CHANGE DEVICE NAME", 0xFFE52B3A.toInt()) {
+            val field = EditText(this@MainActivity).apply {
+                setText(currentName)
+                setSelection(text.length)
+                hint = "Phone name"
+            }
             android.app.AlertDialog.Builder(this@MainActivity).setTitle("Set NEXORA device name").setView(field)
                 .setPositiveButton("Save") { _, _ ->
                     val value = field.text.toString().trim()
                     if (value.isNotBlank()) {
-                        getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit().putString("device_name", value.take(24)).apply()
+                        getSharedPreferences("nexora_preferences", MODE_PRIVATE).edit()
+                            .putString("device_name", value.take(24)).apply()
                         Toast.makeText(this@MainActivity, "Device name saved. Restart discovery to use it.", Toast.LENGTH_LONG).show()
                         render()
                     }
                 }.setNegativeButton("Cancel", null).show()
-        }, bottom(10))
-        val versionName = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "Unknown" } catch (_: Exception) { "Unknown" }
-        content.addView(TextView(this).apply { text = "NEXORA • Version " + versionName + "\nAdvanced features depend on Android permissions and device support."; textSize = 11f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(dp(8), dp(12), dp(8), dp(12)) })
+        })
+        content.addView(device, bottom(13))
+
+        val transfer = panel(card)
+        transfer.addView(label("TRANSFER & PRIVACY", 0xFF0B4FB3.toInt()))
+        listOf(
+            "Save folder" to "Download/NEXORA",
+            "Connection" to "Wi-Fi Direct",
+            "Transfer type" to "Direct phone-to-phone",
+            "Internet" to "Not required for local transfers",
+            "Privacy" to "You choose which files to share"
+        ).forEach { item ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, dp(9), 0, dp(8))
+            }
+            row.addView(TextView(this).apply {
+                text = item.first
+                textSize = 10f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(muted)
+            })
+            row.addView(TextView(this).apply {
+                text = item.second
+                textSize = 13f
+                setTextColor(ink)
+                setPadding(0, dp(2), 0, 0)
+            })
+            transfer.addView(row)
+        }
+        content.addView(transfer, bottom(13))
+
+        val versionName = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "Unknown"
+        } catch (_: Exception) { "Unknown" }
+        content.addView(TextView(this).apply {
+            text = "NEXORA  ·  Version " + versionName + "\nBuilt for simple, private file sharing."
+            textSize = 11f
+            setTextColor(muted)
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(12), dp(8), dp(18))
+        })
     }
 
     private fun animatePress(view: View) {
