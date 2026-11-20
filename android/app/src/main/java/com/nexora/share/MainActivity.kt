@@ -242,6 +242,11 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState != null) {
+            activeTab = savedInstanceState.getString("nexora_active_tab", "Media") ?: "Media"
+            mediaCategory = savedInstanceState.getString("nexora_media_category", "Apps") ?: "Apps"
+            launchSplashVisible = false
+        }
         darkMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("dark_mode", true)
         val savedTree = getSharedPreferences("nexora_file_manager", MODE_PRIVATE).getString("tree_uri", null)
         if (!savedTree.isNullOrBlank()) {
@@ -255,7 +260,13 @@ class MainActivity : Activity() {
             }
         }
         preloadLibraries()
-        showLaunchSplash()
+        if (savedInstanceState == null) showLaunchSplash() else render()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("nexora_active_tab", activeTab)
+        outState.putString("nexora_media_category", mediaCategory)
+        super.onSaveInstanceState(outState)
     }
 
     private fun showLaunchSplash() {
