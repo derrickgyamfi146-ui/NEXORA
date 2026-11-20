@@ -1,8 +1,8 @@
 # NEXORA Master Upgrade Tracker
 
-Last updated: 2026-11-20 (latest UI consistency pass)
+Last updated: 2026-11-20 (Group Share, queue and release build)
 
-Baseline: NEXORA 0.8.2, versionCode 79  
+Release target: NEXORA 0.8.3, versionCode 80 (upgrading from 0.8.2/build79)  
 Application ID: `com.nexora.share`
 
 **Release protection:** preserve the existing application ID and original signing certificate. Never tell the user to uninstall the installed NEXORA app. Only provide a new APK after the latest integrated build, signing check and artifact upload all pass.
@@ -25,7 +25,7 @@ Application ID: `com.nexora.share`
 | 12 | Group Share: one QR, multiple active peers, broadcast and recipient exclusions | **Implemented in code: one Wi-Fi Direct group QR accepts multiple TCP peers; group owner can broadcast to connected peers and exclude selected recipients; physical multi-device verification pending** |
 | 13 | Floating control draggable across full app screen | **Implemented; touch-boundary verification pending** |
 | 14 | Full visual redesign using yellow/red/blue direction inspired by 2C TV icon | **Code consistency pass complete across Home, Receive, Media, Files, Contacts, Transfer Centre, Sent, Received, History and Settings; visual review on devices pending** |
-| 15 | Final build, original signing-certificate check, APK verification and device test plan | **Not started for release 0.8.3/build80; prior intermediate builds passed CI only** |
+| 15 | Final build, original signing-certificate check, APK verification and device test plan | **Final 0.8.3/build80 workflow running; original signing-key fingerprint must match and artifact upload must pass** |
 
 ## Technical decisions and safeguards
 
@@ -52,7 +52,7 @@ Application ID: `com.nexora.share`
 | `324768b` | Protocol v2 marker | Build, signature and artifact upload passed |
 | `60726f9` | Disconnect cleanup and wake pending sends | Build, signature and artifact upload passed |\n| `569e750` | Import legacy sent and received items into History | Build, signature and artifact upload passed |\n| `352b130` | Correct year rollover and avoid duplicate legacy History events | CI pending at the time of tracker update |
 
-Recent screen redesign commits: Transfer Centre (`7ddd7c0`), Received Files (`af727ba`), History (`5d21707`), Sent Files (`e075c9f`), Settings (`90bacf2`) and Receive (`0d8e896`). The later consistency pass adjusted Files/media and Contacts navigation (`0c5a0d9`, `1a937db`). Queue and Group Share transport work is in commits `ee06a92`, `cf6b8fad`, `744fe367`, `8a72742`, `9dcb95c` and subsequent fixes. Build `8a72742` passed compilation, original signing-certificate verification and artifact upload. The latest integrated code still needs its own CI pass. CI proves compilation and signing, not real-world Wi-Fi Direct operation.
+Recent screen redesign commits: Transfer Centre (`7ddd7c0`), Received Files (`af727ba`), History (`5d21707`), Sent Files (`e075c9f`), Settings (`90bacf2`) and Receive (`0d8e896`). The later consistency pass adjusted Files/media and Contacts navigation (`0c5a0d9`, `1a937db`). Queue and Group Share transport work is in commits `ee06a92`, `cf6b8fad`, `744fe367`, `8a72742`, `9dcb95c` and subsequent fixes. Builds `8a72742` and `485c80a` passed compilation, original signing-certificate verification and artifact upload. Release build 80 is now running with the final version number and artifact name. CI proves compilation and signing, not real-world Wi-Fi Direct operation.
 
 ## Release acceptance tests
 
