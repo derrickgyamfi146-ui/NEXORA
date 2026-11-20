@@ -2771,7 +2771,8 @@ class MainActivity : Activity() {
                                 val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "$packageName.fileprovider", file)
                                 if (!selectedUris.contains(uri)) selectedUris.add(uri)
                                 Toast.makeText(this@MainActivity, "Contact card added to Send.", Toast.LENGTH_SHORT).show()
-                                activeTab = "Send"
+                                activeTab = "Media"
+                                mediaCategory = "Apps"
                                 render()
                             } catch (e: Exception) {
                                 updateStatus("Could not prepare this contact: " + (e.localizedMessage ?: "unknown error"))
