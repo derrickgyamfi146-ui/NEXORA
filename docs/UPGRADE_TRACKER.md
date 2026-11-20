@@ -91,3 +91,9 @@ The source inventory and all Kotlin app classes, app manifest, Gradle configurat
 - [x] Applied the yellow/red/blue direction to the main app background, top header, navigation strip, selected navigation chip, cards and shared button styling. This is the first visual-theme pass; screen-by-screen spacing, typography, and component redesign remains open.
 - [ ] Incoming transfer queue with pause/resume/cancel is not implemented yet.
 - [ ] Persistent bidirectional and group transfer protocols are not implemented yet.
+
+- [x] Added local connection-role information through the Wi-Fi Direct transport and service callbacks. The receiver now runs the connection rocket; the sender waits for the same transition window without displaying a rocket, then both navigate to the main library.
+- [x] Rotated the receiver connection rocket toward an upright orientation.
+- [x] Added an explicit Disconnect button in the connected transfer centre, with confirmation before ending the session.
+- [x] Moved the floating control into the app content overlay so its drag bounds cover the full app screen instead of only the scrollable content region.
+- CI caught a Kotlin integer-literal type error in the new splash ring colour; it has been corrected with an explicit integer conversion. The corrected commit is undergoing a fresh build. Intermediate commits made while changing the connection callback signature also caused expected temporary compile mismatches before all three layers were updated; final integrated callback build is pending.
