@@ -362,6 +362,8 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 localOwnsTurn = false
                 remoteOwnsTurn = false
                 remoteRequestPending = false
+                acknowledgementQueue.offer(false)
+                sendPermit.release()
                 callbacks.onDisconnected()
             }
         }
@@ -623,18 +625,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     fun stop() {
         active.set(false)
         currentQrPayload = null
-        runCatching { socket?.close() }; socket = null
-        peerInput = null
-        peerOutput = null
-        acknowledgementQueue.clear()
-        sendPermit.drainPermits()
-        localWaitingForTurn = false
-        localOwnsTurn = false
-        remoteOwnsTurn = false
-        remoteRequestPending = false
+        val activePeer = socket
+        runCatching { activePeer?.close() }
+        if (activePeer == null) callbacks.onDisconnected()
         runCatching { server?.close() }; server = null
         runCatching { manager.removeGroup(channel, null) }
         if (receiverRegistered) { runCatching { context.unregisterReceiver(receiver) }; receiverRegistered = false }
-        callbacks.onDisconnected()
     }
 }
