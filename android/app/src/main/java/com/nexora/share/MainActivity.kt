@@ -21,6 +21,7 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var peerList: LinearLayout
     private lateinit var receivedList: LinearLayout
+    private var incomingStatusView: TextView? = null
     private lateinit var sendButton: Button
     private val selectedUris = ArrayList<Uri>()
     private val discovered = LinkedHashMap<String, String>()
@@ -84,7 +85,11 @@ class MainActivity : Activity() {
                 }
                 if (message.startsWith("Received and saved:")) {
                     rememberReceivedFileName(message.removePrefix("Received and saved:").trim())
+                    incomingStatusView?.text = "No active incoming transfers."
                     refreshReceivedFiles()
+                }
+                if (message.startsWith("Incoming transfer cancelled:")) {
+                    incomingStatusView?.text = "Transfer cancelled. The connection is still available."
                 }
                 if (message == "All files received successfully.") {
                     // Connection animation belongs to the connection event only.
@@ -187,7 +192,14 @@ class MainActivity : Activity() {
                 if (::root.isInitialized) render()
             }
         }
-        override fun onTransferProgress(message: String) { runOnUiThread { updateStatus(message) } }
+        override fun onTransferProgress(message: String) {
+            runOnUiThread {
+                updateStatus(message)
+                if (message.startsWith("Receiving ") || message.startsWith("Paused:")) {
+                    incomingStatusView?.text = message
+                }
+            }
+        }
         override fun onQrReady(payload: String) { runOnUiThread { showQrCode(payload) } }
     }
 
@@ -2227,6 +2239,39 @@ class MainActivity : Activity() {
     }
     private fun showReceived(card: Int, ink: Int, muted: Int) {
         content.addView(TextView(this).apply { text = "Received"; textSize = 24f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(ink); setPadding(dp(2), dp(8), dp(2), dp(8)) })
+
+        val incoming = panel(card)
+        incoming.addView(label("INCOMING TRANSFERS", 0xFFE52B3A.toInt()))
+        incomingStatusView = TextView(this).apply {
+            text = if (sharing?.hasIncomingTransfer() == true) "Incoming transfer active." else "No active incoming transfers."
+            textSize = 12f
+            setTextColor(ink)
+            setPadding(0, dp(9), 0, dp(9))
+        }
+        incoming.addView(incomingStatusView)
+        val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        controls.addView(button("PAUSE", 0xFF0B4FB3.toInt()) {
+            sharing?.pauseIncoming()
+            incomingStatusView?.text = "Pausing incoming transfer…"
+        }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(4) })
+        controls.addView(button("RESUME", 0xFFE69A35.toInt()) {
+            sharing?.resumeIncoming()
+            incomingStatusView?.text = "Resuming incoming transfer…"
+        }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
+        controls.addView(button("CANCEL", 0xFFE52B3A.toInt()) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Cancel this incoming item?")
+                .setMessage("Only the current item will be cancelled. The NEXORA connection will remain open.")
+                .setNegativeButton("Keep transfer", null)
+                .setPositiveButton("Cancel item") { _, _ ->
+                    sharing?.cancelIncoming()
+                    incomingStatusView?.text = "Cancelling this item…"
+                }
+                .show()
+        }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(4) })
+        incoming.addView(controls)
+        content.addView(incoming, bottom(10))
+
         val box = panel(card)
         box.addView(label("ITEMS RECEIVED ON THIS PHONE", muted))
         receivedList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
