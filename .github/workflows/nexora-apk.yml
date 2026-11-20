@@ -46,18 +46,25 @@ jobs:
           path: ~/.android/debug.keystore
           key: nexora-android-debug-signing-key-v2
 
-      - name: Create signing key if no saved key exists
+      - name: Stop if the original signing key is unavailable
         if: steps.legacy-signing.outputs.cache-hit != 'true' && steps.current-signing.outputs.cache-hit != 'true'
         run: |
-          mkdir -p "$HOME/.android"
-          keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          echo "The original NEXORA signing key was not restored. Refusing to create a replacement because it would prevent updates over existing installations."
+          exit 1
 
-      - name: Save new signing key if no saved key exists
-        if: steps.legacy-signing.outputs.cache-hit != 'true' && steps.current-signing.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: nexora-android-debug-signing-key-v2
+      - name: Verify restored NEXORA signing key
+        env:
+          EXPECTED_CERT_SHA256: A42DC03C2D6ABF168618697BFE423F72D2E135752E39BC2A788D77B45426272E
+        run: |
+          set -euo pipefail
+          ACTUAL="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk -F': ' '/SHA256:/{print $2; exit}' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          if [ "$ACTUAL" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "Signing certificate mismatch. Refusing to build an APK that may not update the installed NEXORA app."
+            echo "Expected: $EXPECTED_CERT_SHA256"
+            echo "Actual:   $ACTUAL"
+            exit 1
+          fi
+          echo "Original NEXORA signing certificate confirmed."
 
       - name: Show signing certificate
         run: keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep -E "SHA256:|SHA1:"
@@ -80,10 +87,18 @@ jobs:
       - name: Build APK
         run: gradle -p android :app:assembleDebug
 
-      - name: Verify APK signature
+      - name: Verify APK signature and update compatibility
+        env:
+          EXPECTED_CERT_SHA256: A42DC03C2D6ABF168618697BFE423F72D2E135752E39BC2A788D77B45426272E
         run: |
-          echo "CERTIFICATE FROM THIS BUILD:"
+          set -euo pipefail
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk
+          ACTUAL="$( "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | awk -F': ' '/certificate SHA-256 digest:/{print $2; exit}' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          if [ "$ACTUAL" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "APK certificate does not match the original installed NEXORA certificate."
+            exit 1
+          fi
+          echo "APK signature and update certificate confirmed."
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
