@@ -39,7 +39,9 @@ class TransferKeepAliveService : Service() {
         WifiDirectTransport(this, object : WifiDirectTransport.Callbacks {
             override fun onStatus(message: String) {
                 if (message.startsWith("Could not create Wi-Fi Direct group") ||
-                    message.startsWith("Wi-Fi Direct group details were unavailable")) receiving = false
+                    message.startsWith("Wi-Fi Direct group details were unavailable") ||
+                    message.startsWith("Android did not provide Wi-Fi Direct credentials") ||
+                    message.startsWith("Wi-Fi Direct receiver could not start")) receiving = false
                 status(message)
             }
             override fun onQrReady(payload: String) { listener?.onQrReady(payload) }
