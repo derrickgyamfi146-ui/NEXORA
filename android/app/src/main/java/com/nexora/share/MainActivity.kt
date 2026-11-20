@@ -701,7 +701,7 @@ class MainActivity : Activity() {
             textSize = 12f; setTextColor(muted); setPadding(0, dp(7), 0, dp(10))
         })
         val qrRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        qrRow.addView(button("MY QR CODE", 0xFFE69A35.toInt()) { showQrCode() },
+        qrRow.addView(button("MY QR CODE", 0xFFE69A35.toInt()) { openSendQr() },
             LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(5) })
         qrRow.addView(button("SCAN QR", 0xFF7357E8.toInt()) { scanQrCode() },
             LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(5) })
