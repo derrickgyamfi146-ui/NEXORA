@@ -28,6 +28,7 @@ class TransferKeepAliveService : Service() {
         fun onConnected(endpointId: String)
         fun onDisconnected(endpointId: String)
         fun onTransferProgress(message: String)
+        fun onQrReady(payload: String)
     }
 
     inner class LocalBinder : Binder() {
@@ -35,6 +36,25 @@ class TransferKeepAliveService : Service() {
     }
 
     private val binder = LocalBinder()
+    private val wifiTransport by lazy {
+        WifiDirectTransport(this, object : WifiDirectTransport.Callbacks {
+            override fun onStatus(message: String) { status(message) }
+            override fun onQrReady(payload: String) { listener?.onQrReady(payload) }
+            override fun onConnected(peerName: String) {
+                synchronized(connectedEndpoints) { connectedEndpoints.add("WIFI_DIRECT") }
+                endpointNames["WIFI_DIRECT"] = peerName
+                listener?.onConnected("WIFI_DIRECT")
+                status("Connected to " + peerName + " over Wi-Fi Direct.")
+            }
+            override fun onDisconnected() {
+                synchronized(connectedEndpoints) { connectedEndpoints.remove("WIFI_DIRECT") }
+                endpointNames.remove("WIFI_DIRECT")
+                listener?.onDisconnected("WIFI_DIRECT")
+            }
+            override fun onProgress(message: String) { listener?.onTransferProgress(message) }
+            override fun onReceived(name: String) { status("Received and saved: " + name) }
+        })
+    }
     private var transferWakeLock: android.os.PowerManager.WakeLock? = null
     private val client by lazy { Nearby.getConnectionsClient(this) }
     private var listener: Listener? = null
@@ -91,54 +111,19 @@ class TransferKeepAliveService : Service() {
 
     @Synchronized
     fun startReceiving() {
-        if (advertising) {
-            status("Already visible. Keep this screen open while the other phone searches.")
-            return
-        }
-        if (discovering) {
-            client.stopDiscovery()
-            discovering = false
-        }
         promoteToForeground()
         advertising = true
-        val options = AdvertisingOptions.Builder().setStrategy(strategy).build()
-        client.startAdvertising(deviceName(), serviceId, connectionCallback, options)
-            .addOnSuccessListener { status("Your phone is visible. On the other phone, tap Send.") }
-            .addOnFailureListener {
-                advertising = false
-                releaseWakeLockIfIdle()
-                status(if (strategy == Strategy.P2P_POINT_TO_POINT) {
-                    "High-speed mode is not supported by this connection. Turn it off on both phones and retry."
-                } else {
-                    "Could not become visible: ${it.localizedMessage}"
-                })
-            }
+        wifiTransport.startReceiving()
     }
 
     @Synchronized
     fun startFinding() {
-        if (discovering) {
-            status("Already searching. Wait for the other phone to appear below.")
-            return
-        }
-        if (advertising) {
-            client.stopAdvertising()
-            advertising = false
-        }
+        status("Scan the receiving phone's NEXORA QR code to connect over Wi-Fi Direct.")
+    }
+
+    fun connectWithQr(payload: String) {
         promoteToForeground()
-        discovering = true
-        val options = DiscoveryOptions.Builder().setStrategy(strategy).build()
-        client.startDiscovery(serviceId, discoveryCallback, options)
-            .addOnSuccessListener { status("Searching for nearby NEXORA phones…") }
-            .addOnFailureListener {
-                discovering = false
-                releaseWakeLockIfIdle()
-                status(if (strategy == Strategy.P2P_POINT_TO_POINT) {
-                    "High-speed mode is not supported by this connection. Turn it off on both phones and retry."
-                } else {
-                    "Could not search: ${it.localizedMessage}"
-                })
-            }
+        wifiTransport.connectWithQr(payload)
     }
 
     fun connect(endpointId: String, name: String) {
@@ -160,23 +145,7 @@ class TransferKeepAliveService : Service() {
     @Synchronized
     fun sendFiles(uris: List<Uri>) {
         if (uris.isEmpty()) { status("Choose at least one file."); return }
-        if (!sending && outgoingQueue.isEmpty()) {
-            outgoingSucceeded = 0
-            outgoingFailed = 0
-        }
-        var added = 0
-        uris.distinctBy { it.toString() }.forEach { uri ->
-            if (queuedUriKeys.add(uri.toString())) {
-                outgoingQueue.addLast(uri)
-                added++
-            }
-        }
-        if (added == 0) {
-            status("These items are already queued or transferring.")
-            return
-        }
-        status("$added new item(s) queued. Starting transfer…")
-        sendNextFile()
+        wifiTransport.sendFiles(uris)
     }
 
     @Synchronized
@@ -242,6 +211,7 @@ class TransferKeepAliveService : Service() {
     }
 
     fun stopSharing() {
+        wifiTransport.stop()
         client.stopAdvertising()
         client.stopDiscovery()
         advertising = false
