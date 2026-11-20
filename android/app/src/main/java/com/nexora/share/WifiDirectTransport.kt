@@ -521,43 +521,77 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     fun hasIncomingTransfer(): Boolean = incomingName != null
 
     fun sendFiles(uris: List<Uri>) {
-        val s = socket ?: run { callbacks.onStatus("Connect by scanning the receiver's QR code first."); return }
-        if (!sending.compareAndSet(false, true)) { callbacks.onStatus("A transfer is already running."); return }
+        val s = socket
+        if (s == null || s.isClosed || peerOutput == null) {
+            callbacks.onStatus("Connect to another phone before sending files.")
+            return
+        }
+        if (uris.isEmpty()) {
+            callbacks.onStatus("Choose at least one item to send.")
+            return
+        }
+        if (!sending.compareAndSet(false, true)) {
+            callbacks.onStatus("A transfer is already running.")
+            return
+        }
         io.execute {
+            var ownsTurn = false
             try {
-                val output = DataOutputStream(BufferedOutputStream(s.getOutputStream()))
-                val inputAck = DataInputStream(BufferedInputStream(s.getInputStream()))
-                output.writeInt(uris.size.coerceAtMost(MAX_FILES))
-                uris.take(MAX_FILES).forEach { uri ->
+                requestSendTurn()
+                ownsTurn = true
+                val output = peerOutput ?: throw IOException("The NEXORA connection ended.")
+                val outgoing = uris.take(MAX_FILES)
+                synchronized(outputLock) {
+                    output.writeByte(FRAME_BATCH)
+                    output.writeInt(outgoing.size)
+                    output.flush()
+                }
+                outgoing.forEach { uri ->
                     val name = safeName(queryName(uri))
                     val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
                     val size = querySize(uri)
                     require(size >= 0) { "Could not determine the size of " + name }
-                    output.writeUTF(name); output.writeUTF(mime.take(120)); output.writeLong(size)
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        val buffer = ByteArray(256 * 1024)
-                        var remaining = size
-                        var done = 0L
-                        while (remaining > 0) {
-                            val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                            if (n < 0) throw EOFException("The file changed or ended before all of " + name + " was sent.")
-                            output.write(buffer, 0, n)
-                            remaining -= n
-                            done += n
-                            callbacks.onProgress("Sending " + name + " · " + (done * 100 / size.coerceAtLeast(1)) + "%")
-                        }
-                    } ?: throw IOException("Could not open " + name)
-                    output.flush()
-                    if (inputAck.readBoolean()) callbacks.onStatus("Sent: " + name)
+                    synchronized(outputLock) {
+                        output.writeUTF(name)
+                        output.writeUTF(mime.take(120))
+                        output.writeLong(size)
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            val buffer = ByteArray(256 * 1024)
+                            var remaining = size
+                            var done = 0L
+                            while (remaining > 0) {
+                                val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                                if (n < 0) throw EOFException("The file changed or ended before all of " + name + " was sent.")
+                                output.write(buffer, 0, n)
+                                remaining -= n
+                                done += n
+                                callbacks.onProgress("Sending " + name + " · " + (done * 100 / size.coerceAtLeast(1)) + "%")
+                            }
+                        } ?: throw IOException("Could not open " + name)
+                        output.flush()
+                    }
+                    val confirmed = acknowledgementQueue.poll(10, TimeUnit.MINUTES)
+                        ?: throw IOException("The receiving phone did not respond to " + name)
+                    if (confirmed) callbacks.onStatus("Sent: " + name)
                     else callbacks.onStatus("Receiver cancelled: " + name)
                 }
                 callbacks.onStatus("Transfer complete.")
             } catch (e: Exception) {
-                runCatching { s.close() }
-                if (socket === s) socket = null
-                callbacks.onDisconnected()
-                callbacks.onStatus("Send failed: " + e.localizedMessage)
-            } finally { sending.set(false) }
+                val busy = e.localizedMessage?.contains("busy", ignoreCase = true) == true
+                if (!busy) {
+                    runCatching { s.close() }
+                    if (socket === s) {
+                        socket = null
+                        peerInput = null
+                        peerOutput = null
+                    }
+                    callbacks.onDisconnected()
+                }
+                callbacks.onStatus("Send failed: " + (e.localizedMessage ?: "network error"))
+            } finally {
+                if (ownsTurn) releaseSendTurn()
+                sending.set(false)
+            }
         }
     }
 
