@@ -15,17 +15,17 @@ Application ID: `com.nexora.share`
 | 2 | Persistent two-way connection/session architecture | **Implemented; physical-device verification pending** |
 | 3 | Repeated sending in either direction without rescanning | **Implemented in framed protocol; physical-device verification pending** |
 | 4 | Connect first without selecting files; select and send later | **UI path available; verify with new session on devices** |
-| 5 | Incoming transfer manager with progress, pause, resume and cancel | **Partially implemented: one active incoming item at a time** |
+| 5 | Incoming transfer manager with progress, pause, resume and cancel | **Partially implemented: one active incoming item at a time; queued-item list and per-item controls remain** |
 | 6 | Separate Sent and Received item lists | **Implemented; physical-device verification pending** |
-| 7 | Combined chronological History | **Implemented for new transfers and legacy records; latest date/deduplication correction awaiting CI** |
+| 7 | Combined chronological History | **Implemented for new transfers and legacy records; migration date/deduplication correction committed** |
 | 8 | Verified connection navigation, both devices leave QR screen, explicit disconnect | **Implemented; physical-device verification pending** |
 | 9 | One connection animation per session; upright receiver-only rocket | **Implemented; visual verification pending** |
 | 10 | Five-second splash, background preload and reduce screen blinking | **Implemented; device verification pending** |
 | 11 | Wi-Fi/hotspot prompts only after relevant failure | **Implemented; device verification pending** |
-| 12 | Group Share: one QR, multiple active peers, broadcast and recipient exclusions | **Not started** |
+| 12 | Group Share: one QR, multiple active peers, broadcast and recipient exclusions | **Not implemented; current transport is single-peer and must be redesigned before UI can claim group support** |
 | 13 | Floating control draggable across full app screen | **Implemented; touch-boundary verification pending** |
-| 14 | Full visual redesign using yellow/red/blue direction inspired by 2C TV icon | **First colour pass implemented; detailed screen redesign pending** |
-| 15 | Final build, original signing-certificate check, APK verification and device test plan | **In progress** |
+| 14 | Full visual redesign using yellow/red/blue direction inspired by 2C TV icon | **Partially complete: Transfer Centre, Sent, Received, History and Settings redesigned; Home/Receive/Media/Files/Contacts still need final consistency pass** |
+| 15 | Final build, original signing-certificate check, APK verification and device test plan | **Not started for release 0.8.3/build80; prior intermediate builds passed CI only** |
 
 ## Technical decisions and safeguards
 
@@ -50,9 +50,9 @@ Application ID: `com.nexora.share`
 | `3cb997e` | Incoming manager pause/resume/cancel controls | Build, signature and artifact upload passed |
 | `6e86a5e` | Initial framed duplex send/receive session | Build, signature and artifact upload passed |
 | `324768b` | Protocol v2 marker | Build, signature and artifact upload passed |
-| `60726f9` | Disconnect cleanup and wake pending sends | Build, signature and artifact upload passed |\n| `569e750` | Import legacy sent and received items into History | Build, signature and artifact upload passed |\n| `352b130` | Correct year rollover and avoid duplicate legacy History events | CI queued; not yet verified |
+| `60726f9` | Disconnect cleanup and wake pending sends | Build, signature and artifact upload passed |\n| `569e750` | Import legacy sent and received items into History | Build, signature and artifact upload passed |\n| `352b130` | Correct year rollover and avoid duplicate legacy History events | CI pending at the time of tracker update |
 
-The newest commit is awaiting GitHub Actions validation. A successful CI build proves compilation and signing, not real-world Wi-Fi Direct operation. A successful CI build proves compilation and signing, not real-world Wi-Fi Direct operation.
+Recent screen redesign commits also passed their APK CI workflows: Transfer Centre (`7ddd7c0`), Received Files (`af727ba`), History (`5d21707`), Sent Files (`e075c9f`) and Settings (`90bacf2`). CI proves compilation and signing, not real-world Wi-Fi Direct operation.
 
 ## Release acceptance tests
 
