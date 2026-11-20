@@ -880,7 +880,6 @@ class MainActivity : Activity() {
         withWifiDirectPermissions {
             runWithSharingService { service ->
                 receivingModeArmed = true
-                service.setHighSpeedMode(highSpeedMode)
                 service.startReceiving()
                 updateStatus("Preparing your Wi-Fi Direct QR code…")
             }
@@ -1004,7 +1003,7 @@ class MainActivity : Activity() {
         showRocketFlight(received = true, onComplete = onComplete)
     }
 
-    // Shared, full-screen launch sequence used only after a real Nearby connection
+    // Shared, full-screen launch sequence used after a Wi-Fi Direct connection
     // or a confirmed successful receive.
     private fun showRocketFlight(received: Boolean, onComplete: () -> Unit) {
         val dialog = android.app.Dialog(this)
@@ -1952,7 +1951,7 @@ class MainActivity : Activity() {
                 setPadding(0, dp(8), 0, dp(7))
             })
             connectedPeers.forEach { endpointId ->
-                val peerName = discovered[endpointId] ?: "Nearby phone"
+                val peerName = discovered[endpointId] ?: "Wi-Fi Direct phone"
                 devices.addView(TextView(this).apply {
                     text = "●  " + peerName + "  ·  CONNECTED"
                     textSize = 11f
