@@ -591,7 +591,7 @@ class MainActivity : Activity() {
                 alpha = 0f
                 visibility = View.GONE
                 setPadding(dp(10), dp(7), dp(10), dp(7))
-                background = rounded(0xEE102B3D.toInt(), 25)
+                background = rounded(0xEE0B1B38.toInt(), 25)
                 elevation = dp(14).toFloat()
             }
             val sendFab = TextView(this).apply {
@@ -605,7 +605,7 @@ class MainActivity : Activity() {
             val receiveFab = TextView(this).apply {
                 text = "⇩  RECEIVE"; textSize = 12f; gravity = Gravity.CENTER
                 typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
-                background = rounded(0xFF16A58A.toInt(), 22); elevation = dp(5).toFloat()
+                background = rounded(0xFFE52B3A.toInt(), 22); elevation = dp(5).toFloat()
                 setPadding(dp(18), 0, dp(18), 0)
                 isHapticFeedbackEnabled = true
                 setOnClickListener { animatePress(this); hideQuickActions(); openSendQr() }
@@ -621,7 +621,7 @@ class MainActivity : Activity() {
                 typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(-1)
                 background = android.graphics.drawable.GradientDrawable(
                     android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
-                    intArrayOf(0xFF00A6A6.toInt(), 0xFF635BDF.toInt(), 0xFF9B4DCA.toInt())
+                    intArrayOf(0xFF0B4FB3.toInt(), 0xFFE52B3A.toInt(), 0xFFFFD21F.toInt())
                 ).apply { cornerRadius = dp(24).toFloat(); setStroke(dp(1), 0x88FFFFFF.toInt()) }
                 elevation = dp(16).toFloat()
                 setPadding(dp(32), 0, dp(32), 0)
@@ -651,11 +651,11 @@ class MainActivity : Activity() {
                 setTextColor(-1)
                 background = if (connectedNow) android.graphics.drawable.GradientDrawable(
                     android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                    intArrayOf(0xFF00BFA5.toInt(), 0xFF168FE5.toInt(), 0xFF8B4DDF.toInt())
+                    intArrayOf(0xFF0B4FB3.toInt(), 0xFFE52B3A.toInt(), 0xFFFFD21F.toInt())
                 ).apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setStroke(dp(2), 0xAAFFFFFF.toInt()) }
                 else android.graphics.drawable.GradientDrawable().apply {
                     shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(0xFF176C78.toInt())
+                    setColor(0xFF0B4FB3.toInt())
                     setStroke(dp(1), 0xAAFFFFFF.toInt())
                 }
                 elevation = dp(12).toFloat()
