@@ -111,3 +111,7 @@ The source inventory and all Kotlin app classes, app manifest, Gradle configurat
 
 - CI validation: the framed duplex reader/session and send-turn implementation in commit 6e86a5e compiled, built, passed the strict original-certificate check, and uploaded an APK. Subsequent protocol-version, rejection-handshake, and disconnect-cleanup hardening changes are in later commits and require their own final successful build.
 - [ ] Still outstanding for step 2: test the same session in both directions on two physical Android devices, including repeated batches, cancellation, reconnect and screen-off behaviour. A successful compile does not prove socket behaviour.
+
+- [x] Fixed splash timing so background app discovery cannot replace the splash screen early; the five-second minimum now controls when the main screen appears.
+- [x] Connected Transfer Centre's Receive action now opens the Incoming/Received manager instead of trying to create another QR session.
+- [ ] Group Share (multiple simultaneous participants, relay/broadcast, recipient exclusion) remains unimplemented. The current transport deliberately permits one active peer session; do not present Group Share as available yet.
