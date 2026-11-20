@@ -78,7 +78,7 @@ class TransferKeepAliveService : Service() {
     val isAdvertising: Boolean get() = receiving
     val isConnected: Boolean get() = connectedPeers.isNotEmpty()
     fun connectedEndpointCount(): Int = connectedPeers.size
-    fun connectedEndpointIds(): List<String> = connectedPeers.keys().toList()
+    fun connectedEndpointIds(): List<String> = connectedPeers.keys.toList()
     fun connectedEndpointName(endpointId: String): String? = connectedPeers[endpointId]
 
     fun setHighSpeedMode(enabled: Boolean) {
