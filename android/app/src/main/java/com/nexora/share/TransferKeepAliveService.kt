@@ -38,7 +38,11 @@ class TransferKeepAliveService : Service() {
     private val transportDelegate = lazy {
         WifiDirectTransport(this, object : WifiDirectTransport.Callbacks {
             override fun onStatus(message: String) {
-                if (message.startsWith("Could not create Wi-Fi Direct group") ||
+                if (message.startsWith("Wi-Fi is off") ||
+                    message.startsWith("Could not create Wi-Fi Direct group") ||
+                    message.startsWith("Android is busy") ||
+                    message.startsWith("Android reported a Wi-Fi Direct error") ||
+                    message.startsWith("This phone does not support Wi-Fi Direct") ||
                     message.startsWith("Wi-Fi Direct group details were unavailable") ||
                     message.startsWith("Android did not provide Wi-Fi Direct credentials") ||
                     message.startsWith("Wi-Fi Direct receiver could not start")) receiving = false
