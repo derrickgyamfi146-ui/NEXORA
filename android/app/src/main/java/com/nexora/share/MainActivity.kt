@@ -487,6 +487,9 @@ class MainActivity : Activity() {
                     setStroke(dp(1), 0xAAFFFFFF.toInt())
                 }
                 elevation = dp(12).toFloat()
+                alpha = 0f
+                scaleX = .68f
+                scaleY = .68f
                 if (connectedNow) {
                     android.animation.ObjectAnimator.ofFloat(this, "translationY", -dp(3).toFloat(), dp(3).toFloat()).apply {
                         duration = 900
@@ -541,6 +544,8 @@ class MainActivity : Activity() {
                 rightMargin = dp(16)
                 bottomMargin = dp(88)
             })
+            centre.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(320).setInterpolator(android.view.animation.OvershootInterpolator()).start()
         }
         setContentView(root)
         when (activeTab) {
