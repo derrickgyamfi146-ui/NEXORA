@@ -72,6 +72,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private val serverStarting = AtomicBoolean(false)
     private val incomingPaused = AtomicBoolean(false)
     private val incomingCancelled = AtomicBoolean(false)
+    private val outgoingPaused = AtomicBoolean(false)
     @Volatile private var incomingName: String? = null
     @Volatile private var currentIncomingIndex = -1
     private val incomingQueueLock = Any()
@@ -714,6 +715,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                     var remaining = size
                                     var done = 0L
                                     while (remaining > 0) {
+                                        waitIfOutgoingPaused()
                                         val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
                                         if (n < 0) throw EOFException("The file changed before " + name + " was sent.")
                                         peer.output.write(buffer, 0, n)
@@ -854,6 +856,25 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     fun isIncomingPaused(): Boolean = incomingPaused.get()
     fun hasIncomingTransfer(): Boolean = incomingName != null
 
+    fun pauseOutgoing() {
+        if (sending.get()) {
+            outgoingPaused.set(true)
+            callbacks.onProgress("Paused: Sending")
+        }
+    }
+
+    fun resumeOutgoing() {
+        outgoingPaused.set(false)
+        if (sending.get()) callbacks.onProgress("Sending · Resuming")
+    }
+
+    fun isOutgoingPaused(): Boolean = outgoingPaused.get()
+
+    private fun waitIfOutgoingPaused() {
+        while (outgoingPaused.get() && active.get()) Thread.sleep(100)
+        if (!active.get()) throw IOException("The Wi-Fi Direct session ended.")
+    }
+
     fun sendFiles(uris: List<Uri>) {
         if (localIsGroupOwner) { sendFilesToGroup(uris); return }
         val s = socket
@@ -904,6 +925,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             var remaining = size
                             var done = 0L
                             while (remaining > 0) {
+                                waitIfOutgoingPaused()
                                 val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
                                 if (n < 0) throw EOFException("The file changed or ended before all of " + name + " was sent.")
                                 output.write(buffer, 0, n)
@@ -930,6 +952,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 callbacks.onStatus("Send failed: " + (e.localizedMessage ?: "network error"))
             } finally {
                 if (ownsTurn) releaseSendTurn()
+                outgoingPaused.set(false)
                 sending.set(false)
             }
         }
