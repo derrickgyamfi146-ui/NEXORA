@@ -126,6 +126,9 @@ class TransferKeepAliveService : Service() {
 
     fun pauseIncoming() { if (transportDelegate.isInitialized()) transport.pauseIncoming() }
     fun resumeIncoming() { if (transportDelegate.isInitialized()) transport.resumeIncoming() }
+    fun pauseOutgoing() { if (transportDelegate.isInitialized()) transport.pauseOutgoing() }
+    fun resumeOutgoing() { if (transportDelegate.isInitialized()) transport.resumeOutgoing() }
+    fun isOutgoingPaused(): Boolean = transportDelegate.isInitialized() && transport.isOutgoingPaused()
     fun cancelIncoming() { if (transportDelegate.isInitialized()) transport.cancelIncoming() }
     fun cancelIncomingItem(id: Int) { if (transportDelegate.isInitialized()) transport.cancelIncomingItem(id) }
     fun incomingQueueSnapshot(): List<IncomingQueueItem> =
