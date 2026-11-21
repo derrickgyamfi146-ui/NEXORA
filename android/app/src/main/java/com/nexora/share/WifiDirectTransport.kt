@@ -88,6 +88,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private val sendPermit = java.util.concurrent.Semaphore(0)
     private val acknowledgementQueue = LinkedBlockingQueue<Boolean>()
     private val groupPeers = java.util.concurrent.ConcurrentHashMap<String, GroupPeer>()
+    @Volatile private var activeGroupSendPeer: GroupPeer? = null
     private val groupIncomingLock = Any()
     @Volatile private var localWaitingForTurn = false
     @Volatile private var localOwnsTurn = false
@@ -684,6 +685,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             try {
                 val completedNames = LinkedHashSet<String>()
                 recipients.forEach { peer ->
+                    activeGroupSendPeer = peer
                     var ownsTurn = false
                     try {
                         requestGroupSendTurn(peer)
@@ -736,6 +738,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         callbacks.onStatus("Could not send to " + peer.name + ": " + (e.localizedMessage ?: "network error"))
                     } finally {
                         if (ownsTurn) releaseGroupSendTurn(peer)
+                        activeGroupSendPeer = null
                     }
                 }
                 completedNames.forEach { callbacks.onStatus("Sent: " + it) }
@@ -870,6 +873,17 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     }
 
     fun isOutgoingPaused(): Boolean = outgoingPaused.get()
+
+    fun cancelOutgoing() {
+        if (!sending.get()) return
+        outgoingPaused.set(false)
+        if (localIsGroupOwner) {
+            runCatching { activeGroupSendPeer?.socket?.close() }
+        } else {
+            runCatching { socket?.close() }
+        }
+        callbacks.onStatus("Outgoing transfer cancelled. Reconnect if the peer connection ended.")
+    }
 
     private fun waitIfOutgoingPaused() {
         while (outgoingPaused.get() && active.get()) Thread.sleep(100)
