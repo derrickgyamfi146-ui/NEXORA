@@ -1184,9 +1184,10 @@ class MainActivity : Activity() {
                 textSize = 34f
                 setTextColor(-1)
                 gravity = Gravity.CENTER
+                contentDescription = "Close QR and return to Apps without ending the connection"
                 setOnClickListener {
-                    sharing?.stopSharing()
-                    connectedPeers.clear()
+                    // Hiding the QR is a UI action only. The foreground transfer
+                    // service and Wi-Fi Direct session must remain alive.
                     receivingModeArmed = false
                     dialog.dismiss()
                     activeTab = "Media"
@@ -1260,8 +1261,8 @@ class MainActivity : Activity() {
             dialog.setContentView(page)
             dialog.setOnDismissListener { if (qrDialog === dialog) qrDialog = null }
             dialog.setOnCancelListener {
-                sharing?.stopSharing()
-                connectedPeers.clear()
+                // Back button / outside dismissal closes only this dialog.
+                // END SESSION is the sole action that tears down Wi-Fi Direct.
                 receivingModeArmed = false
                 activeTab = "Media"
                 mediaCategory = "Apps"
