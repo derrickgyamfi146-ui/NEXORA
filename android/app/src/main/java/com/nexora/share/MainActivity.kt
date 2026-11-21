@@ -90,7 +90,7 @@ class MainActivity : Activity() {
                     successFeedback()
                 }
                 if (message.startsWith("Received and saved:")) successFeedback()
-                if (message.startsWith("Receiving ") || message.startsWith("Paused:")) {
+                if (message.startsWith("Receiving ") || message.startsWith("Paused: Receiving")) {
                     latestIncomingProgress = message
                     incomingStatusView?.text = message
                 }
@@ -2340,20 +2340,30 @@ class MainActivity : Activity() {
         }
         sentColumn.addView(label("SENT", 0xFF0B4FB3.toInt()))
         if (transferIsActive && (latestStatus.startsWith("Sending") || latestStatus.startsWith("Paused: Sending"))) {
+            val outgoingControls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             lateinit var outgoingToggle: Button
             outgoingToggle = button(
-                if (sharing?.isOutgoingPaused() == true) "RESUME SENDING" else "PAUSE SENDING",
+                if (sharing?.isOutgoingPaused() == true) "RESUME" else "PAUSE",
                 0xFF0B4FB3.toInt()
             ) {
                 if (sharing?.isOutgoingPaused() == true) {
                     sharing?.resumeOutgoing()
-                    outgoingToggle.text = "PAUSE SENDING"
+                    outgoingToggle.text = "PAUSE"
                 } else {
                     sharing?.pauseOutgoing()
-                    outgoingToggle.text = "RESUME SENDING"
+                    outgoingToggle.text = "RESUME"
                 }
             }
-            sentColumn.addView(outgoingToggle, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(7); bottomMargin = dp(5) })
+            outgoingControls.addView(outgoingToggle, LinearLayout.LayoutParams(0, dp(36), 1f).apply { rightMargin = dp(3) })
+            outgoingControls.addView(button("CANCEL", 0xFFE52B3A.toInt()) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Cancel outgoing transfer?")
+                    .setMessage("This stops the current send. The connection to that phone may end, so you may need to reconnect before sending again.")
+                    .setNegativeButton("Keep sending", null)
+                    .setPositiveButton("Cancel send") { _, _ -> sharing?.cancelOutgoing() }
+                    .show()
+            }, LinearLayout.LayoutParams(0, dp(36), 1f).apply { leftMargin = dp(3) })
+            sentColumn.addView(outgoingControls, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(7); bottomMargin = dp(5) })
         }
         if (sentEntries.isEmpty()) {
             sentColumn.addView(TextView(this).apply {
