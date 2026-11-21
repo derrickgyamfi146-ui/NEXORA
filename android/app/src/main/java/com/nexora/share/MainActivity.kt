@@ -2288,8 +2288,29 @@ class MainActivity : Activity() {
         content.addView(section, bottom(12))
     }
 
+    private fun transferKindLabel(name: String): String {
+        return when (name.substringAfterLast('.', "").lowercase()) {
+            "jpg", "jpeg", "png", "webp", "gif", "heic" -> "Image"
+            "mp4", "mkv", "mov", "avi", "3gp" -> "Video"
+            "mp3", "wav", "m4a", "aac", "ogg" -> "Audio"
+            "apk", "apks", "xapk" -> "App"
+            "pdf", "doc", "docx", "txt", "ppt", "pptx", "xls", "xlsx" -> "Document"
+            else -> "File"
+        }
+    }
+
+    private fun transferKindGlyph(name: String): String {
+        return when (transferKindLabel(name)) {
+            "Image" -> "▧"
+            "Video" -> "▷"
+            "Audio" -> "♫"
+            "App" -> "▦"
+            "Document" -> "▤"
+            else -> "↗"
+        }
+    }
+
     private fun showTransfers(card: Int, ink: Int, muted: Int) {
-        // Keep this screen deliberately simple: only incoming and outgoing items.
         val sentEntries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
             .getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
 
@@ -2301,47 +2322,112 @@ class MainActivity : Activity() {
             setPadding(dp(2), dp(12), dp(2), dp(12))
         })
 
-        val sending = panel(card)
-        sending.addView(label("SENT", 0xFF0B4FB3.toInt()))
+        // Keep the existing NEXORA visual language, but place Sent and Received
+        // side-by-side with a clear vertical divider as requested.
+        val columns = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+        }
+        val sentColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(10), dp(8), dp(10))
+            background = rounded(card, 16)
+        }
+        val receivedColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(10), dp(8), dp(10))
+            background = rounded(card, 16)
+        }
+        sentColumn.addView(label("SENT", 0xFF0B4FB3.toInt()))
         if (sentEntries.isEmpty()) {
-            sending.addView(TextView(this).apply {
-                text = "Items you send will appear here."
-                textSize = 12f
+            sentColumn.addView(TextView(this).apply {
+                text = "Nothing sent yet"
+                textSize = 11f
                 setTextColor(muted)
-                setPadding(0, dp(10), 0, dp(8))
+                setPadding(0, dp(12), 0, dp(8))
             })
         } else {
-            sentEntries.take(20).forEach { entry ->
-                sending.addView(TextView(this).apply {
-                    text = "↑  " + entry.substringAfter(" · ", entry).substringBefore(" · ")
-                    textSize = 12f
-                    maxLines = 2
+            sentEntries.take(30).forEach { entry ->
+                val name = entry.substringAfter(" · ", entry).substringBefore(" · ")
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(5), dp(8), dp(3), dp(8))
+                }
+                row.addView(TextView(this).apply {
+                    text = transferKindGlyph(name)
+                    textSize = 20f
+                    gravity = Gravity.CENTER
+                    setTextColor(0xFF0B4FB3.toInt())
+                    background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFE7EEF7.toInt(), 9)
+                }, LinearLayout.LayoutParams(dp(34), dp(34)))
+                row.addView(TextView(this).apply {
+                    text = transferKindLabel(name)
+                    textSize = 11f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(ink)
-                    setPadding(dp(8), dp(9), dp(8), dp(9))
-                    background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 10)
-                }, bottom(5))
+                    setPadding(dp(7), 0, 0, 0)
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+                sentColumn.addView(row)
+                sentColumn.addView(View(this).apply {
+                    setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
+                }, LinearLayout.LayoutParams(-1, dp(1)))
             }
         }
-        content.addView(sending, bottom(12))
 
-        val receiving = panel(card)
-        receiving.addView(label("RECEIVED", 0xFFE52B3A.toInt()))
+        receivedColumn.addView(label("RECEIVED", 0xFFE52B3A.toInt()))
         if (incomingQueueItems.isNotEmpty()) {
-            incomingQueueItems.forEach { item ->
-                receiving.addView(TextView(this).apply {
-                    text = "↓  " + item.name + "  ·  " + item.status +
-                        if (item.progress > 0) "  " + item.progress + "%" else ""
-                    textSize = 12f
-                    maxLines = 2
+            incomingQueueItems.take(12).forEach { item ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(4), dp(8), dp(4), dp(8))
+                }
+                row.addView(TextView(this).apply {
+                    text = transferKindGlyph(item.name) + "  " + transferKindLabel(item.name)
+                    textSize = 11f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(ink)
-                    setPadding(dp(8), dp(9), dp(8), dp(9))
-                    background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 10)
-                }, bottom(5))
+                })
+                row.addView(TextView(this).apply {
+                    text = item.status + if (item.status == "Receiving" || item.progress > 0) " · " + item.progress + "%" else ""
+                    textSize = 10f
+                    setTextColor(muted)
+                    setPadding(0, dp(3), 0, 0)
+                })
+                if (item.status == "Receiving") {
+                    val paused = sharing?.isIncomingPaused() == true
+                    row.addView(button(if (paused) "RESUME" else "PAUSE", 0xFF0B4FB3.toInt()) {
+                        if (sharing?.isIncomingPaused() == true) sharing?.resumeIncoming()
+                        else sharing?.pauseIncoming()
+                    }, LinearLayout.LayoutParams(-1, dp(34)).apply { topMargin = dp(5) })
+                }
+                if (item.status == "Queued" || item.status == "Receiving") {
+                    row.addView(button("CANCEL ITEM", 0xFFE52B3A.toInt()) {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("Cancel this item?")
+                            .setMessage("The connection will remain available.")
+                            .setNegativeButton("Keep", null)
+                            .setPositiveButton("Cancel") { _, _ -> sharing?.cancelIncomingItem(item.id) }
+                            .show()
+                    }, LinearLayout.LayoutParams(-1, dp(34)).apply { topMargin = dp(4) })
+                }
+                receivedColumn.addView(row)
+                receivedColumn.addView(View(this).apply {
+                    setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
+                }, LinearLayout.LayoutParams(-1, dp(1)))
             }
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            var count = 0
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             runCatching {
-                val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
+                val projection = arrayOf(
+                    MediaStore.MediaColumns._ID,
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.MIME_TYPE,
+                    MediaStore.MediaColumns.SIZE
+                )
                 contentResolver.query(
                     MediaStore.Downloads.EXTERNAL_CONTENT_URI,
                     projection,
@@ -2349,35 +2435,99 @@ class MainActivity : Activity() {
                     arrayOf("Download/NEXORA/"),
                     MediaStore.MediaColumns.DATE_ADDED + " DESC"
                 )?.use { cursor ->
-                    while (cursor.moveToNext() && count < 20) {
-                        val name = cursor.getString(0) ?: "Received file"
-                        receiving.addView(TextView(this).apply {
-                            text = "↓  " + name
-                            textSize = 12f
-                            maxLines = 2
+                    var shown = 0
+                    while (cursor.moveToNext() && shown < 18) {
+                        val id = cursor.getLong(0)
+                        val name = cursor.getString(1) ?: "Received file"
+                        val mime = cursor.getString(2) ?: "*/*"
+                        val uri = android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
+                        val row = LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(dp(4), dp(8), dp(4), dp(8))
+                        }
+                        val heading = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                        }
+                        val preview = ImageView(this).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                            setBackground(rounded(if (darkMode) 0xFF29445B.toInt() else 0xFFE7EEF7.toInt(), 8))
+                            setImageResource(if (name.endsWith(".apk", true)) android.R.drawable.sym_def_app_icon else android.R.drawable.ic_menu_gallery)
+                        }
+                        heading.addView(preview, LinearLayout.LayoutParams(dp(34), dp(34)))
+                        heading.addView(TextView(this).apply {
+                            text = transferKindLabel(name)
+                            textSize = 11f
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            maxLines = 1
                             setTextColor(ink)
-                            setPadding(dp(8), dp(9), dp(8), dp(9))
-                            background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 10)
-                        }, bottom(5))
-                        count++
+                            setPadding(dp(6), 0, 0, 0)
+                        }, LinearLayout.LayoutParams(0, -2, 1f))
+                        row.addView(heading)
+                        if (mime.startsWith("image/") || mime.startsWith("video/")) {
+                            thumbnailExecutor.execute {
+                                val thumb = runCatching { contentResolver.loadThumbnail(uri, android.util.Size(72, 72), null) }.getOrNull()
+                                runOnUiThread { if (preview.parent != null && thumb != null) preview.setImageBitmap(thumb) }
+                            }
+                        }
+                        row.addView(button("OPEN", 0xFF4263EB.toInt()) {
+                            try {
+                                when {
+                                    name.endsWith(".apk", true) -> {
+                                        if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                                            pendingInstallUri = uri
+                                            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName)))
+                                        } else launchApkInstaller(uri)
+                                    }
+                                    mime.startsWith("image/") -> previewImage(uri, name)
+                                    mime.startsWith("video/") -> previewVideo(uri, name)
+                                    mime.startsWith("audio/") -> previewAudio(uri, name)
+                                    else -> {
+                                        val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+                                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        startActivity(intent)
+                                    }
+                                }
+                            } catch (_: Exception) {
+                                Toast.makeText(this, "This file cannot be opened on this phone.", Toast.LENGTH_SHORT).show()
+                            }
+                        }, LinearLayout.LayoutParams(-1, dp(32)).apply { topMargin = dp(5) })
+                        row.addView(button("DELETE", 0xFFE52B3A.toInt()) {
+                            android.app.AlertDialog.Builder(this)
+                                .setTitle("Delete this received file?")
+                                .setMessage(transferKindLabel(name))
+                                .setNegativeButton("Keep", null)
+                                .setPositiveButton("Delete") { _, _ ->
+                                    contentResolver.delete(uri, null, null)
+                                    render()
+                                }
+                                .show()
+                        }, LinearLayout.LayoutParams(-1, dp(32)).apply { topMargin = dp(4) })
+                        receivedColumn.addView(row)
+                        receivedColumn.addView(View(this).apply {
+                            setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
+                        }, LinearLayout.LayoutParams(-1, dp(1)))
+                        shown++
                     }
                 }
             }
-            if (count == 0) receiving.addView(TextView(this).apply {
-                text = "Items you receive will appear here."
-                textSize = 12f
+        }
+
+        if (receivedColumn.childCount == 1) {
+            receivedColumn.addView(TextView(this).apply {
+                text = "Nothing received yet"
+                textSize = 11f
                 setTextColor(muted)
-                setPadding(0, dp(10), 0, dp(8))
-            })
-        } else {
-            receiving.addView(TextView(this).apply {
-                text = latestIncomingProgress
-                textSize = 12f
-                setTextColor(muted)
-                setPadding(0, dp(10), 0, dp(8))
+                setPadding(0, dp(12), 0, dp(8))
             })
         }
-        content.addView(receiving)
+
+        columns.addView(sentColumn, LinearLayout.LayoutParams(0, -2, 1f))
+        columns.addView(View(this).apply {
+            setBackgroundColor(if (darkMode) 0xFF60758A.toInt() else 0xFFCBD5E1.toInt())
+        }, LinearLayout.LayoutParams(dp(1), -1).apply { leftMargin = dp(5); rightMargin = dp(5) })
+        columns.addView(receivedColumn, LinearLayout.LayoutParams(0, -2, 1f))
+        content.addView(columns, bottom(12))
     }
 
     private fun addGroupedHistory(target: LinearLayout, entries: List<String>, accent: Int, ink: Int, muted: Int) {
