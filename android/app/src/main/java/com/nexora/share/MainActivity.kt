@@ -2348,28 +2348,61 @@ class MainActivity : Activity() {
             })
         } else {
             sentEntries.take(30).forEach { entry ->
-                val name = entry.substringAfter(" · ", entry).substringBefore(" · ")
+                val parts = entry.split(" · ", limit = 3)
+                val name = parts.getOrNull(1) ?: entry
+                val uri = parts.getOrNull(2)?.let { runCatching { Uri.parse(it) }.getOrNull() }
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(5), dp(8), dp(3), dp(8))
                 }
-                row.addView(TextView(this).apply {
-                    text = transferKindGlyph(name)
-                    textSize = 20f
-                    gravity = Gravity.CENTER
-                    setTextColor(0xFF0B4FB3.toInt())
-                    background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFE7EEF7.toInt(), 9)
-                }, LinearLayout.LayoutParams(dp(34), dp(34)))
-                row.addView(TextView(this).apply {
-                    text = transferKindLabel(name)
+                val preview = ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    setBackground(rounded(if (darkMode) 0xFF29445B.toInt() else 0xFFE7EEF7.toInt(), 8))
+                    setImageResource(if (transferKindLabel(name) == "App") android.R.drawable.sym_def_app_icon else android.R.drawable.ic_menu_gallery)
+                }
+                row.addView(preview, LinearLayout.LayoutParams(dp(34), dp(34)))
+                val title = TextView(this).apply {
+                    text = if (transferKindLabel(name) == "App") name.substringBeforeLast('.') else transferKindLabel(name)
                     textSize = 11f
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(ink)
                     setPadding(dp(7), 0, 0, 0)
-                }, LinearLayout.LayoutParams(0, -2, 1f))
+                }
+                row.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+                if (uri != null && (transferKindLabel(name) == "Image" || transferKindLabel(name) == "Video" || transferKindLabel(name) == "App")) {
+                    thumbnailExecutor.execute {
+                        var icon: android.graphics.drawable.Drawable? = null
+                        var thumb: android.graphics.Bitmap? = null
+                        var appTitle: String? = null
+                        try {
+                            if (transferKindLabel(name) == "App") {
+                                val folder = java.io.File(cacheDir, "sent_app_icons").apply { mkdirs() }
+                                val temp = java.io.File(folder, name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+                                contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
+                                val info = packageManager.getPackageArchiveInfo(temp.absolutePath, 0)
+                                val appInfo = info?.applicationInfo
+                                if (appInfo != null) {
+                                    appInfo.sourceDir = temp.absolutePath
+                                    appInfo.publicSourceDir = temp.absolutePath
+                                    icon = packageManager.getApplicationIcon(appInfo)
+                                    appTitle = appInfo.loadLabel(packageManager).toString()
+                                }
+                            } else if (Build.VERSION.SDK_INT >= 29) {
+                                thumb = contentResolver.loadThumbnail(uri, android.util.Size(72, 72), null)
+                            }
+                        } catch (_: Exception) {}
+                        runOnUiThread {
+                            if (preview.parent != null) {
+                                if (icon != null) preview.setImageDrawable(icon)
+                                else if (thumb != null) preview.setImageBitmap(thumb)
+                                if (!appTitle.isNullOrBlank()) title.text = appTitle
+                            }
+                        }
+                    }
+                }
                 sentColumn.addView(row)
                 sentColumn.addView(View(this).apply {
                     setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
