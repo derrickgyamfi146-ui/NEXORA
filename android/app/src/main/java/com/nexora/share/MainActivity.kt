@@ -2339,6 +2339,22 @@ class MainActivity : Activity() {
             background = rounded(card, 16)
         }
         sentColumn.addView(label("SENT", 0xFF0B4FB3.toInt()))
+        if (transferIsActive && (latestStatus.startsWith("Sending") || latestStatus.startsWith("Paused: Sending"))) {
+            lateinit var outgoingToggle: Button
+            outgoingToggle = button(
+                if (sharing?.isOutgoingPaused() == true) "RESUME SENDING" else "PAUSE SENDING",
+                0xFF0B4FB3.toInt()
+            ) {
+                if (sharing?.isOutgoingPaused() == true) {
+                    sharing?.resumeOutgoing()
+                    outgoingToggle.text = "PAUSE SENDING"
+                } else {
+                    sharing?.pauseOutgoing()
+                    outgoingToggle.text = "RESUME SENDING"
+                }
+            }
+            sentColumn.addView(outgoingToggle, LinearLayout.LayoutParams(-1, dp(36)).apply { topMargin = dp(7); bottomMargin = dp(5) })
+        }
         if (sentEntries.isEmpty()) {
             sentColumn.addView(TextView(this).apply {
                 text = "Nothing sent yet"
