@@ -2490,19 +2490,46 @@ class MainActivity : Activity() {
                             setImageResource(if (name.endsWith(".apk", true)) android.R.drawable.sym_def_app_icon else android.R.drawable.ic_menu_gallery)
                         }
                         heading.addView(preview, LinearLayout.LayoutParams(dp(34), dp(34)))
-                        heading.addView(TextView(this).apply {
+                        val receivedTitle = TextView(this).apply {
                             text = transferKindLabel(name)
                             textSize = 11f
                             typeface = android.graphics.Typeface.DEFAULT_BOLD
                             maxLines = 1
+                            ellipsize = android.text.TextUtils.TruncateAt.END
                             setTextColor(ink)
                             setPadding(dp(6), 0, 0, 0)
-                        }, LinearLayout.LayoutParams(0, -2, 1f))
+                        }
+                        heading.addView(receivedTitle, LinearLayout.LayoutParams(0, -2, 1f))
                         row.addView(heading)
                         if (mime.startsWith("image/") || mime.startsWith("video/")) {
                             thumbnailExecutor.execute {
                                 val thumb = runCatching { contentResolver.loadThumbnail(uri, android.util.Size(72, 72), null) }.getOrNull()
                                 runOnUiThread { if (preview.parent != null && thumb != null) preview.setImageBitmap(thumb) }
+                            }
+                        } else if (name.endsWith(".apk", true)) {
+                            thumbnailExecutor.execute {
+                                var icon: android.graphics.drawable.Drawable? = null
+                                var appTitle: String? = null
+                                try {
+                                    val folder = java.io.File(cacheDir, "received_app_icons").apply { mkdirs() }
+                                    val temp = java.io.File(folder, name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+                                    contentResolver.openInputStream(uri)?.use { input ->
+                                        temp.outputStream().use { output -> input.copyTo(output) }
+                                    }
+                                    val appInfo = packageManager.getPackageArchiveInfo(temp.absolutePath, 0)?.applicationInfo
+                                    if (appInfo != null) {
+                                        appInfo.sourceDir = temp.absolutePath
+                                        appInfo.publicSourceDir = temp.absolutePath
+                                        icon = packageManager.getApplicationIcon(appInfo)
+                                        appTitle = appInfo.loadLabel(packageManager).toString()
+                                    }
+                                } catch (_: Exception) {}
+                                runOnUiThread {
+                                    if (preview.parent != null) {
+                                        if (icon != null) preview.setImageDrawable(icon)
+                                        if (!appTitle.isNullOrBlank()) receivedTitle.text = appTitle
+                                    }
+                                }
                             }
                         }
                         row.addView(button("OPEN", 0xFF4263EB.toInt()) {
