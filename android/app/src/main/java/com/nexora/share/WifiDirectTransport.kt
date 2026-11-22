@@ -748,6 +748,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 callbacks.onStatus("Group transfer finished.")
             } finally {
                 outgoingPaused.set(false)
+                outgoingCancelled.set(false)
                 sending.set(false)
             }
         }
