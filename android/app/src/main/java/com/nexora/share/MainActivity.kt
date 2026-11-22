@@ -2440,45 +2440,19 @@ class MainActivity : Activity() {
 
         receivedColumn.addView(label("RECEIVED", 0xFFE52B3A.toInt()))
         if (incomingQueueItems.isNotEmpty()) {
-            incomingQueueItems.take(12).forEach { item ->
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(dp(4), dp(8), dp(4), dp(8))
-                }
-                row.addView(TextView(this).apply {
-                    text = transferKindGlyph(item.name) + "  " + transferKindLabel(item.name)
-                    textSize = 11f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(ink)
-                })
-                row.addView(TextView(this).apply {
-                    text = item.status + if (item.status == "Receiving" || item.progress > 0) " · " + item.progress + "%" else ""
-                    textSize = 10f
-                    setTextColor(muted)
-                    setPadding(0, dp(3), 0, 0)
-                })
-                if (item.status == "Receiving") {
-                    val paused = sharing?.isIncomingPaused() == true
-                    row.addView(button(if (paused) "RESUME" else "PAUSE", 0xFF0B4FB3.toInt()) {
-                        if (sharing?.isIncomingPaused() == true) sharing?.resumeIncoming()
-                        else sharing?.pauseIncoming()
-                    }, LinearLayout.LayoutParams(-1, dp(34)).apply { topMargin = dp(5) })
-                }
-                if (item.status == "Queued" || item.status == "Receiving") {
-                    row.addView(button("CANCEL ITEM", 0xFFE52B3A.toInt()) {
-                        android.app.AlertDialog.Builder(this)
-                            .setTitle("Cancel this item?")
-                            .setMessage("The connection will remain available.")
-                            .setNegativeButton("Keep", null)
-                            .setPositiveButton("Cancel") { _, _ -> sharing?.cancelIncomingItem(item.id) }
-                            .show()
-                    }, LinearLayout.LayoutParams(-1, dp(34)).apply { topMargin = dp(4) })
-                }
-                receivedColumn.addView(row)
-                receivedColumn.addView(View(this).apply {
-                    setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
-                }, LinearLayout.LayoutParams(-1, dp(1)))
-            }
+            receivedColumn.addView(TextView(this).apply {
+                text = "IN PROGRESS"
+                textSize = 9f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(muted)
+                setPadding(dp(3), dp(8), 0, dp(2))
+            })
+            incomingQueueView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            receivedColumn.addView(incomingQueueView)
+            renderIncomingQueue()
+            receivedColumn.addView(View(this).apply {
+                setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
+            }, LinearLayout.LayoutParams(-1, dp(1)))
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
