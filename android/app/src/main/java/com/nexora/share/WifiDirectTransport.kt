@@ -73,6 +73,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private val incomingPaused = AtomicBoolean(false)
     private val incomingCancelled = AtomicBoolean(false)
     private val outgoingPaused = AtomicBoolean(false)
+    private val outgoingCancelled = AtomicBoolean(false)
     @Volatile private var incomingName: String? = null
     @Volatile private var currentIncomingIndex = -1
     private val incomingQueueLock = Any()
@@ -681,10 +682,12 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             callbacks.onStatus("A transfer is already running.")
             return
         }
+        outgoingCancelled.set(false)
         io.execute {
             try {
                 val completedNames = LinkedHashSet<String>()
                 recipients.forEach { peer ->
+                    if (outgoingCancelled.get()) return@forEach
                     activeGroupSendPeer = peer
                     var ownsTurn = false
                     try {
@@ -876,6 +879,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
 
     fun cancelOutgoing() {
         if (!sending.get()) return
+        outgoingCancelled.set(true)
         outgoingPaused.set(false)
         if (localIsGroupOwner) {
             runCatching { activeGroupSendPeer?.socket?.close() }
@@ -886,7 +890,8 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     }
 
     private fun waitIfOutgoingPaused() {
-        while (outgoingPaused.get() && active.get()) Thread.sleep(100)
+        while (outgoingPaused.get() && active.get() && !outgoingCancelled.get()) Thread.sleep(100)
+        if (outgoingCancelled.get()) throw IOException("Outgoing transfer cancelled.")
         if (!active.get()) throw IOException("The Wi-Fi Direct session ended.")
     }
 
@@ -905,6 +910,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             callbacks.onStatus("A transfer is already running.")
             return
         }
+        outgoingCancelled.set(false)
         io.execute {
             var ownsTurn = false
             try {
@@ -968,6 +974,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             } finally {
                 if (ownsTurn) releaseSendTurn()
                 outgoingPaused.set(false)
+                outgoingCancelled.set(false)
                 sending.set(false)
             }
         }
