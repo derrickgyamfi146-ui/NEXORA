@@ -157,12 +157,9 @@ class MainActivity : Activity() {
                 discovered[endpointId] = name
                 connectedPeers.add(endpointId)
                 successFeedback()
-                // A one-to-one QR receiver closes its QR once connected. A group
-                // host keeps the same QR visible so additional phones can join.
-                if (endpointId == "WIFI_DIRECT") {
-                    qrDialog?.dismiss()
-                    qrDialog = null
-                }
+                // Keep the receiver's QR visible so a group host can admit
+                // additional phones. The host may close it manually at any time;
+                // closing the dialog does not end the Wi-Fi Direct session.
                 pendingAutoConnectEndpointId = null
                 receivingModeArmed = false
                 if (::peerList.isInitialized) rebuildPeerList()
