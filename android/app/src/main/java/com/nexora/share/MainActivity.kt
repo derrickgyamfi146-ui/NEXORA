@@ -542,6 +542,8 @@ class MainActivity : Activity() {
         transferStatusView = null
         transferProgressBar = null
         incomingStatusView = null
+        outgoingControlsView = null
+        outgoingToggleButton = null
         transferStepViews.clear()
         val page = if (darkMode) 0xFF071526.toInt() else 0xFFF3F7FC.toInt()
         val card = if (darkMode) 0xFF142A40.toInt() else -1
@@ -2336,32 +2338,35 @@ class MainActivity : Activity() {
             background = rounded(card, 16)
         }
         sentColumn.addView(label("SENT", 0xFF0B4FB3.toInt()))
-        if (transferIsActive && (latestStatus.startsWith("Sending") || latestStatus.startsWith("Paused: Sending"))) {
-            val outgoingControls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            lateinit var outgoingToggle: Button
-            outgoingToggle = button(
-                if (sharing?.isOutgoingPaused() == true) "RESUME" else "PAUSE",
-                0xFF0B4FB3.toInt()
-            ) {
-                if (sharing?.isOutgoingPaused() == true) {
-                    sharing?.resumeOutgoing()
-                    outgoingToggle.text = "PAUSE"
-                } else {
-                    sharing?.pauseOutgoing()
-                    outgoingToggle.text = "RESUME"
-                }
+        val outgoingControls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        lateinit var outgoingToggle: Button
+        outgoingToggle = button(
+            if (sharing?.isOutgoingPaused() == true) "RESUME" else "PAUSE",
+            0xFF0B4FB3.toInt()
+        ) {
+            if (sharing?.isOutgoingPaused() == true) {
+                sharing?.resumeOutgoing()
+                outgoingToggle.text = "PAUSE"
+            } else {
+                sharing?.pauseOutgoing()
+                outgoingToggle.text = "RESUME"
             }
-            outgoingControls.addView(outgoingToggle, LinearLayout.LayoutParams(0, dp(36), 1f).apply { rightMargin = dp(3) })
-            outgoingControls.addView(button("CANCEL", 0xFFE52B3A.toInt()) {
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("Cancel outgoing transfer?")
-                    .setMessage("This stops the current send. The connection to that phone may end, so you may need to reconnect before sending again.")
-                    .setNegativeButton("Keep sending", null)
-                    .setPositiveButton("Cancel send") { _, _ -> sharing?.cancelOutgoing() }
-                    .show()
-            }, LinearLayout.LayoutParams(0, dp(36), 1f).apply { leftMargin = dp(3) })
-            sentColumn.addView(outgoingControls, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(7); bottomMargin = dp(5) })
         }
+        outgoingToggleButton = outgoingToggle
+        outgoingControls.addView(outgoingToggle, LinearLayout.LayoutParams(0, dp(36), 1f).apply { rightMargin = dp(3) })
+        outgoingControls.addView(button("CANCEL", 0xFFE52B3A.toInt()) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Cancel outgoing transfer?")
+                .setMessage("This stops the current send. The connection to that phone may end, so you may need to reconnect before sending again.")
+                .setNegativeButton("Keep sending", null)
+                .setPositiveButton("Cancel send") { _, _ -> sharing?.cancelOutgoing() }
+                .show()
+        }, LinearLayout.LayoutParams(0, dp(36), 1f).apply { leftMargin = dp(3) })
+        outgoingControlsView = outgoingControls
+        outgoingControls.visibility = if (
+            transferIsActive && (latestStatus.startsWith("Sending") || latestStatus.startsWith("Paused: Sending"))
+        ) View.VISIBLE else View.GONE
+        sentColumn.addView(outgoingControls, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(7); bottomMargin = dp(5) })
         if (sentEntries.isEmpty()) {
             sentColumn.addView(TextView(this).apply {
                 text = "Nothing sent yet"
@@ -3524,6 +3529,8 @@ class MainActivity : Activity() {
     private var transferProgressBar: android.widget.ProgressBar? = null
     private var transferStage = 0
     private val transferStepViews = ArrayList<TextView>()
+    private var outgoingControlsView: View? = null
+    private var outgoingToggleButton: Button? = null
     private fun updateFloatingTransferAnimation() {
         val up = floatingArrowUp ?: return
         val down = floatingArrowDown ?: return
@@ -3561,11 +3568,17 @@ class MainActivity : Activity() {
         transferIsActive = when {
             lower.contains("sending") || lower.contains("receiving") -> true
             lower.contains("all files received successfully") ||
+                lower.contains("transfer complete") || lower.contains("group transfer finished") ||
                 lower.contains("transfer finished") || lower.contains("queue finished") ||
-                lower.contains("transfer cancelled") || lower.contains("connection ended") ||
-                lower.contains("disconnected") -> false
+                lower.contains("transfer cancelled") || lower.contains("outgoing transfer cancelled") ||
+                lower.contains("send failed") || lower.contains("could not send") ||
+                lower.contains("connection ended") || lower.contains("disconnected") -> false
             else -> transferIsActive
         }
+        val sendingNow = transferIsActive &&
+            (lower.startsWith("sending") || lower.startsWith("paused: sending"))
+        outgoingControlsView?.visibility = if (sendingNow) View.VISIBLE else View.GONE
+        outgoingToggleButton?.text = if (sharing?.isOutgoingPaused() == true) "RESUME" else "PAUSE"
         updateFloatingTransferAnimation()
         transferStage = when {
             lower.contains("queue finished") || lower.contains("all selected files") || lower.startsWith("sent:") || lower.contains("file sent") || lower.contains("received and saved") -> 5
