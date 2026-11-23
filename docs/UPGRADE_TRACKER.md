@@ -1,6 +1,6 @@
 # NEXORA Master Upgrade Tracker
 
-Last updated: 2026-11-23 (Phase 1 File Manager, Transfer Centre, received-file management and connection-flow reliability; CI verified)
+Last updated: 2026-11-23 (Phase 2 reliability checks: transfer-rate formatter unit tests added to CI)
 
 Release target: NEXORA 0.8.9, versionCode 86 (integrated reliability upgrade)  
 Application ID: `com.nexora.share`
@@ -40,6 +40,7 @@ Application ID: `com.nexora.share`
 | 27 | Per-device disconnect control | **Implemented on development branch: connected peers have an explicit disconnect action with confirmation and a warning about active transfers; integrated build and original signing checks passed** |
 | 28 | Discovered-peer QR action | **Implemented on development branch: the peer-list action now launches the QR scanner instead of calling a connection method that only displayed a message; integrated build and original signing checks passed** |
 | 29 | Disconnected-peer list cleanup | **Implemented on development branch: disconnected peers are removed from the visible discovery list to avoid stale CONNECT WITH QR entries; integrated build and original signing checks passed** |
+| 30 | Transfer-rate formatter unit tests | **Implemented on development branch: rate formatting is isolated into a pure Kotlin helper with tests for bytes, KB/s, MB/s and negative input; CI now runs unit tests before APK build; latest CI verification pending** |
 
 ## Technical decisions and safeguards
 

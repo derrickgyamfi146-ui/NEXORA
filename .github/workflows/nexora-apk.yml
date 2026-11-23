@@ -84,6 +84,9 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs /tmp/nexora-old-58/app-debug.apk
           echo "CERTIFICATE FROM RESTORED SIGNING KEY:"
           keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep "SHA256:"
+      - name: Run unit tests
+        run: gradle -p android :app:testDebugUnitTest
+
       - name: Build APK
         run: gradle -p android :app:assembleDebug
 

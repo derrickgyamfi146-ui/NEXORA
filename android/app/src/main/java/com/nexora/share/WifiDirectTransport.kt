@@ -940,7 +940,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                         val percent = (done * 100 / size.coerceAtLeast(1)).toInt()
                                         val elapsedSeconds = ((System.nanoTime() - startedAtNanos) / 1_000_000_000.0).coerceAtLeast(0.1)
                                         val bytesPerSecond = ((done - offset).coerceAtLeast(0L) / elapsedSeconds).toLong()
-                                        callbacks.onProgress("Sending to " + peer.name + ": " + name + " · " + percent + "% · " + transferRateLabel(bytesPerSecond))
+                                        callbacks.onProgress("Sending to " + peer.name + ": " + name + " · " + percent + "% · " + TransferRateFormatter.format(bytesPerSecond))
                                     }
                                 } ?: throw IOException("Could not open " + name)
                                 peer.output.flush()
@@ -968,15 +968,6 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 outgoingCancelled.set(false)
                 sending.set(false)
             }
-        }
-    }
-
-    private fun transferRateLabel(bytesPerSecond: Long): String {
-        val rate = bytesPerSecond.coerceAtLeast(0L).toDouble()
-        return when {
-            rate >= 1024.0 * 1024.0 -> String.format(java.util.Locale.US, "%.1f MB/s", rate / (1024.0 * 1024.0))
-            rate >= 1024.0 -> String.format(java.util.Locale.US, "%.0f KB/s", rate / 1024.0)
-            else -> "$bytesPerSecond B/s"
         }
     }
 
@@ -1034,7 +1025,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     val elapsedSeconds = ((System.nanoTime() - startedAtNanos) / 1_000_000_000.0).coerceAtLeast(0.1)
                     val bytesPerSecond = ((done - resumeOffset).coerceAtLeast(0L) / elapsedSeconds).toLong()
                     updateIncomingQueue(queueId, "Receiving", percent)
-                    callbacks.onProgress("Receiving " + name + " · " + percent + "% · " + transferRateLabel(bytesPerSecond))
+                    callbacks.onProgress("Receiving " + name + " · " + percent + "% · " + TransferRateFormatter.format(bytesPerSecond))
                 }
                 out.fd.sync()
             }
