@@ -1,6 +1,6 @@
 # NEXORA Master Upgrade Tracker
 
-Last updated: 2026-11-23 (resumable transfers, trusted devices and recipient history)
+Last updated: 2026-11-23 (Phase 1 file manager and Transfer Centre improvements in progress)
 
 Release target: NEXORA 0.8.9, versionCode 86 (integrated reliability upgrade)  
 Application ID: `com.nexora.share`
@@ -31,6 +31,7 @@ Application ID: `com.nexora.share`
 | 18 | QR session expiry and admission-token rotation | **Implemented: QR refreshes every 10 minutes without disconnecting existing peers; device test pending** |
 | 19 | Per-recipient transfer history | **Implemented for both directions with completed, failed, cancelled and interrupted outcomes** |
 | 20 | Background transfer notification progress | **Implemented: foreground notification reflects sending, receiving and paused state with progress where available** |
+| 21 | File manager actions and Transfer Centre overview | **Implemented on development branch: open/select files, long-press rename/delete with confirmation, plus session connection and queue counts; latest commit build verification pending** |
 
 ## Technical decisions and safeguards
 
