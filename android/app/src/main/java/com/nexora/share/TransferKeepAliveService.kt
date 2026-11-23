@@ -67,7 +67,7 @@ class TransferKeepAliveService : Service() {
                 updateForegroundNotification(message)
                 listener?.onTransferProgress(message)
             }
-            override fun onReceived(name: String) { status("Received and saved: " + name) }
+            override fun onReceived(name: String, peerName: String) { status("Received and saved: " + name + " · from " + peerName) }
             override fun onIncomingQueueChanged(items: List<IncomingQueueItem>) {
                 listener?.onIncomingQueueChanged(items)
             }
@@ -85,6 +85,9 @@ class TransferKeepAliveService : Service() {
     fun connectedEndpointCount(): Int = connectedPeers.size
     fun connectedEndpointIds(): List<String> = connectedPeers.keys.toList()
     fun connectedEndpointName(endpointId: String): String? = connectedPeers[endpointId]
+    fun disconnectPeer(endpointId: String) {
+        if (transportDelegate.isInitialized()) transport.disconnectPeer(endpointId)
+    }
 
     fun setHighSpeedMode(enabled: Boolean) {
         status("Wi-Fi Direct is the active connection mode.")
