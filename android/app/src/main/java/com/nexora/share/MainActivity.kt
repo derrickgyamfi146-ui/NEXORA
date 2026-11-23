@@ -96,8 +96,19 @@ class MainActivity : Activity() {
                 }
                 updateStatus(message)
                 showWifiDirectFailureHelp(message)
-                if (message.startsWith("Transfer queue finished:")) {
-                    java.io.File(cacheDir, "shared_apks").listFiles()?.forEach { it.delete() }
+                val transferFinished = message == "Transfer complete." ||
+                    message == "Group transfer finished." ||
+                    message.startsWith("Transfer queue finished:") ||
+                    message.startsWith("Send failed:") ||
+                    message.startsWith("Outgoing transfer cancelled.") ||
+                    message.startsWith("Could not send to ")
+                if (transferFinished) {
+                    // App APKs are copied into cache before sharing. Remove those
+                    // temporary copies after every terminal send outcome so they
+                    // do not accumulate and consume the phone's storage.
+                    java.io.File(cacheDir, "shared_apks").listFiles()?.forEach { file ->
+                        runCatching { file.delete() }
+                    }
                 }
                 if (message.startsWith("Received and saved:")) {
                     rememberReceivedFileName(message.removePrefix("Received and saved:").trim())
