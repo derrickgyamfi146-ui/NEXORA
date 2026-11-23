@@ -2174,6 +2174,12 @@ class MainActivity : Activity() {
         content.addView(sdPanel, bottom(12))
         val categoryPanel = panel(card)
         categoryPanel.addView(label("BROWSE BY CATEGORY", 0xFFFFD21F.toInt()))
+        categoryPanel.addView(TextView(this).apply {
+            text = "Choose a folder first. Category filters show matching files in the folder currently open."
+            textSize = 11f
+            setTextColor(muted)
+            setPadding(0, dp(5), 0, dp(8))
+        })
         val categoryGrid = android.widget.GridLayout(this).apply { columnCount = 2 }
         listOf(
             Triple("Documents", "documents", 0xFF0B4FB3.toInt()),
@@ -2191,7 +2197,7 @@ class MainActivity : Activity() {
                 setOnClickListener {
                     treeCategoryFilter = item.second
                     folderSearch = ""
-                    if (item.second == "big") sortTreeBySize = true
+                    sortTreeBySize = item.second == "big"
                     if (selectedTreeUri != null) render() else openFolderTree()
                 }
             }
