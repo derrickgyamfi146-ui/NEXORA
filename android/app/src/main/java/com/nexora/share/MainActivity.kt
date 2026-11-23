@@ -250,6 +250,7 @@ class MainActivity : Activity() {
         override fun onDisconnected(endpointId: String) {
             runOnUiThread {
                 connectedPeers.remove(endpointId)
+                discovered.remove(endpointId)
                 if (sharing?.connectedEndpointIds()?.isEmpty() != false && connectedPeers.isEmpty()) {
                     connectionSessionAnimationShown = false
                     pendingAutoConnectEndpointId = null
