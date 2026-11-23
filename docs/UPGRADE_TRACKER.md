@@ -1,6 +1,6 @@
 # NEXORA Master Upgrade Tracker
 
-Last updated: 2026-11-23 (Phase 1 file manager and Transfer Centre improvements in progress)
+Last updated: 2026-11-23 (Phase 1 file manager, Transfer Centre and received-file management improvements)
 
 Release target: NEXORA 0.8.9, versionCode 86 (integrated reliability upgrade)  
 Application ID: `com.nexora.share`
@@ -31,7 +31,8 @@ Application ID: `com.nexora.share`
 | 18 | QR session expiry and admission-token rotation | **Implemented: QR refreshes every 10 minutes without disconnecting existing peers; device test pending** |
 | 19 | Per-recipient transfer history | **Implemented for both directions with completed, failed, cancelled and interrupted outcomes** |
 | 20 | Background transfer notification progress | **Implemented: foreground notification reflects sending, receiving and paused state with progress where available** |
-| 21 | File manager actions and Transfer Centre overview | **Implemented on development branch: open/select files, long-press rename/delete with confirmation, plus session connection and queue counts; latest commit build verification pending** |
+| 21 | File manager actions and Transfer Centre overview | **Implemented on development branch: open/select files, long-press rename/delete with confirmation, session connection and queue counts, plus live transfer status; build, original signature and artifact upload passed for commit `40a376e`** |
+| 22 | Received-file search and sorting | **Implemented on development branch: search saved NEXORA downloads by filename and sort newest-first or oldest-first; latest build verification pending** |
 
 ## Technical decisions and safeguards
 
@@ -60,6 +61,7 @@ Application ID: `com.nexora.share`
 | `6e86a5e` | Initial framed duplex send/receive session | Build, signature and artifact upload passed |
 | `324768b` | Protocol v2 marker | Build, signature and artifact upload passed |
 | `60726f9` | Disconnect cleanup and wake pending sends | Build, signature and artifact upload passed |\n| `569e750` | Import legacy sent and received items into History | Build, signature and artifact upload passed |\n| `352b130` | Correct year rollover and avoid duplicate legacy History events | CI pending at the time of tracker update |
+| `40a376e` | Transfer Centre live session status | Build, original signing-certificate verification and artifact upload passed |
 
 Integrated reliability work for 0.8.9/build86 includes protocol v6 resume offsets, persistent partial-file recovery, duplicate-batch skipping, remembered device IDs with block controls, per-recipient history and live notification progress. CI build and signing checks must pass on the final head before an APK is shared. Real-device testing is still required.
 
