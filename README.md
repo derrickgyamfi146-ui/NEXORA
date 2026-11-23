@@ -2,36 +2,47 @@
 
 **NEXORA – Share Without Limits**
 
-NEXORA is an Android-to-Android local file-sharing app built with Google Nearby Connections. It is designed to transfer files directly between nearby devices without requiring mobile data for the transfer itself.
+NEXORA is an Android-to-Android file-sharing app that uses **Wi-Fi Direct** to move files between nearby phones. The transfer itself does not require mobile data or an internet connection.
 
 ## Current Android app features
 
-- Nearby phone discovery and secure connection-code confirmation.
-- Send and receive files using the Android system file picker.
-- Select multiple files in one batch.
-- Sequential outgoing transfer queue.
-- Transfer percentage, average speed and estimated remaining time.
-- Foreground service notification intended to keep transfers active when the app is backgrounded.
-- In-app Photos, Videos and Music library lists with search and newest/name sorting.
-- Documents and all-files access through Android's secure picker.
-- Received files saved under `Download/NEXORA/` on Android 10 and newer.
-- Received-file open, rename and delete actions.
+- Start a receiving session and share its QR code with nearby phones.
+- Join a receiver's Wi-Fi Direct group by scanning its NEXORA QR code.
+- Group sharing: multiple phones can join one receiver session.
+- Select and send multiple files from Android's secure file picker.
+- Browse local photos, videos, music and installed apps.
+- Prepare installed apps for sharing, including their split APK parts where present.
+- Pause, resume and cancel supported incoming and outgoing transfers.
+- View transfer progress and the Sent / Received lists in the Transfer Centre.
+- Preview supported received media, open files with installed apps, rename or delete received files, and install received APKs through Android's installer.
+- Save received files under `Download/NEXORA/` on Android 10 and newer.
+- Browse folders through Android's Storage Access Framework.
 - Dark/light theme preference and editable device display name.
+- A foreground service keeps active transfers running while navigating away from the main screen.
+
+## Android compatibility
+
+- The app package supports Android 7.0 (API 24) and newer.
+- **NEXORA's QR-based Wi-Fi Direct sharing currently requires Android 10 (API 29) or newer** on both phones. Older phones can open the app, but cannot start or join this QR transfer flow.
+- Wi-Fi Direct behavior varies by phone manufacturer and Android version. Hotspot or other Wi-Fi features may conflict on some devices.
 
 ## Build
 
-The Android APK is built by the GitHub Actions workflow in `.github/workflows/android-build.yml`.
+The APK is built by the GitHub Actions workflow in `.github/workflows/nexora-apk.yml`.
 
-The application ID remains `com.nexora.share`. Keep the existing installation and its data until an update has been verified on the device. Android only permits an in-place update when the APK is signed with the same signing certificate.
+- Current audit build: **0.8.6** (versionCode **83**).
+- Application ID: `com.nexora.share`.
+- Keep the existing installation and its data when installing an update. Android only permits an in-place update when the APK has the same application ID and signing certificate.
 
-## Current limitations
+## Current limitations and testing still needed
 
-- Transfers and background behavior still require real-device testing with two phones, including screen-off and large-file tests.
-- The media browser currently lists local photos, videos and audio; documents and arbitrary files use Android's system picker.
-- The app uses the phone's available apps to open received media; a dedicated built-in music/video player is not included yet.
-- Automatic extraction/sharing of installed apps, full phone migration, PC/iPhone interoperability, social-media downloading and video-to-audio conversion are not included.
-- Android storage and background-execution rules vary by OS version and manufacturer. A successful APK build does not prove every device-specific behavior.
+- Every supported phone model still needs real-device testing, including two-phone connection, group joining, screen-off transfers, large files, pause/resume, cancellation and recovery after a disconnect.
+- The transfer protocol does not yet provide verified end-to-end file checksums or resume-from-the-middle after an interrupted transfer.
+- The receiver does not yet provide a robust pre-transfer storage-capacity check for very large incoming files.
+- Wi-Fi Direct QR sessions are intended for nearby trusted devices; session expiry, rotating QR credentials and a persistent trusted-device list are not yet implemented.
+- PC and iPhone interoperability are not currently supported.
+- A successful GitHub Actions build confirms compilation and signing checks; it does not prove that real-device transfers work on every phone.
 
 ## Development direction
 
-The planned sequence is transfer reliability, richer media/file management, transfer history and preferences, then cross-platform capabilities where Android and other platform rules allow them.
+Prioritise transfer reliability and storage safety first, then stronger transfer verification and recovery, followed by richer file management and carefully selected features. Preserve the current NEXORA design and branding while improving reliability.
