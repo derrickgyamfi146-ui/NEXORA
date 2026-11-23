@@ -31,6 +31,7 @@ class TransferKeepAliveService : Service() {
     private val binder = LocalBinder()
     private var listener: Listener? = null
     private var lastStatusMessage = "NEXORA is ready."
+    @Volatile private var foregroundStarted = false
     @Volatile private var receiving = false
     private val connectedPeers = java.util.concurrent.ConcurrentHashMap<String, String>()
     private var transferWakeLock: android.os.PowerManager.WakeLock? = null
@@ -63,6 +64,7 @@ class TransferKeepAliveService : Service() {
                 if (message.startsWith("Paused:")) releaseTransferWakeLock()
                 else acquireTransferWakeLock()
                 lastStatusMessage = message
+                updateForegroundNotification(message)
                 listener?.onTransferProgress(message)
             }
             override fun onReceived(name: String) { status("Received and saved: " + name) }
@@ -146,13 +148,42 @@ class TransferKeepAliveService : Service() {
         connectedPeers.clear()
         releaseTransferWakeLock()
         stopForegroundCompat()
+        foregroundStarted = false
         stopSelf()
         status("Stopped. You can start again.")
     }
 
     private fun status(message: String) {
         lastStatusMessage = message
+        updateForegroundNotification(message)
         listener?.onStatus(message)
+    }
+
+    private fun updateForegroundNotification(message: String) {
+        if (!foregroundStarted) return
+        val percent = Regex("(\\d{1,3})%").find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?.coerceIn(0, 100)
+        val paused = message.startsWith("Paused:")
+        val activeTransfer = message.startsWith("Sending ") || message.startsWith("Receiving ")
+        val title = when {
+            paused -> "NEXORA transfer paused"
+            message.startsWith("Sending ") -> "NEXORA sending"
+            message.startsWith("Receiving ") -> "NEXORA receiving"
+            message.startsWith("Connected to") -> "NEXORA connected"
+            else -> "NEXORA is active"
+        }
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setContentTitle(title)
+            .setContentText(message.take(180))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        if (activeTransfer && percent != null) builder.setProgress(100, percent, false)
+        else if (paused) builder.setProgress(0, 0, true)
+        else builder.setProgress(0, 0, false)
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, builder.build())
     }
 
     private fun isTransferTerminalStatus(message: String): Boolean {
@@ -195,6 +226,7 @@ class TransferKeepAliveService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        foregroundStarted = true
     }
 
     @Suppress("DEPRECATION")
