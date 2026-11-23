@@ -1,6 +1,6 @@
 # NEXORA Master Upgrade Tracker
 
-Last updated: 2026-11-23 (Phase 1 File Manager, Transfer Centre, received-file management and connection-flow reliability)
+Last updated: 2026-11-23 (Phase 1 File Manager, Transfer Centre, received-file management and connection-flow reliability; CI verified)
 
 Release target: NEXORA 0.8.9, versionCode 86 (integrated reliability upgrade)  
 Application ID: `com.nexora.share`
@@ -36,10 +36,10 @@ Application ID: `com.nexora.share`
 | 23 | File category filter clarity and sorting | **Implemented on development branch: category filters are clearly scoped to the open folder, and switching away from Big Files resets largest-first sorting; latest integrated build passed** |
 | 24 | Live transfer speed display | **Implemented on development branch: sender and receiver progress messages now include measured transfer throughput; integrated APK build, original signing-certificate verification and artifact upload passed** |
 | 25 | Share received files | **Implemented on development branch: received items can be sent to other Android apps through the system share sheet with read permission; integrated APK build, original signing-certificate verification and artifact upload passed** |
-| 26 | Accurate empty-search message | **Implemented on development branch: an unmatched received-file search now explains that no items match instead of showing the generic empty-library message; latest integrated build verification pending** |
-| 27 | Per-device disconnect control | **Implemented on development branch: connected peers have an explicit disconnect action with confirmation and a warning about active transfers; latest integrated build verification pending** |
-| 28 | Discovered-peer QR action | **Implemented on development branch: the peer-list action now launches the QR scanner instead of calling a connection method that only displayed a message; latest integrated build verification pending** |
-| 29 | Disconnected-peer list cleanup | **Implemented on development branch: disconnected peers are removed from the visible discovery list to avoid stale CONNECT WITH QR entries; latest integrated build verification pending** |
+| 26 | Accurate empty-search message | **Implemented on development branch: an unmatched received-file search now explains that no items match instead of showing the generic empty-library message; integrated build and original signing checks passed** |
+| 27 | Per-device disconnect control | **Implemented on development branch: connected peers have an explicit disconnect action with confirmation and a warning about active transfers; integrated build and original signing checks passed** |
+| 28 | Discovered-peer QR action | **Implemented on development branch: the peer-list action now launches the QR scanner instead of calling a connection method that only displayed a message; integrated build and original signing checks passed** |
+| 29 | Disconnected-peer list cleanup | **Implemented on development branch: disconnected peers are removed from the visible discovery list to avoid stale CONNECT WITH QR entries; integrated build and original signing checks passed** |
 
 ## Technical decisions and safeguards
 
@@ -71,6 +71,7 @@ Application ID: `com.nexora.share`
 | `40a376e` | Transfer Centre live session status | Build, original signing-certificate verification and artifact upload passed |
 | `cc7e006` | Received-file search/sorting and category-filter clarity | Build, original signing-certificate verification and artifact upload passed |
 | `00fbbec` | Live transfer speed and received-file share action integrated | Build, original signing-certificate verification and artifact upload passed |
+| `d0aa230` | Received-file empty state and connection/discovery cleanup integrated | Build, original signing-certificate verification, update compatibility and artifact upload passed |
 
 Integrated reliability work for 0.8.9/build86 includes protocol v6 resume offsets, persistent partial-file recovery, duplicate-batch skipping, remembered device IDs with block controls, per-recipient history and live notification progress. CI build and signing checks must pass on the final head before an APK is shared. Real-device testing is still required.
 
