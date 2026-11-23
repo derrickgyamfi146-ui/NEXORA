@@ -443,9 +443,12 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         var allFilesSaved = true
                         metadata.forEachIndexed { index, item ->
                             currentIncomingIndex = index
+                            val resumeAt = currentResumeOffset(item.sha256, item.size)
+                            sendResumeOffset(output, outputLock, resumeAt)
                             if (cancelledIncomingItems.contains(index)) {
                                 allFilesSaved = false
-                                skipIncomingBytes(input, item.size)
+                                skipIncomingBytes(input, item.size - resumeAt)
+                                runCatching { partialFile(item.sha256).delete() }
                                 updateIncomingQueue(index, "Cancelled", 0)
                                 synchronized(outputLock) {
                                     output.writeByte(FRAME_ACK)
@@ -456,7 +459,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             } else {
                                 updateIncomingQueue(index, "Receiving", 0)
                                 callbacks.onProgress("Receiving " + item.name + " · 0%")
-                                val saved = saveIncoming(input, item.name, item.mime, item.size, item.sha256, index)
+                                val saved = saveIncoming(input, item.name, item.mime, item.size, item.sha256, resumeAt, index)
                                 if (!saved) allFilesSaved = false
                                 val finalStatus = if (saved) "Completed" else if (cancelledIncomingItems.contains(index)) "Cancelled" else "Failed"
                                 updateIncomingQueue(index, finalStatus, if (saved) 100 else incomingProgress(index))
@@ -465,7 +468,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                     output.writeBoolean(saved)
                                     output.flush()
                                 }
-                                if (saved) callbacks.onReceived(item.name)
+                                if (saved) callbacks.onReceived(item.name, peerName)
                                 else if (cancelledIncomingItems.contains(index)) callbacks.onStatus("Incoming transfer cancelled: " + item.name)
                                 else callbacks.onStatus("Incoming transfer failed verification or storage check: " + item.name)
                             }
@@ -659,9 +662,12 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         var allGroupFilesSaved = true
                         metadata.forEachIndexed { index, item ->
                             currentIncomingIndex = index
+                            val resumeAt = currentResumeOffset(item.sha256, item.size)
+                            sendResumeOffset(peer.output, peer.outputLock, resumeAt)
                             if (cancelledIncomingItems.contains(index)) {
                                 allGroupFilesSaved = false
-                                skipIncomingBytes(peer.input, item.size)
+                                skipIncomingBytes(peer.input, item.size - resumeAt)
+                                runCatching { partialFile(item.sha256).delete() }
                                 updateIncomingQueue(index, "Cancelled", 0)
                                 synchronized(peer.outputLock) {
                                     peer.output.writeByte(FRAME_ACK)
@@ -671,7 +677,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             } else {
                                 updateIncomingQueue(index, "Receiving", 0)
                                 callbacks.onProgress("Receiving " + item.name + " · 0%")
-                                val saved = saveIncoming(peer.input, item.name, item.mime, item.size, item.sha256, index)
+                                val saved = saveIncoming(peer.input, item.name, item.mime, item.size, item.sha256, resumeAt, index)
                                 if (!saved) allGroupFilesSaved = false
                                 val finalStatus = if (saved) "Completed" else if (cancelledIncomingItems.contains(index)) "Cancelled" else "Failed"
                                 updateIncomingQueue(index, finalStatus, if (saved) 100 else incomingProgress(index))
@@ -680,7 +686,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                     peer.output.writeBoolean(saved)
                                     peer.output.flush()
                                 }
-                                if (saved) callbacks.onReceived(item.name)
+                                if (saved) callbacks.onReceived(item.name, peer.name)
                                 else if (cancelledIncomingItems.contains(index)) callbacks.onStatus("Incoming transfer cancelled: " + item.name)
                                 else callbacks.onStatus("Incoming transfer failed verification or storage check: " + item.name)
                             }
