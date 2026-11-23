@@ -2198,7 +2198,7 @@ class MainActivity : Activity() {
             getSharedPreferences("nexora_file_manager", MODE_PRIVATE).edit().putString("current_document_id", currentTreeDocumentId).apply()
             render()
         }, bottom(6))
-        section.addView(button(if (sortTreeBySize) "SORT: NAME A-Z" else "SORT: LARGEST FIRST", 0xFF7357E8.toInt()) {
+        section.addView(button(if (sortTreeBySize) "SORT: LARGEST FIRST" else "SORT: NAME A-Z", 0xFF7357E8.toInt()) {
             sortTreeBySize = !sortTreeBySize
             render()
         }, bottom(7))
