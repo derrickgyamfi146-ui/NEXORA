@@ -929,6 +929,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                     val buffer = ByteArray(256 * 1024)
                                     var remaining = size - offset
                                     var done = offset
+                                    val startedAtNanos = System.nanoTime()
                                     while (remaining > 0) {
                                         waitIfOutgoingPaused()
                                         val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
@@ -936,7 +937,10 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                         peer.output.write(buffer, 0, n)
                                         remaining -= n
                                         done += n
-                                        callbacks.onProgress("Sending to " + peer.name + ": " + name + " · " + (done * 100 / size.coerceAtLeast(1)) + "%")
+                                        val percent = (done * 100 / size.coerceAtLeast(1)).toInt()
+                                        val elapsedSeconds = ((System.nanoTime() - startedAtNanos) / 1_000_000_000.0).coerceAtLeast(0.1)
+                                        val bytesPerSecond = ((done - offset).coerceAtLeast(0L) / elapsedSeconds).toLong()
+                                        callbacks.onProgress("Sending to " + peer.name + ": " + name + " · " + percent + "% · " + transferRateLabel(bytesPerSecond))
                                     }
                                 } ?: throw IOException("Could not open " + name)
                                 peer.output.flush()
@@ -964,6 +968,15 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 outgoingCancelled.set(false)
                 sending.set(false)
             }
+        }
+    }
+
+    private fun transferRateLabel(bytesPerSecond: Long): String {
+        val rate = bytesPerSecond.coerceAtLeast(0L).toDouble()
+        return when {
+            rate >= 1024.0 * 1024.0 -> String.format(java.util.Locale.US, "%.1f MB/s", rate / (1024.0 * 1024.0))
+            rate >= 1024.0 -> String.format(java.util.Locale.US, "%.0f KB/s", rate / 1024.0)
+            else -> "$bytesPerSecond B/s"
         }
     }
 
@@ -1006,6 +1019,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 val buffer = ByteArray(256 * 1024)
                 var remaining = size - resumeOffset
                 var done = resumeOffset
+                val startedAtNanos = System.nanoTime()
                 while (remaining > 0) {
                     while (incomingPaused.get() && active.get() && !incomingCancelled.get()) Thread.sleep(100)
                     val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
@@ -1017,8 +1031,10 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     remaining -= n
                     done += n
                     val percent = (done * 100 / size.coerceAtLeast(1)).toInt()
+                    val elapsedSeconds = ((System.nanoTime() - startedAtNanos) / 1_000_000_000.0).coerceAtLeast(0.1)
+                    val bytesPerSecond = ((done - resumeOffset).coerceAtLeast(0L) / elapsedSeconds).toLong()
                     updateIncomingQueue(queueId, "Receiving", percent)
-                    callbacks.onProgress("Receiving " + name + " · " + percent + "%")
+                    callbacks.onProgress("Receiving " + name + " · " + percent + "% · " + transferRateLabel(bytesPerSecond))
                 }
                 out.fd.sync()
             }
