@@ -4174,7 +4174,17 @@ class MainActivity : Activity() {
 
     private fun addReceivedEmpty() {
         if (!::receivedList.isInitialized) return
-        receivedList.addView(TextView(this).apply { text = "Received files will appear here when saved."; textSize = 12f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
+        val emptyMessage = if (receivedSearch.isNotBlank()) {
+            "No received files match \"$receivedSearch\"."
+        } else {
+            "Received files will appear here when saved."
+        }
+        receivedList.addView(TextView(this).apply {
+            text = emptyMessage
+            textSize = 12f
+            setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt())
+            setPadding(0, dp(8), 0, dp(8))
+        })
     }
 
     companion object { private const val REQUEST_WIFI_DIRECT = 2001; private const val REQUEST_FILE = 2002; private const val REQUEST_MEDIA = 2003; private const val REQUEST_TREE = 2004; private const val REQUEST_CAMERA = 2005 }
