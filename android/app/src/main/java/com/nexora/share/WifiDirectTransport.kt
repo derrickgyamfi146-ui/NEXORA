@@ -1168,6 +1168,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         callbacks.onProgress("Preparing transfer…")
         io.execute {
             var ownsTurn = false
+            var currentFileName = ""
             try {
                 requestSendTurn()
                 ownsTurn = true
@@ -1196,6 +1197,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     metadata.forEach { item ->
                         val uri = item.uri
                         val name = item.name
+                        currentFileName = name
                         val size = item.size
                         val offset = resumeOffsets.poll(2, TimeUnit.MINUTES)
                             ?: throw IOException("The receiver did not provide a resume position for " + name)
@@ -1222,10 +1224,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     val confirmed = acknowledgementQueue.poll(10, TimeUnit.MINUTES)
                         ?: throw IOException("The receiving phone did not respond to " + name)
                     if (confirmed) callbacks.onStatus("Sent to " + peerName + ": " + name)
-                    else callbacks.onStatus("Receiver cancelled: " + name)
+                    else callbacks.onStatus("Transfer cancelled to " + peerName + ": " + name)
                 }
                 callbacks.onStatus("Transfer complete.")
             } catch (e: Exception) {
+                if (currentFileName.isNotBlank()) callbacks.onStatus("Transfer failed to " + peerName + ": " + currentFileName)
                 val busy = e.localizedMessage?.contains("busy", ignoreCase = true) == true
                 if (!busy) {
                     // Closing the socket lets the single peer reader own cleanup
