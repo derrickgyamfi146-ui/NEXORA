@@ -147,6 +147,15 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     }
 
     fun startReceiving() {
+        // The QR group-joining APIs and MediaStore.Downloads path used by NEXORA
+        // require Android 10+. Keep the app installable on older phones, but
+        // fail clearly before registering receivers or changing session state.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            active.set(false)
+            currentQrPayload = null
+            callbacks.onStatus("NEXORA QR Wi-Fi Direct sharing requires Android 10 or newer on this phone.")
+            return
+        }
         if (!isWifiEnabled()) {
             active.set(false)
             currentQrPayload = null
@@ -249,6 +258,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     }
 
     fun connectWithQr(qr: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            active.set(false)
+            callbacks.onStatus("Joining a NEXORA QR Wi-Fi Direct session requires Android 10 or newer on this phone.")
+            return
+        }
         try {
             val encoded = qr.removePrefix("NEXORA-WFD:")
             require(encoded != qr && encoded.length < 4096) { "Not a NEXORA Wi-Fi Direct QR code." }
@@ -273,7 +287,6 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             active.set(true)
             register()
             callbacks.onStatus("Joining " + peerName + "'s private Wi-Fi Direct group…")
-            if (Build.VERSION.SDK_INT < 29) throw IllegalStateException("QR Wi-Fi Direct joining needs Android 10 or newer.")
             val config = WifiP2pConfig.Builder().setNetworkName(ssid).setPassphrase(password).build()
             manager.connect(channel, config, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() { callbacks.onStatus("Connection requested. Approve Android's Wi-Fi Direct prompt if shown…") }
