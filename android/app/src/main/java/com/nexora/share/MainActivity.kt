@@ -21,6 +21,8 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var peerList: LinearLayout
     private lateinit var receivedList: LinearLayout
+    private var receivedSearch = ""
+    private var receivedSortNewestFirst = true
     private var incomingStatusView: TextView? = null
     private var incomingQueueView: LinearLayout? = null
     private var incomingQueueItems: List<IncomingQueueItem> = emptyList()
@@ -3086,6 +3088,30 @@ class MainActivity : Activity() {
 
         val box = panel(card)
         box.addView(label("SAVED ON THIS PHONE", 0xFF0B4FB3.toInt()))
+        val receivedSearchInput = EditText(this).apply {
+            hint = "Search received files"
+            setSingleLine(true)
+            textSize = 12f
+            setTextColor(ink)
+            setHintTextColor(muted)
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 11)
+            setText(receivedSearch)
+        }
+        box.addView(receivedSearchInput, bottom(7))
+        val receivedTools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        receivedTools.addView(button("SEARCH", 0xFF168FE5.toInt()) {
+            receivedSearch = receivedSearchInput.text?.toString()?.trim().orEmpty()
+            refreshReceivedFiles()
+        }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(4) })
+        receivedTools.addView(button(if (receivedSortNewestFirst) "NEWEST FIRST" else "OLDEST FIRST", 0xFF64748B.toInt()) {
+            receivedSortNewestFirst = !receivedSortNewestFirst
+            render()
+        }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { leftMargin = dp(4) })
+        box.addView(receivedTools, bottom(8))
         receivedList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(receivedList)
         content.addView(box)
@@ -4004,7 +4030,18 @@ class MainActivity : Activity() {
         receivedList.removeAllViews()
         try {
             val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_ADDED)
-            contentResolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, projection, MediaStore.MediaColumns.RELATIVE_PATH + " = ?", arrayOf("Download/NEXORA/"), MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
+            val selection = if (receivedSearch.isBlank()) {
+                MediaStore.MediaColumns.RELATIVE_PATH + " = ?"
+            } else {
+                MediaStore.MediaColumns.RELATIVE_PATH + " = ? AND " + MediaStore.MediaColumns.DISPLAY_NAME + " LIKE ?"
+            }
+            val selectionArgs = if (receivedSearch.isBlank()) {
+                arrayOf("Download/NEXORA/")
+            } else {
+                arrayOf("Download/NEXORA/", "%$receivedSearch%")
+            }
+            val sortOrder = MediaStore.MediaColumns.DATE_ADDED + if (receivedSortNewestFirst) " DESC" else " ASC"
+            contentResolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
                 if (cursor.count == 0) addReceivedEmpty()
                 var previousDay = ""
                 while (cursor.moveToNext()) {
