@@ -21,6 +21,8 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var peerList: LinearLayout
     private lateinit var receivedList: LinearLayout
+    private var receivedSearch = ""
+    private var receivedSortNewestFirst = true
     private var incomingStatusView: TextView? = null
     private var incomingQueueView: LinearLayout? = null
     private var incomingQueueItems: List<IncomingQueueItem> = emptyList()
@@ -46,6 +48,8 @@ class MainActivity : Activity() {
     private var appSelectionButton: Button? = null
     private var selectionSendButton: TextView? = null
     private var pendingCameraScan = false
+    private var pendingInstallUri: Uri? = null
+    private var qrDialog: android.app.Dialog? = null
     private var connectionArrivalAnimationRunning = false
     private var connectionSessionAnimationShown = false
     private var preparingApps = false
@@ -83,18 +87,67 @@ class MainActivity : Activity() {
     private val serviceListener = object : TransferKeepAliveService.Listener {
         override fun onStatus(message: String) {
             runOnUiThread {
-                if (message.startsWith("Sent: ")) rememberSentFileName(message.removePrefix("Sent: ").trim())
-                if (message.startsWith("Receiving ") || message.startsWith("Paused:")) {
+                if (message.startsWith("Sent to ")) {
+                    val detail = message.removePrefix("Sent to ")
+                    val recipient = detail.substringBefore(": ").trim().ifBlank { "Nearby device" }
+                    val fileName = detail.substringAfter(": ", "").trim()
+                    if (fileName.isNotBlank()) rememberSentFileName(fileName, recipient)
+                    successFeedback()
+                } else if (message.startsWith("Sent: ")) {
+                    rememberSentFileName(message.removePrefix("Sent: ").trim())
+                    successFeedback()
+                }
+                if (message.startsWith("Transfer failed to ") ||
+                    message.startsWith("Transfer cancelled to ")) {
+                    val cancelled = message.startsWith("Transfer cancelled to ")
+                    val detail = message.substringAfter(if (cancelled) "Transfer cancelled to " else "Transfer failed to ")
+                    val recipient = detail.substringBefore(": ").trim().ifBlank { "Nearby device" }
+                    val fileName = detail.substringAfter(": ", "").trim()
+                    if (fileName.isNotBlank()) appendHistoryEvent("SENT", fileName, recipient, if (cancelled) "CANCELLED" else "FAILED")
+                }
+                if (message.startsWith("Transfer failed from ") ||
+                    message.startsWith("Transfer interrupted from ") ||
+                    message.startsWith("Transfer cancelled from ")) {
+                    val outcome = when {
+                        message.startsWith("Transfer interrupted from ") -> "INTERRUPTED"
+                        message.startsWith("Transfer cancelled from ") -> "CANCELLED"
+                        else -> "FAILED"
+                    }
+                    val prefix = when (outcome) {
+                        "INTERRUPTED" -> "Transfer interrupted from "
+                        "CANCELLED" -> "Transfer cancelled from "
+                        else -> "Transfer failed from "
+                    }
+                    val detail = message.removePrefix(prefix)
+                    val sender = detail.substringBefore(": ").trim().ifBlank { "Nearby device" }
+                    val fileName = detail.substringAfter(": ", "").trim()
+                    if (fileName.isNotBlank()) appendHistoryEvent("RECEIVED", fileName, sender, outcome)
+                }
+                if (message.startsWith("Received and saved:")) successFeedback()
+                if (message.startsWith("Receiving ") || message.startsWith("Paused: Receiving")) {
                     latestIncomingProgress = message
                     incomingStatusView?.text = message
                 }
                 updateStatus(message)
                 showWifiDirectFailureHelp(message)
-                if (message.startsWith("Transfer queue finished:")) {
-                    java.io.File(cacheDir, "shared_apks").listFiles()?.forEach { it.delete() }
+                val transferFinished = message == "Transfer complete." ||
+                    message == "Group transfer finished." ||
+                    message.startsWith("Transfer queue finished:") ||
+                    message.startsWith("Send failed:") ||
+                    message.startsWith("Outgoing transfer cancelled.")
+                if (transferFinished) {
+                    // App APKs are copied into cache before sharing. Remove those
+                    // temporary copies after every terminal send outcome so they
+                    // do not accumulate and consume the phone's storage.
+                    java.io.File(cacheDir, "shared_apks").listFiles()?.forEach { file ->
+                        runCatching { file.delete() }
+                    }
                 }
                 if (message.startsWith("Received and saved:")) {
-                    rememberReceivedFileName(message.removePrefix("Received and saved:").trim())
+                    val detail = message.removePrefix("Received and saved:").trim()
+                    val fileName = detail.substringBefore(" · from ").trim()
+                    val sender = detail.substringAfter(" · from ", "Nearby device").trim()
+                    rememberReceivedFileName(fileName, sender)
                     latestIncomingProgress = "No active incoming transfers."
                     incomingStatusView?.text = latestIncomingProgress
                     refreshReceivedFiles()
@@ -150,6 +203,10 @@ class MainActivity : Activity() {
             runOnUiThread {
                 discovered[endpointId] = name
                 connectedPeers.add(endpointId)
+                successFeedback()
+                // Keep the receiver's QR visible so a group host can admit
+                // additional phones. The host may close it manually at any time;
+                // closing the dialog does not end the Wi-Fi Direct session.
                 pendingAutoConnectEndpointId = null
                 receivingModeArmed = false
                 if (::peerList.isInitialized) rebuildPeerList()
@@ -193,6 +250,7 @@ class MainActivity : Activity() {
         override fun onDisconnected(endpointId: String) {
             runOnUiThread {
                 connectedPeers.remove(endpointId)
+                discovered.remove(endpointId)
                 if (sharing?.connectedEndpointIds()?.isEmpty() != false && connectedPeers.isEmpty()) {
                     connectionSessionAnimationShown = false
                     pendingAutoConnectEndpointId = null
@@ -225,8 +283,22 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        val pending = pendingInstallUri
+        if (pending != null && (Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls())) {
+            pendingInstallUri = null
+            launchApkInstaller(pending)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState != null) {
+            activeTab = savedInstanceState.getString("nexora_active_tab", "Media") ?: "Media"
+            mediaCategory = savedInstanceState.getString("nexora_media_category", "Apps") ?: "Apps"
+            launchSplashVisible = false
+        }
         darkMode = getSharedPreferences("nexora_preferences", MODE_PRIVATE).getBoolean("dark_mode", true)
         val savedTree = getSharedPreferences("nexora_file_manager", MODE_PRIVATE).getString("tree_uri", null)
         if (!savedTree.isNullOrBlank()) {
@@ -240,7 +312,13 @@ class MainActivity : Activity() {
             }
         }
         preloadLibraries()
-        showLaunchSplash()
+        if (savedInstanceState == null) showLaunchSplash() else render()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("nexora_active_tab", activeTab)
+        outState.putString("nexora_media_category", mediaCategory)
+        super.onSaveInstanceState(outState)
     }
 
     private fun showLaunchSplash() {
@@ -501,11 +579,20 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        floatingArrowUpAnimator?.cancel()
+        floatingArrowDownAnimator?.cancel()
+        floatingArrowUpAnimator = null
+        floatingArrowDownAnimator = null
+        floatingArrowUp = null
+        floatingArrowDown = null
         receiveModeLabel = null
         mediaContinueButton = null
         transferStatusView = null
+        transferOverviewStatusView = null
         transferProgressBar = null
         incomingStatusView = null
+        outgoingControlsView = null
+        outgoingToggleButton = null
         transferStepViews.clear()
         val page = if (darkMode) 0xFF071526.toInt() else 0xFFF3F7FC.toInt()
         val card = if (darkMode) 0xFF142A40.toInt() else -1
@@ -551,9 +638,10 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(dp(8), dp(5), dp(8), dp(5))
             }
-            listOf("History", "Sent", "Received", "Apps", "Photos", "Videos", "Music", "Files", "Contacts").forEach { tab ->
+            listOf("History", "Sent", "Received", "Group Share", "Apps", "Photos", "Videos", "Music", "Files", "Contacts").forEach { tab ->
                 val selected = when (tab) {
                     "History" -> activeTab == "History"
+                    "Group Share" -> activeTab == "Receive"
                     "Sent" -> activeTab == "Sent"
                     "Received" -> activeTab == "Received"
                     "Apps" -> activeTab == "Media" && mediaCategory == "Apps"
@@ -576,6 +664,7 @@ class MainActivity : Activity() {
                         "History" -> { activeTab = "History"; render() }
                         "Sent" -> { activeTab = "Sent"; render() }
                         "Received" -> { activeTab = "Received"; render() }
+                        "Group Share" -> { activeTab = "Receive"; render() }
                         "Apps" -> { mediaCategory = "Apps"; activeTab = "Media"; render() }
                         "Photos" -> openMediaLibrary("Photos")
                         "Videos" -> openMediaLibrary("Videos")
@@ -654,14 +743,9 @@ class MainActivity : Activity() {
             content.setPadding(dp(13), dp(7), dp(13), dp(84))
         }
         root.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
-        var floatingCentre: TextView? = null
+        var floatingCentre: View? = null
         if (libraryMode || connectedNow) {
-            val centre = TextView(this).apply {
-                text = if (connectedNow) "⇅" else "↔"
-                textSize = if (connectedNow) 27f else 25f
-                gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(-1)
+            val centre = android.widget.FrameLayout(this).apply {
                 background = if (connectedNow) android.graphics.drawable.GradientDrawable(
                     android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
                     intArrayOf(0xFF0B4FB3.toInt(), 0xFFE52B3A.toInt(), 0xFFFFD21F.toInt())
@@ -675,16 +759,35 @@ class MainActivity : Activity() {
                 alpha = 0f
                 scaleX = .68f
                 scaleY = .68f
-                if (connectedNow) {
-                    android.animation.ObjectAnimator.ofFloat(this, "translationY", -dp(3).toFloat(), dp(3).toFloat()).apply {
-                        duration = 900
-                        repeatCount = android.animation.ValueAnimator.INFINITE
-                        repeatMode = android.animation.ValueAnimator.REVERSE
-                        start()
-                    }
-                }
                 isHapticFeedbackEnabled = true
                 contentDescription = if (connectedNow) "Open transfer centre" else "Show Send and Receive actions"
+                if (connectedNow) {
+                    val arrows = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER
+                    }
+                    val up = TextView(this@MainActivity).apply {
+                        text = "↑"; textSize = 24f; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(-1)
+                    }
+                    val down = TextView(this@MainActivity).apply {
+                        text = "↓"; textSize = 24f; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(-1)
+                    }
+                    floatingArrowUp = up
+                    floatingArrowDown = down
+                    arrows.addView(up, LinearLayout.LayoutParams(dp(22), dp(42)))
+                    arrows.addView(down, LinearLayout.LayoutParams(dp(22), dp(42)))
+                    addView(arrows, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+                } else {
+                    addView(TextView(this@MainActivity).apply {
+                        text = "↔"; textSize = 25f; gravity = Gravity.CENTER
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(-1)
+                    }, android.widget.FrameLayout.LayoutParams(-1, -1))
+                }
                 setOnClickListener {
                     animatePress(this)
                     if (connectedNow) {
@@ -728,6 +831,7 @@ class MainActivity : Activity() {
             floatingCentre = centre
         }
         setContentView(root)
+        updateFloatingTransferAnimation()
         floatingCentre?.let { fab ->
             val appContent = findViewById<android.widget.FrameLayout>(android.R.id.content)
             appContent.addView(fab, android.widget.FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.END).apply {
@@ -1099,6 +1203,8 @@ class MainActivity : Activity() {
     private fun showQrCode(payload: String) {
         val returnTab = activeTab
         val dialog = android.app.Dialog(this)
+        qrDialog?.dismiss()
+        qrDialog = dialog
         val deviceName = (getSharedPreferences("nexora_preferences", MODE_PRIVATE)
             .getString("device_name", null)?.trim()?.takeIf { it.isNotEmpty() }
             ?: (Build.MODEL ?: "Android device").take(24)).take(24)
@@ -1126,7 +1232,16 @@ class MainActivity : Activity() {
                 textSize = 34f
                 setTextColor(-1)
                 gravity = Gravity.CENTER
-                setOnClickListener { dialog.dismiss(); activeTab = returnTab; render() }
+                contentDescription = "Close QR and return to Apps without ending the connection"
+                setOnClickListener {
+                    // Hiding the QR is a UI action only. The foreground transfer
+                    // service and Wi-Fi Direct session must remain alive.
+                    receivingModeArmed = false
+                    dialog.dismiss()
+                    activeTab = "Media"
+                    mediaCategory = "Apps"
+                    render()
+                }
             }, LinearLayout.LayoutParams(dp(42), dp(48)))
             top.addView(TextView(this).apply {
                 text = "Connect"
@@ -1182,12 +1297,25 @@ class MainActivity : Activity() {
             })
             val spacer = View(this)
             page.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
-            page.addView(button("CLOSE", 0xFF4C46A8.toInt()) {
+            page.addView(button("END SESSION", 0xFFE52B3A.toInt()) {
+                sharing?.stopSharing()
+                connectedPeers.clear()
+                receivingModeArmed = false
                 dialog.dismiss()
-                activeTab = returnTab
+                activeTab = "Media"
+                mediaCategory = "Apps"
                 render()
             }, LinearLayout.LayoutParams(-1, dp(44)))
             dialog.setContentView(page)
+            dialog.setOnDismissListener { if (qrDialog === dialog) qrDialog = null }
+            dialog.setOnCancelListener {
+                // Back button / outside dismissal closes only this dialog.
+                // END SESSION is the sole action that tears down Wi-Fi Direct.
+                receivingModeArmed = false
+                activeTab = "Media"
+                mediaCategory = "Apps"
+                render()
+            }
             dialog.setCancelable(true)
             dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
             dialog.show()
@@ -1339,6 +1467,7 @@ class MainActivity : Activity() {
     }
 
     private fun openMediaLibrary(kind: String) {
+        activeTab = "Media"
         mediaCategory = kind
         mediaSearch = ""
         mediaDisplayLimit = 20
@@ -1347,7 +1476,15 @@ class MainActivity : Activity() {
             "Videos" -> if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
             else -> if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_AUDIO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-        if (hasMediaPermission(kind)) render() else {
+        val fullPermission = when (kind) {
+            "Photos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
+            "Videos" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
+            else -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        val hasFullPermission = ContextCompat.checkSelfPermission(this, fullPermission) == PackageManager.PERMISSION_GRANTED
+        if (hasFullPermission) render() else {
+            // Ask for the full media permission instead of accepting Android 14's
+            // selected-media-only grant as if it covered the entire Videos library.
             val missing = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
             requestPermissions(missing.toTypedArray(), REQUEST_MEDIA)
         }
@@ -1451,7 +1588,7 @@ class MainActivity : Activity() {
         }
         mediaRows.clear(); mediaRows.addAll(cached)
         val matching = cached.filter { it.second.contains(mediaSearch, ignoreCase = true) }
-        val filtered = if (mediaSort == "Name A-Z") matching.sortedWith(compareByDescending<Triple<Uri, String, Long>> { it.third }.thenBy { it.second.lowercase() }) else matching
+        val filtered = if (mediaSort == "Name A-Z") matching.sortedBy { it.second.substringBeforeLast(" · ").lowercase() } else matching
         if (filtered.isEmpty()) {
             val partialVideoAccess = kind == "Videos" && Build.VERSION.SDK_INT >= 34 &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED &&
@@ -1499,7 +1636,11 @@ class MainActivity : Activity() {
             }
             val preview = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(if (darkMode) 0xFF263650.toInt() else 0xFFE8EDF5.toInt()) }
             row.addView(preview, LinearLayout.LayoutParams(if (useGrid) dp(88) else dp(66), if (useGrid) dp(88) else dp(66)))
-            if (kind == "Videos") preview.setOnClickListener { previewVideo(item.first, item.second) }
+            when (kind) {
+                "Photos" -> preview.setOnClickListener { previewImage(item.first, item.second) }
+                "Videos" -> preview.setOnClickListener { previewVideo(item.first, item.second) }
+                "Music" -> preview.setOnClickListener { previewAudio(item.first, item.second) }
+            }
             row.addView(TextView(this).apply {
                 text = item.second; textSize = if (useGrid) 9f else 12f; maxLines = if (useGrid) 2 else 3
                 gravity = if (useGrid) Gravity.CENTER else Gravity.START
@@ -1566,6 +1707,75 @@ class MainActivity : Activity() {
                     if (!launchSplashVisible && activeTab == "Media" && mediaCategory == "Apps") render()
                 }
             }.start()
+        }
+    }
+
+    private fun previewImage(uri: Uri, title: String) {
+        val image = ImageView(this).apply {
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(0xFF081522.toInt())
+            setImageURI(uri)
+        }
+        val dialog = android.app.Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = rounded(0xFF12243A.toInt(), 18)
+        }
+        panel.addView(TextView(this).apply {
+            text = title; textSize = 13f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1); setPadding(dp(3), 0, dp(3), dp(8))
+        })
+        panel.addView(image, LinearLayout.LayoutParams(-1, dp(360)))
+        panel.addView(button("CLOSE PREVIEW", 0xFFE05C8A.toInt()) { dialog.dismiss() })
+        dialog.setContentView(panel)
+        dialog.show()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(-1, -2)
+    }
+
+    private fun previewAudio(uri: Uri, title: String) {
+        val player = android.media.MediaPlayer()
+        val dialog = android.app.Dialog(this)
+        var prepared = false
+        lateinit var play: Button
+        play = button("PLAY", 0xFF168A68.toInt()) {
+            if (!prepared) {
+                Toast.makeText(this, "Audio is still loading.", Toast.LENGTH_SHORT).show()
+            } else if (player.isPlaying) {
+                player.pause()
+                play.text = "RESUME"
+            } else {
+                player.start()
+                play.text = "PAUSE"
+            }
+        }
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = rounded(0xFF12243A.toInt(), 18)
+        }
+        panel.addView(TextView(this).apply {
+            text = title; textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(-1); setPadding(0, 0, 0, dp(12))
+        })
+        panel.addView(play, bottom(8))
+        panel.addView(button("CLOSE PLAYER", 0xFFE05C8A.toInt()) {
+            runCatching { player.stop() }; runCatching { player.release() }; dialog.dismiss()
+        })
+        dialog.setOnDismissListener { runCatching { player.release() } }
+        dialog.setContentView(panel)
+        dialog.show()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(-1, -2)
+        try {
+            player.setDataSource(this, uri)
+            player.setOnPreparedListener { prepared = true; play.text = "PLAY" }
+            player.setOnCompletionListener { play.text = "PLAY" }
+            player.prepareAsync()
+        } catch (_: Exception) {
+            Toast.makeText(this, "This audio file cannot be previewed.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1800,6 +2010,33 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun launchApkInstaller(uri: Uri) {
+        try {
+            val intent = Intent(Intent.ACTION_INSTALL_PACKAGE)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Android could not start the installer: " + (e.localizedMessage ?: "unknown error"), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun successFeedback() {
+        runCatching {
+            val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 65)
+            tone.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 140)
+            android.os.Handler(mainLooper).postDelayed({ runCatching { tone.release() } }, 350L)
+        }
+        runCatching {
+            val vibrator = getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator
+            if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(android.os.VibrationEffect.createOneShot(45L, 75))
+            else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(45L)
+            }
+        }
+    }
+
     private fun installReceivedApkGroup(prefix: String) {
         if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
             val settings = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName))
@@ -1853,7 +2090,12 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 34) {
             val permission = if (kind == "Photos") Manifest.permission.READ_MEDIA_IMAGES else if (kind == "Videos") Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_MEDIA_AUDIO
             if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) return true
-            if (kind == "Photos" || kind == "Videos") return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+            // Android 14's selected-photos/videos permission may grant access to only
+            // a subset of media. It must not be treated as full library access: for
+            // example, a user may have selected photos but no videos at all.
+            if (kind == "Photos" || kind == "Videos") {
+                return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+            }
             return false
         }
         val permission = when (kind) {
@@ -1933,6 +2175,12 @@ class MainActivity : Activity() {
         content.addView(sdPanel, bottom(12))
         val categoryPanel = panel(card)
         categoryPanel.addView(label("BROWSE BY CATEGORY", 0xFFFFD21F.toInt()))
+        categoryPanel.addView(TextView(this).apply {
+            text = "Choose a folder first. Category filters show matching files in the folder currently open."
+            textSize = 11f
+            setTextColor(muted)
+            setPadding(0, dp(5), 0, dp(8))
+        })
         val categoryGrid = android.widget.GridLayout(this).apply { columnCount = 2 }
         listOf(
             Triple("Documents", "documents", 0xFF0B4FB3.toInt()),
@@ -1950,7 +2198,7 @@ class MainActivity : Activity() {
                 setOnClickListener {
                     treeCategoryFilter = item.second
                     folderSearch = ""
-                    if (item.second == "big") sortTreeBySize = true
+                    sortTreeBySize = item.second == "big"
                     if (selectedTreeUri != null) render() else openFolderTree()
                 }
             }
@@ -1995,7 +2243,7 @@ class MainActivity : Activity() {
             getSharedPreferences("nexora_file_manager", MODE_PRIVATE).edit().putString("current_document_id", currentTreeDocumentId).apply()
             render()
         }, bottom(6))
-        section.addView(button(if (sortTreeBySize) "SORT: NAME A-Z" else "SORT: LARGEST FIRST", 0xFF7357E8.toInt()) {
+        section.addView(button(if (sortTreeBySize) "SORT: LARGEST FIRST" else "SORT: NAME A-Z", 0xFF7357E8.toInt()) {
             sortTreeBySize = !sortTreeBySize
             render()
         }, bottom(7))
@@ -2067,7 +2315,7 @@ class MainActivity : Activity() {
                     val itemUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
                     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10), dp(10), dp(8), dp(10)); background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 13) }
                     row.addView(TextView(this).apply { text = fileIcon + "  " + name + "\n" + size; textSize = 12f; setTextColor(ink); maxLines = 2 }, LinearLayout.LayoutParams(0, -2, 1f))
-                    row.addView(button(if (folder) "OPEN" else "ADD", if (folder) 0xFF16A58A.toInt() else 0xFF168FE5.toInt()) {
+                    row.addView(button(if (folder) "OPEN" else "SELECT", if (folder) 0xFF16A58A.toInt() else 0xFF168FE5.toInt()) {
                         if (folder) {
                             treeDocumentStack.add(currentTreeDocumentId ?: documentId)
                             currentTreeDocumentId = childId
@@ -2079,8 +2327,18 @@ class MainActivity : Activity() {
                             updateSelectionAction()
                             updateStatus("${selectedUris.size} file(s) selected.")
                             Toast.makeText(this, if (selectedUris.contains(itemUri)) "Added: $name" else "Removed: $name", Toast.LENGTH_SHORT).show()
+                            render()
                         }
                     })
+                    if (!folder) {
+                        row.addView(button("OPEN", 0xFF16A58A.toInt()) {
+                            openTreeDocument(itemUri, mime)
+                        }, LinearLayout.LayoutParams(dp(68), dp(38)).apply { leftMargin = dp(5) })
+                        row.setOnLongClickListener {
+                            showTreeDocumentActions(itemUri, name, mime)
+                            true
+                        }
+                    }
                     children.addView(row, bottom(5))
                 }
             } ?: children.addView(TextView(this).apply { text = "Could not read this folder."; textSize = 12f; setTextColor(muted) })
@@ -2094,144 +2352,410 @@ class MainActivity : Activity() {
         content.addView(section, bottom(12))
     }
 
-    private fun showTransfers(card: Int, ink: Int, muted: Int) {
-        val connected = sharing?.isConnected == true || connectedPeers.isNotEmpty()
-        content.addView(TextView(this).apply {
-            text = "Transfer centre"
-            textSize = 27f
-            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-            setTextColor(ink)
-            setPadding(dp(2), dp(12), dp(2), dp(3))
-        })
-        content.addView(TextView(this).apply {
-            text = "Manage your connection and keep track of file sharing."
-            textSize = 12f
-            setTextColor(muted)
-            setPadding(dp(3), 0, 0, dp(15))
-        })
+    private fun openTreeDocument(uri: Uri, mime: String) {
+        val resolvedMime = runCatching { contentResolver.getType(uri) }.getOrNull()
+            ?.takeIf { it.isNotBlank() } ?: mime.takeIf { it.isNotBlank() } ?: "*/*"
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, resolvedMime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(Intent.createChooser(intent, "Open with"))
+        } catch (_: Exception) {
+            Toast.makeText(this, "No app can open this file.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
-        val live = panel(card).apply {
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF0B4FB3.toInt(), 0xFF173A78.toInt(), 0xFF8A243A.toInt())
-            ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0xFFFFD21F.toInt()) }
-            elevation = dp(5).toFloat()
-        }
-        live.addView(label("LIVE SESSION", 0xFFFFD66B.toInt()))
-        val statusLine = TextView(this).apply {
-            text = latestStatus
-            textSize = 16f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(-1)
-            setPadding(0, dp(10), 0, dp(8))
-        }
-        transferStatusView = statusLine
-        live.addView(statusLine)
-        val stepRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("SELECT", "CONNECT", "SEND", "DONE").forEachIndexed { index, stepName ->
-            val step = TextView(this).apply {
-                text = stepName
-                textSize = 8f
-                gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setPadding(dp(3), dp(9), dp(3), dp(9))
-                val tint = intArrayOf(0xFFFFD21F.toInt(), 0xFF168FE5.toInt(), 0xFFE52B3A.toInt(), 0xFF16A58A.toInt())[index]
-                background = rounded(if (index < transferStage) tint else 0x553D5A7A, 9)
-                setTextColor(if (index < transferStage) if (index == 0) 0xFF10243B.toInt() else -1 else 0xFFD5E2EF.toInt())
-            }
-            transferStepViews.add(step)
-            stepRow.addView(step, LinearLayout.LayoutParams(0, dp(34), 1f).apply {
-                leftMargin = dp(2); rightMargin = dp(2)
-            })
-        }
-        live.addView(stepRow, bottom(10))
-        val initialPercent = Regex("(\\d{1,3})%").find(latestStatus)?.groupValues?.getOrNull(1)?.toIntOrNull()
-        val progressLine = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            progressTintList = android.content.res.ColorStateList.valueOf(0xFFFFD21F.toInt())
-            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x665D7897)
-            isIndeterminate = initialPercent == null && (latestStatus.contains("sending", true) || latestStatus.contains("receiving", true))
-            progress = initialPercent ?: if (transferStage >= 4) 100 else 0
-        }
-        transferProgressBar = progressLine
-        live.addView(progressLine, LinearLayout.LayoutParams(-1, dp(7)))
-        content.addView(live, bottom(14))
-
-        val devices = panel(card)
-        devices.addView(label("CONNECTED DEVICES", 0xFF168FE5.toInt()))
-        if (!connected) {
-            devices.addView(TextView(this).apply {
-                text = "No phone is connected yet. Connect first, then choose files to send. You can keep the same session for repeated transfers."
-                textSize = 12f
-                setTextColor(muted)
-                setPadding(0, dp(9), 0, dp(5))
-            })
-            devices.addView(button("SCAN A QR CODE", 0xFF0B4FB3.toInt()) { scanQrCode() }, bottom(4))
-            devices.addView(button("SHOW MY QR CODE", 0xFFE52B3A.toInt()) { openSendQr() })
-        } else {
-            devices.addView(TextView(this).apply {
-                text = "Your NEXORA session is active."
-                textSize = 13f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(ink)
-                setPadding(0, dp(8), 0, dp(7))
-            })
-            val names = if (connectedPeers.isNotEmpty()) connectedPeers.map { discovered[it] ?: "Wi-Fi Direct phone" }
-                else listOf("Connected phone")
-            names.forEach { peer ->
-                devices.addView(TextView(this).apply {
-                    text = "●  " + peer + "  ·  CONNECTED"
-                    textSize = 11f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(0xFF168A68.toInt())
-                    setPadding(dp(10), dp(10), dp(10), dp(10))
-                    background = rounded(if (darkMode) 0xFF173C3B.toInt() else 0xFFE7F7F1.toInt(), 11)
-                }, bottom(6))
-            }
-            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            actions.addView(button("SEND FILES", 0xFF0B4FB3.toInt()) {
-                activeTab = "Media"; mediaCategory = "Apps"; render()
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(5) })
-            actions.addView(button("RECEIVED", 0xFFE52B3A.toInt()) {
-                activeTab = "Received"; render()
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(5) })
-            devices.addView(actions, bottom(3))
-        }
-        content.addView(devices, bottom(14))
-
-        if (connected) {
-            content.addView(button("DISCONNECT", 0xFFE52B3A.toInt()) {
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("Disconnect from this session?")
-                    .setMessage("The active NEXORA connection will end. You can connect again later.")
-                    .setNegativeButton("Keep connected", null)
-                    .setPositiveButton("Disconnect") { _, _ ->
-                        sharing?.stopSharing()
-                        connectedPeers.clear()
-                        activeTab = "Media"
-                        mediaCategory = "Apps"
-                        render()
+    private fun showTreeDocumentActions(uri: Uri, name: String, mime: String) {
+        val actions = arrayOf("Open", "Rename", "Delete")
+        android.app.AlertDialog.Builder(this)
+            .setTitle(name)
+            .setItems(actions) { _, which ->
+                when (which) {
+                    0 -> openTreeDocument(uri, mime)
+                    1 -> {
+                        val input = EditText(this).apply {
+                            setSingleLine(true)
+                            setText(name)
+                            setSelection(text.length)
+                        }
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("Rename file")
+                            .setView(input)
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Save") { _, _ ->
+                                val newName = input.text?.toString()?.trim().orEmpty()
+                                if (newName.isBlank() || newName == "." || newName == ".." || newName.contains("/") || newName.contains("\\")) {
+                                    Toast.makeText(this, "Enter a valid file name.", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val renamed = runCatching {
+                                        android.provider.DocumentsContract.renameDocument(contentResolver, uri, newName)
+                                    }.getOrNull()
+                                    if (renamed != null) {
+                                        selectedUris.remove(uri)
+                                        updateSelectionAction()
+                                        updateStatus("Renamed to $newName.")
+                                        render()
+                                    } else {
+                                        Toast.makeText(this, "This folder provider does not support renaming.", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                            .show()
                     }
-                    .show()
-            }, bottom(14))
+                    2 -> android.app.AlertDialog.Builder(this)
+                        .setTitle("Delete $name?")
+                        .setMessage("This removes the file from the selected folder.")
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Delete") { _, _ ->
+                            val deleted = runCatching {
+                                android.provider.DocumentsContract.deleteDocument(contentResolver, uri)
+                            }.getOrDefault(false)
+                            if (deleted) {
+                                selectedUris.remove(uri)
+                                updateSelectionAction()
+                                updateStatus("Deleted $name.")
+                                render()
+                            } else {
+                                Toast.makeText(this, "This folder provider could not delete the file.", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        .show()
+                }
+            }
+            .show()
+    }
+
+    private fun transferKindLabel(name: String): String {
+        return when (name.substringAfterLast('.', "").lowercase()) {
+            "jpg", "jpeg", "png", "webp", "gif", "heic" -> "Image"
+            "mp4", "mkv", "mov", "avi", "3gp" -> "Video"
+            "mp3", "wav", "m4a", "aac", "ogg" -> "Audio"
+            "apk", "apks", "xapk" -> "App"
+            "pdf", "doc", "docx", "txt", "ppt", "pptx", "xls", "xlsx" -> "Document"
+            else -> "File"
+        }
+    }
+
+    private fun transferKindGlyph(name: String): String {
+        return when (transferKindLabel(name)) {
+            "Image" -> "▧"
+            "Video" -> "▷"
+            "Audio" -> "♫"
+            "App" -> "▦"
+            "Document" -> "▤"
+            else -> "↗"
+        }
+    }
+
+    private fun showTransfers(card: Int, ink: Int, muted: Int) {
+        val sentEntries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
+            .getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
+
+        content.addView(TextView(this).apply {
+            text = "Transfers"
+            textSize = 25f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink)
+            setPadding(dp(2), dp(12), dp(2), dp(12))
+        })
+
+        // Give users a quick session overview before the detailed Sent and
+        // Received lists. Counts are sourced from the live session and history.
+        val sessionOverview = panel(card)
+        sessionOverview.addView(label("SESSION OVERVIEW", 0xFFFFD21F.toInt()))
+        transferOverviewStatusView = TextView(this).apply {
+            text = "Status: " + latestStatus
+            textSize = 12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink)
+            setPadding(dp(2), dp(7), dp(2), dp(7))
+        }
+        sessionOverview.addView(transferOverviewStatusView)
+        val overviewLines = listOf(
+            "Connection: " + if (connectedPeers.isEmpty()) "Not connected" else connectedPeers.size.toString() + " device(s) connected",
+            "Incoming queue: " + incomingQueueItems.size + " item(s)",
+            "Sent history: " + sentEntries.size + " item(s)"
+        )
+        overviewLines.forEach { line ->
+            sessionOverview.addView(TextView(this).apply {
+                text = line
+                textSize = 12f
+                setTextColor(ink)
+                setPadding(dp(2), dp(5), dp(2), dp(5))
+            })
+        }
+        content.addView(sessionOverview, bottom(10))
+
+        // Keep the existing NEXORA visual language, but place Sent and Received
+        // side-by-side with a clear vertical divider as requested.
+        val columns = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+        }
+        val sentColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(10), dp(8), dp(10))
+            background = rounded(card, 16)
+        }
+        val receivedColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(10), dp(8), dp(10))
+            background = rounded(card, 16)
+        }
+        sentColumn.addView(label("SENT", 0xFF0B4FB3.toInt()))
+        val outgoingControls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        lateinit var outgoingToggle: Button
+        outgoingToggle = button(
+            if (sharing?.isOutgoingPaused() == true) "RESUME" else "PAUSE",
+            0xFF0B4FB3.toInt()
+        ) {
+            if (sharing?.isOutgoingPaused() == true) {
+                sharing?.resumeOutgoing()
+                outgoingToggle.text = "PAUSE"
+            } else {
+                sharing?.pauseOutgoing()
+                outgoingToggle.text = "RESUME"
+            }
+        }
+        outgoingToggleButton = outgoingToggle
+        outgoingControls.addView(outgoingToggle, LinearLayout.LayoutParams(0, dp(36), 1f).apply { rightMargin = dp(3) })
+        outgoingControls.addView(button("CANCEL", 0xFFE52B3A.toInt()) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Cancel outgoing transfer?")
+                .setMessage("This stops the current send. The connection to that phone may end, so you may need to reconnect before sending again.")
+                .setNegativeButton("Keep sending", null)
+                .setPositiveButton("Cancel send") { _, _ -> sharing?.cancelOutgoing() }
+                .show()
+        }, LinearLayout.LayoutParams(0, dp(36), 1f).apply { leftMargin = dp(3) })
+        outgoingControlsView = outgoingControls
+        outgoingControls.visibility = if (
+            transferIsActive && (latestStatus.startsWith("Sending") || latestStatus.startsWith("Paused: Sending"))
+        ) View.VISIBLE else View.GONE
+        sentColumn.addView(outgoingControls, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(7); bottomMargin = dp(5) })
+        if (sentEntries.isEmpty()) {
+            sentColumn.addView(TextView(this).apply {
+                text = "Nothing sent yet"
+                textSize = 11f
+                setTextColor(muted)
+                setPadding(0, dp(12), 0, dp(8))
+            })
+        } else {
+            sentEntries.take(30).forEach { entry ->
+                val parts = entry.split(" · ", limit = 3)
+                val name = parts.getOrNull(1) ?: entry
+                val uri = parts.getOrNull(2)?.let { runCatching { Uri.parse(it) }.getOrNull() }
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(5), dp(8), dp(3), dp(8))
+                }
+                val preview = ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    setBackground(rounded(if (darkMode) 0xFF29445B.toInt() else 0xFFE7EEF7.toInt(), 8))
+                    setImageResource(if (transferKindLabel(name) == "App") android.R.drawable.sym_def_app_icon else android.R.drawable.ic_menu_gallery)
+                }
+                row.addView(preview, LinearLayout.LayoutParams(dp(34), dp(34)))
+                val title = TextView(this).apply {
+                    text = if (transferKindLabel(name) == "App") name.substringBeforeLast('.') else transferKindLabel(name)
+                    textSize = 11f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(ink)
+                    setPadding(dp(7), 0, 0, 0)
+                }
+                row.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+                if (uri != null && (transferKindLabel(name) == "Image" || transferKindLabel(name) == "Video" || transferKindLabel(name) == "App")) {
+                    thumbnailExecutor.execute {
+                        var icon: android.graphics.drawable.Drawable? = null
+                        var thumb: android.graphics.Bitmap? = null
+                        var appTitle: String? = null
+                        try {
+                            if (transferKindLabel(name) == "App") {
+                                val folder = java.io.File(cacheDir, "sent_app_icons").apply { mkdirs() }
+                                val temp = java.io.File(folder, name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+                                contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
+                                val info = packageManager.getPackageArchiveInfo(temp.absolutePath, 0)
+                                val appInfo = info?.applicationInfo
+                                if (appInfo != null) {
+                                    appInfo.sourceDir = temp.absolutePath
+                                    appInfo.publicSourceDir = temp.absolutePath
+                                    icon = packageManager.getApplicationIcon(appInfo)
+                                    appTitle = appInfo.loadLabel(packageManager).toString()
+                                }
+                            } else if (Build.VERSION.SDK_INT >= 29) {
+                                thumb = contentResolver.loadThumbnail(uri, android.util.Size(72, 72), null)
+                            }
+                        } catch (_: Exception) {}
+                        runOnUiThread {
+                            if (preview.parent != null) {
+                                if (icon != null) preview.setImageDrawable(icon)
+                                else if (thumb != null) preview.setImageBitmap(thumb)
+                                if (!appTitle.isNullOrBlank()) title.text = appTitle
+                            }
+                        }
+                    }
+                }
+                sentColumn.addView(row)
+                sentColumn.addView(View(this).apply {
+                    setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
+                }, LinearLayout.LayoutParams(-1, dp(1)))
+            }
         }
 
-        val history = panel(card)
-        history.addView(label("RECENTLY SENT", 0xFFE52B3A.toInt()))
-        val entries = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
-            .getString("sent_items", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
-        if (entries.isEmpty()) {
-            history.addView(TextView(this).apply {
-                text = "Files you send will appear here."
-                textSize = 12f
+        receivedColumn.addView(label("RECEIVED", 0xFFE52B3A.toInt()))
+        if (incomingQueueItems.isNotEmpty()) {
+            receivedColumn.addView(TextView(this).apply {
+                text = "IN PROGRESS"
+                textSize = 9f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
                 setTextColor(muted)
-                setPadding(0, dp(8), 0, dp(5))
+                setPadding(dp(3), dp(8), 0, dp(2))
             })
-        } else addGroupedHistory(history, entries.take(20), 0xFF0B4FB3.toInt(), ink, muted)
-        content.addView(history, bottom(12))
-        content.addView(button("VIEW FULL TRANSFER HISTORY", 0xFF0B4FB3.toInt()) {
-            activeTab = "History"; render()
-        })
+            incomingQueueView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            receivedColumn.addView(incomingQueueView)
+            renderIncomingQueue()
+            receivedColumn.addView(View(this).apply {
+                setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
+            }, LinearLayout.LayoutParams(-1, dp(1)))
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching {
+                val projection = arrayOf(
+                    MediaStore.MediaColumns._ID,
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.MIME_TYPE,
+                    MediaStore.MediaColumns.SIZE
+                )
+                contentResolver.query(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    projection,
+                    MediaStore.MediaColumns.RELATIVE_PATH + " = ?",
+                    arrayOf("Download/NEXORA/"),
+                    MediaStore.MediaColumns.DATE_ADDED + " DESC"
+                )?.use { cursor ->
+                    var shown = 0
+                    while (cursor.moveToNext() && shown < 18) {
+                        val id = cursor.getLong(0)
+                        val name = cursor.getString(1) ?: "Received file"
+                        val mime = cursor.getString(2) ?: "*/*"
+                        val uri = android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
+                        val row = LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(dp(4), dp(8), dp(4), dp(8))
+                        }
+                        val heading = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                        }
+                        val preview = ImageView(this).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                            setBackground(rounded(if (darkMode) 0xFF29445B.toInt() else 0xFFE7EEF7.toInt(), 8))
+                            setImageResource(if (name.endsWith(".apk", true)) android.R.drawable.sym_def_app_icon else android.R.drawable.ic_menu_gallery)
+                        }
+                        heading.addView(preview, LinearLayout.LayoutParams(dp(34), dp(34)))
+                        val receivedTitle = TextView(this).apply {
+                            text = transferKindLabel(name)
+                            textSize = 11f
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            maxLines = 1
+                            ellipsize = android.text.TextUtils.TruncateAt.END
+                            setTextColor(ink)
+                            setPadding(dp(6), 0, 0, 0)
+                        }
+                        heading.addView(receivedTitle, LinearLayout.LayoutParams(0, -2, 1f))
+                        row.addView(heading)
+                        if (mime.startsWith("image/") || mime.startsWith("video/")) {
+                            thumbnailExecutor.execute {
+                                val thumb = runCatching { contentResolver.loadThumbnail(uri, android.util.Size(72, 72), null) }.getOrNull()
+                                runOnUiThread { if (preview.parent != null && thumb != null) preview.setImageBitmap(thumb) }
+                            }
+                        } else if (name.endsWith(".apk", true)) {
+                            thumbnailExecutor.execute {
+                                var icon: android.graphics.drawable.Drawable? = null
+                                var appTitle: String? = null
+                                try {
+                                    val folder = java.io.File(cacheDir, "received_app_icons").apply { mkdirs() }
+                                    val temp = java.io.File(folder, name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+                                    contentResolver.openInputStream(uri)?.use { input ->
+                                        temp.outputStream().use { output -> input.copyTo(output) }
+                                    }
+                                    val appInfo = packageManager.getPackageArchiveInfo(temp.absolutePath, 0)?.applicationInfo
+                                    if (appInfo != null) {
+                                        appInfo.sourceDir = temp.absolutePath
+                                        appInfo.publicSourceDir = temp.absolutePath
+                                        icon = packageManager.getApplicationIcon(appInfo)
+                                        appTitle = appInfo.loadLabel(packageManager).toString()
+                                    }
+                                } catch (_: Exception) {}
+                                runOnUiThread {
+                                    if (preview.parent != null) {
+                                        if (icon != null) preview.setImageDrawable(icon)
+                                        if (!appTitle.isNullOrBlank()) receivedTitle.text = appTitle
+                                    }
+                                }
+                            }
+                        }
+                        row.addView(button("OPEN", 0xFF4263EB.toInt()) {
+                            try {
+                                when {
+                                    name.endsWith(".apk", true) -> {
+                                        if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                                            pendingInstallUri = uri
+                                            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName)))
+                                        } else launchApkInstaller(uri)
+                                    }
+                                    mime.startsWith("image/") -> previewImage(uri, name)
+                                    mime.startsWith("video/") -> previewVideo(uri, name)
+                                    mime.startsWith("audio/") -> previewAudio(uri, name)
+                                    else -> {
+                                        val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+                                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        startActivity(intent)
+                                    }
+                                }
+                            } catch (_: Exception) {
+                                Toast.makeText(this, "This file cannot be opened on this phone.", Toast.LENGTH_SHORT).show()
+                            }
+                        }, LinearLayout.LayoutParams(-1, dp(32)).apply { topMargin = dp(5) })
+                        row.addView(button("DELETE", 0xFFE52B3A.toInt()) {
+                            android.app.AlertDialog.Builder(this)
+                                .setTitle("Delete this received file?")
+                                .setMessage(transferKindLabel(name))
+                                .setNegativeButton("Keep", null)
+                                .setPositiveButton("Delete") { _, _ ->
+                                    contentResolver.delete(uri, null, null)
+                                    render()
+                                }
+                                .show()
+                        }, LinearLayout.LayoutParams(-1, dp(32)).apply { topMargin = dp(4) })
+                        receivedColumn.addView(row)
+                        receivedColumn.addView(View(this).apply {
+                            setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
+                        }, LinearLayout.LayoutParams(-1, dp(1)))
+                        shown++
+                    }
+                }
+            }
+        }
+
+        if (receivedColumn.childCount == 1) {
+            receivedColumn.addView(TextView(this).apply {
+                text = "Nothing received yet"
+                textSize = 11f
+                setTextColor(muted)
+                setPadding(0, dp(12), 0, dp(8))
+            })
+        }
+
+        columns.addView(sentColumn, LinearLayout.LayoutParams(0, -2, 1f))
+        columns.addView(View(this).apply {
+            setBackgroundColor(if (darkMode) 0xFF60758A.toInt() else 0xFFCBD5E1.toInt())
+        }, LinearLayout.LayoutParams(dp(1), -1).apply { leftMargin = dp(5); rightMargin = dp(5) })
+        columns.addView(receivedColumn, LinearLayout.LayoutParams(0, -2, 1f))
+        content.addView(columns, bottom(12))
     }
 
     private fun addGroupedHistory(target: LinearLayout, entries: List<String>, accent: Int, ink: Int, muted: Int) {
@@ -2384,7 +2908,7 @@ class MainActivity : Activity() {
         edit.apply()
     }
 
-    private fun rememberSentFileName(name: String) {
+    private fun rememberSentFileName(name: String, recipient: String = "Nearby device") {
         if (name.isBlank()) return
         val prefs = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
         val old = prefs.getString("sent_items", "") ?: ""
@@ -2392,18 +2916,19 @@ class MainActivity : Activity() {
         val uri = prefs.getString("sent_uri_" + name.hashCode(), null)
         val entry = stamp + " · " + name + (uri?.let { " · " + it } ?: "")
         prefs.edit().putString("sent_items", (listOf(entry) + old.split("\n").filter { it.isNotBlank() }).take(100).joinToString("\n")).apply()
-        appendHistoryEvent("SENT", name)
+        appendHistoryEvent("SENT", name, recipient)
     }
 
-    private fun rememberReceivedFileName(name: String) {
-        if (name.isNotBlank()) appendHistoryEvent("RECEIVED", name)
+    private fun rememberReceivedFileName(name: String, sender: String = "Nearby device") {
+        if (name.isNotBlank()) appendHistoryEvent("RECEIVED", name, sender)
     }
 
-    private fun appendHistoryEvent(direction: String, name: String) {
+    private fun appendHistoryEvent(direction: String, name: String, peer: String = "Nearby device", outcome: String = "COMPLETED") {
         val prefs = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
         val old = prefs.getString("history_events", "") ?: ""
         val safeName = name.replace("|", "_").replace("\n", " ").take(240)
-        val event = System.currentTimeMillis().toString() + "|" + direction + "|" + safeName
+        val safePeer = peer.replace("|", "_").replace("\n", " ").take(80)
+        val event = System.currentTimeMillis().toString() + "|" + direction + "|" + outcome + "|" + safePeer + "|" + safeName
         prefs.edit().putString("history_events", (listOf(event) + old.split("\n").filter { it.isNotBlank() }).take(200).joinToString("\n")).apply()
     }
 
@@ -2570,6 +3095,30 @@ class MainActivity : Activity() {
 
         val box = panel(card)
         box.addView(label("SAVED ON THIS PHONE", 0xFF0B4FB3.toInt()))
+        val receivedSearchInput = EditText(this).apply {
+            hint = "Search received files"
+            setSingleLine(true)
+            textSize = 12f
+            setTextColor(ink)
+            setHintTextColor(muted)
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 11)
+            setText(receivedSearch)
+        }
+        box.addView(receivedSearchInput, bottom(7))
+        val receivedTools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        receivedTools.addView(button("SEARCH", 0xFF168FE5.toInt()) {
+            receivedSearch = receivedSearchInput.text?.toString()?.trim().orEmpty()
+            refreshReceivedFiles()
+        }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(4) })
+        receivedTools.addView(button(if (receivedSortNewestFirst) "NEWEST FIRST" else "OLDEST FIRST", 0xFF64748B.toInt()) {
+            receivedSortNewestFirst = !receivedSortNewestFirst
+            render()
+        }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { leftMargin = dp(4) })
+        box.addView(receivedTools, bottom(8))
         receivedList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(receivedList)
         content.addView(box)
@@ -2639,14 +3188,19 @@ class MainActivity : Activity() {
     }
 
     private fun showHistory(card: Int, ink: Int, muted: Int) {
+        data class HistoryItem(val timestamp: Long, val direction: String, val outcome: String, val peer: String, val name: String)
         migrateLegacyTransferHistory()
         val events = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
             .getString("history_events", "")?.split("\n")?.mapNotNull { line ->
-                val parts = line.split("|", limit = 3)
-                if (parts.size == 3) Triple(parts[0].toLongOrNull() ?: 0L, parts[1], parts[2]) else null
-            }?.sortedByDescending { it.first } ?: emptyList()
-        val sentCount = events.count { it.second == "SENT" }
-        val receivedCount = events.count { it.second == "RECEIVED" }
+                val parts = line.split("|", limit = 5)
+                when {
+                    parts.size == 5 -> HistoryItem(parts[0].toLongOrNull() ?: 0L, parts[1], parts[2], parts[3], parts[4])
+                    parts.size == 3 -> HistoryItem(parts[0].toLongOrNull() ?: 0L, parts[1], "COMPLETED", "Nearby device", parts[2])
+                    else -> null
+                }
+            }?.sortedByDescending { it.timestamp } ?: emptyList()
+        val sentCount = events.count { it.direction == "SENT" }
+        val receivedCount = events.count { it.direction == "RECEIVED" }
 
         content.addView(TextView(this).apply {
             text = "Transfer history"
@@ -2656,7 +3210,7 @@ class MainActivity : Activity() {
             setPadding(dp(2), dp(12), dp(2), dp(3))
         })
         content.addView(TextView(this).apply {
-            text = "A timeline of files shared from and to this phone."
+            text = "See which phone each file was shared with."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(3), 0, 0, dp(14))
@@ -2697,8 +3251,8 @@ class MainActivity : Activity() {
         } else {
             events.take(200).forEach { event ->
                 val stamp = java.text.SimpleDateFormat("dd MMM yyyy · HH:mm", java.util.Locale.getDefault())
-                    .format(java.util.Date(event.first))
-                val sent = event.second == "SENT"
+                    .format(java.util.Date(event.timestamp))
+                val sent = event.direction == "SENT"
                 val accent = if (sent) 0xFF0B4FB3.toInt() else 0xFFE52B3A.toInt()
                 val entry = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -2716,17 +3270,24 @@ class MainActivity : Activity() {
                 }, LinearLayout.LayoutParams(dp(38), dp(38)).apply { rightMargin = dp(10) })
                 val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
                 details.addView(TextView(this@MainActivity).apply {
-                    text = event.third
+                    text = event.name
                     textSize = 12f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(ink)
                     maxLines = 2
                 })
                 details.addView(TextView(this@MainActivity).apply {
-                    text = (if (sent) "SENT" else "RECEIVED") + "  ·  " + stamp
+                    val relation = if (sent) "to " else "from "
+                    text = (if (sent) "SENT" else "RECEIVED") + " · " + relation + event.peer
                     textSize = 10f
                     setTextColor(muted)
                     setPadding(0, dp(3), 0, 0)
+                })
+                details.addView(TextView(this@MainActivity).apply {
+                    text = stamp + " · " + event.outcome
+                    textSize = 9f
+                    setTextColor(muted)
+                    setPadding(0, dp(2), 0, 0)
                 })
                 entry.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
                 list.addView(entry, bottom(6))
@@ -2734,7 +3295,6 @@ class MainActivity : Activity() {
         }
         content.addView(box)
     }
-
 
     private fun showXenderMenu() {
         val dialog = android.app.Dialog(this)
@@ -2975,6 +3535,68 @@ class MainActivity : Activity() {
         })
         content.addView(device, bottom(13))
 
+        val trustedPrefs = getSharedPreferences("nexora_trusted_devices", MODE_PRIVATE)
+        val trusted = panel(card)
+        trusted.addView(label("TRUSTED DEVICES", 0xFF0B4FB3.toInt()))
+        trusted.addView(TextView(this).apply {
+            text = "Phones you've connected to are remembered here. Block a phone to stop it joining future sessions."
+            textSize = 11f
+            setTextColor(muted)
+            setPadding(0, dp(5), 0, dp(9))
+        })
+        val trustedIds = trustedPrefs.getStringSet("device_ids", emptySet())?.toList()
+            ?.sortedByDescending { trustedPrefs.getLong("seen_" + it, 0L) }.orEmpty()
+        if (trustedIds.isEmpty()) {
+            trusted.addView(TextView(this).apply {
+                text = "Connected phones will appear here after their first successful connection."
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(8), 0, dp(8))
+            })
+        } else {
+            trustedIds.forEach { id ->
+                val deviceName = trustedPrefs.getString("name_" + id, "NEXORA device") ?: "NEXORA device"
+                val blocked = trustedPrefs.getBoolean("blocked_" + id, false)
+                val seen = trustedPrefs.getLong("seen_" + id, 0L)
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(0, dp(9), 0, dp(9))
+                }
+                row.addView(TextView(this).apply {
+                    text = deviceName + if (blocked) " · BLOCKED" else " · TRUSTED"
+                    textSize = 13f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(if (blocked) 0xFFE05252.toInt() else ink)
+                })
+                row.addView(TextView(this).apply {
+                    text = if (seen > 0L) "Last connected: " + java.text.SimpleDateFormat("dd MMM yyyy · HH:mm", java.util.Locale.getDefault()).format(java.util.Date(seen)) else "Previously connected"
+                    textSize = 10f
+                    setTextColor(muted)
+                    setPadding(0, dp(2), 0, dp(6))
+                })
+                val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                actions.addView(button(if (blocked) "ALLOW" else "BLOCK", if (blocked) 0xFF0B4FB3.toInt() else 0xFFE52B3A.toInt()) {
+                    trustedPrefs.edit().putBoolean("blocked_" + id, !blocked).apply()
+                    if (!blocked) sharing?.disconnectPeer(id)
+                    render()
+                }, LinearLayout.LayoutParams(0, dp(36), 1f).apply { rightMargin = dp(4) })
+                actions.addView(button("FORGET", 0xFF64748B.toInt()) {
+                    val ids = trustedPrefs.getStringSet("device_ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+                    ids.remove(id)
+                    trustedPrefs.edit().putStringSet("device_ids", ids)
+                        .remove("name_" + id).remove("seen_" + id).remove("blocked_" + id).apply()
+                    sharing?.disconnectPeer(id)
+                    render()
+                }, LinearLayout.LayoutParams(0, dp(36), 1f).apply { leftMargin = dp(4) })
+                row.addView(actions)
+                trusted.addView(row)
+                trusted.addView(View(this).apply {
+                    setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
+                }, LinearLayout.LayoutParams(-1, dp(1)))
+            }
+        }
+        content.addView(trusted, bottom(13))
+
         val transfer = panel(card)
         transfer.addView(label("TRANSFER & PRIVACY", 0xFF0B4FB3.toInt()))
         listOf(
@@ -3036,6 +3658,11 @@ class MainActivity : Activity() {
     }
 
     private var quickActionPanel: LinearLayout? = null
+    private var floatingArrowUp: TextView? = null
+    private var floatingArrowDown: TextView? = null
+    private var floatingArrowUpAnimator: android.animation.ObjectAnimator? = null
+    private var floatingArrowDownAnimator: android.animation.ObjectAnimator? = null
+    private var transferIsActive = false
     private val quickActionHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var quickActionHide: Runnable? = null
 
@@ -3164,15 +3791,62 @@ class MainActivity : Activity() {
 
     private var receiveModeLabel: TextView? = null
     private var transferStatusView: TextView? = null
+    private var transferOverviewStatusView: TextView? = null
     private var transferProgressBar: android.widget.ProgressBar? = null
     private var transferStage = 0
     private val transferStepViews = ArrayList<TextView>()
+    private var outgoingControlsView: View? = null
+    private var outgoingToggleButton: Button? = null
+    private fun updateFloatingTransferAnimation() {
+        val up = floatingArrowUp ?: return
+        val down = floatingArrowDown ?: return
+        if (transferIsActive) {
+            if (floatingArrowUpAnimator?.isRunning != true) {
+                floatingArrowUpAnimator = android.animation.ObjectAnimator.ofFloat(up, "translationY", dp(4).toFloat(), -dp(4).toFloat()).apply {
+                    duration = 360L
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    repeatMode = android.animation.ValueAnimator.REVERSE
+                    start()
+                }
+                floatingArrowDownAnimator = android.animation.ObjectAnimator.ofFloat(down, "translationY", -dp(4).toFloat(), dp(4).toFloat()).apply {
+                    duration = 360L
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    repeatMode = android.animation.ValueAnimator.REVERSE
+                    start()
+                }
+            }
+        } else {
+            floatingArrowUpAnimator?.cancel()
+            floatingArrowDownAnimator?.cancel()
+            floatingArrowUpAnimator = null
+            floatingArrowDownAnimator = null
+            up.translationY = 0f
+            down.translationY = 0f
+        }
+    }
+
     private fun updateStatus(message: String) {
         latestStatus = message
         if (::status.isInitialized) status.text = message
         transferStatusView?.text = message
+        transferOverviewStatusView?.text = "Status: " + message
         receiveModeLabel?.text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"
         val lower = message.lowercase()
+        transferIsActive = when {
+            lower.contains("sending") || lower.contains("receiving") -> true
+            lower.contains("all files received successfully") ||
+                lower.contains("transfer complete") || lower.contains("group transfer finished") ||
+                lower.contains("transfer finished") || lower.contains("queue finished") ||
+                lower.contains("transfer cancelled") || lower.contains("outgoing transfer cancelled") ||
+                lower.contains("send failed") || lower.contains("could not send") ||
+                lower.contains("connection ended") || lower.contains("disconnected") -> false
+            else -> transferIsActive
+        }
+        val sendingNow = transferIsActive &&
+            (lower.startsWith("sending") || lower.startsWith("paused: sending"))
+        outgoingControlsView?.visibility = if (sendingNow) View.VISIBLE else View.GONE
+        outgoingToggleButton?.text = if (sharing?.isOutgoingPaused() == true) "RESUME" else "PAUSE"
+        updateFloatingTransferAnimation()
         transferStage = when {
             lower.contains("queue finished") || lower.contains("all selected files") || lower.startsWith("sent:") || lower.contains("file sent") || lower.contains("received and saved") -> 5
             lower.contains("sending") || lower.contains("receiving") -> 4
@@ -3207,16 +3881,35 @@ class MainActivity : Activity() {
         }
         discovered.forEach { (id, name) ->
             if (connectedPeers.contains(id)) {
-                peerList.addView(TextView(this).apply {
+                val connectedRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                connectedRow.addView(TextView(this).apply {
                     text = "✓  CONNECTED  ·  " + name
                     textSize = 12f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(0xFF16A58A.toInt())
                     setPadding(dp(8), dp(10), dp(8), dp(10))
                     background = rounded(if (darkMode) 0xFF173C3B.toInt() else 0xFFE7F7F1.toInt(), 12)
-                }, bottom(6))
+                }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(6) })
+                connectedRow.addView(button("DISCONNECT", 0xFFE52B3A.toInt()) {
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("Disconnect from $name?")
+                        .setMessage("Any active transfer to or from this phone will stop. Saved partial files can still be resumed after reconnecting.")
+                        .setNegativeButton("Stay connected", null)
+                        .setPositiveButton("Disconnect") { _, _ ->
+                            sharing?.disconnectPeer(id)
+                            updateStatus("Disconnecting from $name…")
+                        }
+                        .show()
+                }, LinearLayout.LayoutParams(dp(112), dp(42)))
+                peerList.addView(connectedRow, bottom(6))
             } else {
-                peerList.addView(button("Connect to $name", 0xFF16A085.toInt()) { sharing?.connect(id, name) }, bottom(6))
+                peerList.addView(button("CONNECT WITH QR", 0xFF16A085.toInt()) {
+                    updateStatus("Scan $name's NEXORA QR code to connect.")
+                    scanQrCode()
+                }, bottom(6))
             }
         }
         if (connectedPeers.isNotEmpty()) {
@@ -3363,7 +4056,18 @@ class MainActivity : Activity() {
         receivedList.removeAllViews()
         try {
             val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_ADDED)
-            contentResolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, projection, MediaStore.MediaColumns.RELATIVE_PATH + " = ?", arrayOf("Download/NEXORA/"), MediaStore.MediaColumns.DATE_ADDED + " DESC")?.use { cursor ->
+            val selection = if (receivedSearch.isBlank()) {
+                MediaStore.MediaColumns.RELATIVE_PATH + " = ?"
+            } else {
+                MediaStore.MediaColumns.RELATIVE_PATH + " = ? AND " + MediaStore.MediaColumns.DISPLAY_NAME + " LIKE ?"
+            }
+            val selectionArgs = if (receivedSearch.isBlank()) {
+                arrayOf("Download/NEXORA/")
+            } else {
+                arrayOf("Download/NEXORA/", "%$receivedSearch%")
+            }
+            val sortOrder = MediaStore.MediaColumns.DATE_ADDED + if (receivedSortNewestFirst) " DESC" else " ASC"
+            contentResolver.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
                 if (cursor.count == 0) addReceivedEmpty()
                 var previousDay = ""
                 while (cursor.moveToNext()) {
@@ -3438,12 +4142,11 @@ class MainActivity : Activity() {
                                 Toast.makeText(this@MainActivity, "This is one part of an app. Tap Install app on its BASE file.", Toast.LENGTH_LONG).show()
                             } else if (isApk) {
                                 if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                                    pendingInstallUri = uri
                                     startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName)))
-                                    Toast.makeText(this@MainActivity, "Allow NEXORA to install apps, then tap Open again.", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(this@MainActivity, "Allow NEXORA to install apps. Installation will continue when you return.", Toast.LENGTH_LONG).show()
                                 } else {
-                                    val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType(uri, "application/vnd.android.package-archive")
-                                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    startActivity(intent)
+                                    launchApkInstaller(uri)
                                 }
                             } else {
                                 val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
@@ -3452,6 +4155,19 @@ class MainActivity : Activity() {
                             }
                         } catch (_: Exception) { Toast.makeText(this@MainActivity, "Android could not open this file.", Toast.LENGTH_LONG).show() }
                     }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(4) })
+                    actions.addView(button("Share", 0xFF0B9B75.toInt()) {
+                        try {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = mime
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                clipData = android.content.ClipData.newUri(contentResolver, name, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            startActivity(Intent.createChooser(shareIntent, "Share $name"))
+                        } catch (_: Exception) {
+                            Toast.makeText(this@MainActivity, "Android could not share this file.", Toast.LENGTH_LONG).show()
+                        }
+                    }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
                     actions.addView(button("Rename", 0xFF64748B.toInt()) {
                         val field = EditText(this@MainActivity).apply { setText(name); setSelection(text.length) }
                         android.app.AlertDialog.Builder(this@MainActivity).setTitle("Rename file").setView(field)
@@ -3478,7 +4194,17 @@ class MainActivity : Activity() {
 
     private fun addReceivedEmpty() {
         if (!::receivedList.isInitialized) return
-        receivedList.addView(TextView(this).apply { text = "Received files will appear here when saved."; textSize = 12f; setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt()); setPadding(0, dp(8), 0, dp(8)) })
+        val emptyMessage = if (receivedSearch.isNotBlank()) {
+            "No received files match \"$receivedSearch\"."
+        } else {
+            "Received files will appear here when saved."
+        }
+        receivedList.addView(TextView(this).apply {
+            text = emptyMessage
+            textSize = 12f
+            setTextColor(if (darkMode) 0xFFB3C0D5.toInt() else 0xFF64748B.toInt())
+            setPadding(0, dp(8), 0, dp(8))
+        })
     }
 
     companion object { private const val REQUEST_WIFI_DIRECT = 2001; private const val REQUEST_FILE = 2002; private const val REQUEST_MEDIA = 2003; private const val REQUEST_TREE = 2004; private const val REQUEST_CAMERA = 2005 }

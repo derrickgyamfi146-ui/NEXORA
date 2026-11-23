@@ -31,6 +31,7 @@ class TransferKeepAliveService : Service() {
     private val binder = LocalBinder()
     private var listener: Listener? = null
     private var lastStatusMessage = "NEXORA is ready."
+    @Volatile private var foregroundStarted = false
     @Volatile private var receiving = false
     private val connectedPeers = java.util.concurrent.ConcurrentHashMap<String, String>()
     private var transferWakeLock: android.os.PowerManager.WakeLock? = null
@@ -46,6 +47,7 @@ class TransferKeepAliveService : Service() {
                     message.startsWith("Wi-Fi Direct group details were unavailable") ||
                     message.startsWith("Android did not provide Wi-Fi Direct credentials") ||
                     message.startsWith("Wi-Fi Direct receiver could not start")) receiving = false
+                if (isTransferTerminalStatus(message)) releaseTransferWakeLock()
                 status(message)
             }
             override fun onQrReady(payload: String) { listener?.onQrReady(payload) }
@@ -59,10 +61,13 @@ class TransferKeepAliveService : Service() {
                 listener?.onDisconnected(endpointId)
             }
             override fun onProgress(message: String) {
+                if (message.startsWith("Paused:")) releaseTransferWakeLock()
+                else acquireTransferWakeLock()
                 lastStatusMessage = message
+                updateForegroundNotification(message)
                 listener?.onTransferProgress(message)
             }
-            override fun onReceived(name: String) { status("Received and saved: " + name) }
+            override fun onReceived(name: String, peerName: String) { status("Received and saved: " + name + " · from " + peerName) }
             override fun onIncomingQueueChanged(items: List<IncomingQueueItem>) {
                 listener?.onIncomingQueueChanged(items)
             }
@@ -80,6 +85,9 @@ class TransferKeepAliveService : Service() {
     fun connectedEndpointCount(): Int = connectedPeers.size
     fun connectedEndpointIds(): List<String> = connectedPeers.keys.toList()
     fun connectedEndpointName(endpointId: String): String? = connectedPeers[endpointId]
+    fun disconnectPeer(endpointId: String) {
+        if (transportDelegate.isInitialized()) transport.disconnectPeer(endpointId)
+    }
 
     fun setHighSpeedMode(enabled: Boolean) {
         status("Wi-Fi Direct is the active connection mode.")
@@ -126,6 +134,10 @@ class TransferKeepAliveService : Service() {
 
     fun pauseIncoming() { if (transportDelegate.isInitialized()) transport.pauseIncoming() }
     fun resumeIncoming() { if (transportDelegate.isInitialized()) transport.resumeIncoming() }
+    fun pauseOutgoing() { if (transportDelegate.isInitialized()) transport.pauseOutgoing() }
+    fun resumeOutgoing() { if (transportDelegate.isInitialized()) transport.resumeOutgoing() }
+    fun isOutgoingPaused(): Boolean = transportDelegate.isInitialized() && transport.isOutgoingPaused()
+    fun cancelOutgoing() { if (transportDelegate.isInitialized()) transport.cancelOutgoing() }
     fun cancelIncoming() { if (transportDelegate.isInitialized()) transport.cancelIncoming() }
     fun cancelIncomingItem(id: Int) { if (transportDelegate.isInitialized()) transport.cancelIncomingItem(id) }
     fun incomingQueueSnapshot(): List<IncomingQueueItem> =
@@ -139,13 +151,52 @@ class TransferKeepAliveService : Service() {
         connectedPeers.clear()
         releaseTransferWakeLock()
         stopForegroundCompat()
+        foregroundStarted = false
         stopSelf()
         status("Stopped. You can start again.")
     }
 
     private fun status(message: String) {
         lastStatusMessage = message
+        updateForegroundNotification(message)
         listener?.onStatus(message)
+    }
+
+    private fun updateForegroundNotification(message: String) {
+        if (!foregroundStarted) return
+        val percent = Regex("(\\d{1,3})%").find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?.coerceIn(0, 100)
+        val paused = message.startsWith("Paused:")
+        val activeTransfer = message.startsWith("Sending ") || message.startsWith("Receiving ")
+        val title = when {
+            paused -> "NEXORA transfer paused"
+            message.startsWith("Sending ") -> "NEXORA sending"
+            message.startsWith("Receiving ") -> "NEXORA receiving"
+            message.startsWith("Connected to") -> "NEXORA connected"
+            else -> "NEXORA is active"
+        }
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setContentTitle(title)
+            .setContentText(message.take(180))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        if (activeTransfer && percent != null) builder.setProgress(100, percent, false)
+        else if (paused) builder.setProgress(0, 0, true)
+        else builder.setProgress(0, 0, false)
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, builder.build())
+    }
+
+    private fun isTransferTerminalStatus(message: String): Boolean {
+        return message == "Transfer complete." ||
+            message == "Group transfer finished." ||
+            message == "All files received successfully." ||
+            message.startsWith("Transfer queue finished:") ||
+            message.startsWith("Send failed:") ||
+            message.startsWith("Outgoing transfer cancelled.") ||
+            message.startsWith("Connection ended:")
     }
 
     private fun acquireTransferWakeLock() {
@@ -162,7 +213,6 @@ class TransferKeepAliveService : Service() {
     }
 
     private fun promoteToForeground() {
-        acquireTransferWakeLock()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL_ID, "NEXORA transfers", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
@@ -179,6 +229,7 @@ class TransferKeepAliveService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        foregroundStarted = true
     }
 
     @Suppress("DEPRECATION")
