@@ -1,6 +1,6 @@
 # NEXORA Master Upgrade Tracker
 
-Last updated: 2026-11-23 (Phase 1 File Manager, Transfer Centre, received-file management and sharing improvements)
+Last updated: 2026-11-23 (Phase 1 File Manager, Transfer Centre, received-file management, sharing and search improvements)
 
 Release target: NEXORA 0.8.9, versionCode 86 (integrated reliability upgrade)  
 Application ID: `com.nexora.share`
@@ -36,6 +36,7 @@ Application ID: `com.nexora.share`
 | 23 | File category filter clarity and sorting | **Implemented on development branch: category filters are clearly scoped to the open folder, and switching away from Big Files resets largest-first sorting; latest integrated build passed** |
 | 24 | Live transfer speed display | **Implemented on development branch: sender and receiver progress messages now include measured transfer throughput; integrated APK build, original signing-certificate verification and artifact upload passed** |
 | 25 | Share received files | **Implemented on development branch: received items can be sent to other Android apps through the system share sheet with read permission; integrated APK build, original signing-certificate verification and artifact upload passed** |
+| 26 | Accurate empty-search message | **Implemented on development branch: an unmatched received-file search now explains that no items match instead of showing the generic empty-library message; latest integrated build verification pending** |
 
 ## Technical decisions and safeguards
 
