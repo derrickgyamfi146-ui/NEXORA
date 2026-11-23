@@ -4135,6 +4135,19 @@ class MainActivity : Activity() {
                             }
                         } catch (_: Exception) { Toast.makeText(this@MainActivity, "Android could not open this file.", Toast.LENGTH_LONG).show() }
                     }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(4) })
+                    actions.addView(button("Share", 0xFF0B9B75.toInt()) {
+                        try {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = mime
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                clipData = android.content.ClipData.newUri(contentResolver, name, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            startActivity(Intent.createChooser(shareIntent, "Share $name"))
+                        } catch (_: Exception) {
+                            Toast.makeText(this@MainActivity, "Android could not share this file.", Toast.LENGTH_LONG).show()
+                        }
+                    }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
                     actions.addView(button("Rename", 0xFF64748B.toInt()) {
                         val field = EditText(this@MainActivity).apply { setText(name); setSelection(text.length) }
                         android.app.AlertDialog.Builder(this@MainActivity).setTitle("Rename file").setView(field)
