@@ -698,6 +698,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             return
         }
         outgoingCancelled.set(false)
+        callbacks.onProgress("Preparing group transfer…")
         io.execute {
             try {
                 val completedNames = LinkedHashSet<String>()
@@ -927,6 +928,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             return
         }
         outgoingCancelled.set(false)
+        callbacks.onProgress("Preparing transfer…")
         io.execute {
             var ownsTurn = false
             try {
