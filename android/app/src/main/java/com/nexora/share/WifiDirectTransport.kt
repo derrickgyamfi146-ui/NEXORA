@@ -389,6 +389,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                 callbacks.onStatus("Incoming transfer cancelled: " + item.name)
                             } else {
                                 updateIncomingQueue(index, "Receiving", 0)
+                                callbacks.onProgress("Receiving " + item.name + " · 0%")
                                 val saved = saveIncoming(input, item.name, item.mime, item.size, index)
                                 updateIncomingQueue(index, if (saved) "Completed" else "Cancelled", if (saved) 100 else incomingProgress(index))
                                 synchronized(outputLock) {
@@ -586,6 +587,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                 }
                             } else {
                                 updateIncomingQueue(index, "Receiving", 0)
+                                callbacks.onProgress("Receiving " + item.name + " · 0%")
                                 val saved = saveIncoming(peer.input, item.name, item.mime, item.size, index)
                                 updateIncomingQueue(index, if (saved) "Completed" else "Cancelled", if (saved) 100 else incomingProgress(index))
                                 synchronized(peer.outputLock) {
