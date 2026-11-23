@@ -41,7 +41,8 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     }
     companion object {
         private const val PORT = 43821
-        private const val MAGIC = "NEXORA-WFD-4"
+        private const val MAGIC = "NEXORA-WFD-5"
+        private const val QR_SESSION_TTL_MS = 10 * 60 * 1000L
         private const val MAX_FILES = 200
         private const val FRAME_BATCH = 1
         private const val FRAME_ACK = 2
@@ -102,6 +103,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     @Volatile private var receiverRegistered = false
     @Volatile private var peerName = "NEXORA device"
     @Volatile private var currentQrPayload: String? = null
+    @Volatile private var qrExpiresAt: Long = 0L
 
     private val receiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: android.content.Intent?) {
@@ -251,12 +253,25 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 return@requestGroupInfo
             }
             peerName = deviceName()
+            // Rotate the admission token whenever a fresh QR is issued. Existing
+            // connected sockets remain valid; only new joins need the new token.
+            token = UUID.randomUUID().toString()
+            val expiresAt = System.currentTimeMillis() + QR_SESSION_TTL_MS
+            qrExpiresAt = expiresAt
             val json = JSONObject().put("type", MAGIC).put("ssid", ssid).put("password", password)
-                .put("host", "192.168.49.1").put("port", PORT).put("token", token).put("name", peerName).toString()
+                .put("host", "192.168.49.1").put("port", PORT).put("token", token)
+                .put("name", peerName).put("expiresAt", expiresAt).toString()
             val encoded = Base64.encodeToString(json.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
             currentQrPayload = "NEXORA-WFD:" + encoded
             callbacks.onQrReady(currentQrPayload!!)
-            callbacks.onStatus("Wi-Fi Direct is ready. Show the QR code to the sending phone.")
+            callbacks.onStatus("Wi-Fi Direct is ready. This QR code expires in 10 minutes; a fresh code will appear automatically.")
+            io.execute {
+                Thread.sleep(QR_SESSION_TTL_MS)
+                if (active.get() && qrExpiresAt == expiresAt) {
+                    callbacks.onStatus("Refreshing the expired QR code. Connected phones will stay connected.")
+                    requestGroupDetails(0)
+                }
+            }
         }
     }
 
@@ -276,8 +291,10 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             val host = data.getString("host")
             val port = data.getInt("port")
             val session = data.getString("token")
-            require(ssid.length in 1..32 && password.length in 8..63 && host == "192.168.49.1" && port == PORT && session.length in 20..64) {
-                "The QR connection details are invalid."
+            val expiresAt = data.optLong("expiresAt", 0L)
+            require(ssid.length in 1..32 && password.length in 8..63 && host == "192.168.49.1" &&
+                port == PORT && session.length in 20..64 && expiresAt > System.currentTimeMillis()) {
+                "This QR code has expired or its connection details are invalid. Ask the receiver to show its fresh QR code."
             }
             if (!isWifiEnabled()) {
                 active.set(false)
@@ -1086,6 +1103,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         active.set(false)
         localIsGroupOwner = false
         currentQrPayload = null
+        qrExpiresAt = 0L
 
         // Close every group-member socket as well as the single-peer socket.
         // Group-owner sessions do not use the single-peer 'socket' field, so
