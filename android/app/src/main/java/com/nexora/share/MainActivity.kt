@@ -2375,7 +2375,7 @@ class MainActivity : Activity() {
                             .setNegativeButton("Cancel", null)
                             .setPositiveButton("Save") { _, _ ->
                                 val newName = input.text?.toString()?.trim().orEmpty()
-                                if (newName.isBlank() || newName == "." || newName == ".." || newName.contains("/") || newName.contains("\\\\")) {
+                                if (newName.isBlank() || newName == "." || newName == ".." || newName.contains("/") || newName.contains("\\")) {
                                     Toast.makeText(this, "Enter a valid file name.", Toast.LENGTH_SHORT).show()
                                 } else {
                                     val renamed = runCatching {
