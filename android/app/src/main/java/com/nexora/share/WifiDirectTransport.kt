@@ -898,33 +898,47 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         }
     }
 
-    private fun saveIncoming(input: DataInputStream, name: String, mime: String, size: Long, expectedSha256: String, queueId: Int): Boolean {
+    private fun saveIncoming(
+        input: DataInputStream,
+        name: String,
+        mime: String,
+        size: Long,
+        expectedSha256: String,
+        resumeOffset: Long,
+        queueId: Int
+    ): Boolean = synchronized(incomingFileLock) {
+        val partial = partialFile(expectedSha256)
+        val actualOffset = currentResumeOffset(expectedSha256, size)
+        if (actualOffset != resumeOffset) throw IOException("The saved resume point changed. Please retry this file.")
         if (!hasStorageSpace(size)) {
-            skipIncomingBytes(input, size)
-            callbacks.onStatus("Not enough storage to receive " + name + ". Free up space and try again.")
-            return false
+            skipIncomingBytes(input, size - resumeOffset)
+            callbacks.onStatus("Not enough storage to finish receiving " + name + ". Your saved portion is kept for resuming.")
+            return@synchronized false
         }
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(MediaStore.MediaColumns.MIME_TYPE, mime)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/NEXORA/")
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-        }
-        val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-            ?: throw IOException("Could not create the Downloads file.")
         incomingName = name
         incomingPaused.set(false)
         incomingCancelled.set(cancelledIncomingItems.contains(queueId))
+        var publishedUri: Uri? = null
         try {
             val digest = MessageDigest.getInstance("SHA-256")
-            context.contentResolver.openOutputStream(uri)?.use { out ->
+            if (resumeOffset > 0) {
+                FileInputStream(partial).use { existing ->
+                    val prefix = ByteArray(256 * 1024)
+                    while (true) {
+                        val count = existing.read(prefix)
+                        if (count < 0) break
+                        if (count > 0) digest.update(prefix, 0, count)
+                    }
+                }
+            }
+            FileOutputStream(partial, true).use { out ->
                 val buffer = ByteArray(256 * 1024)
-                var remaining = size
-                var done = 0L
+                var remaining = size - resumeOffset
+                var done = resumeOffset
                 while (remaining > 0) {
                     while (incomingPaused.get() && active.get() && !incomingCancelled.get()) Thread.sleep(100)
                     val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                    if (n < 0) throw EOFException("Connection ended before the file completed.")
+                    if (n < 0) throw EOFException("Connection ended. The received portion has been saved for resuming.")
                     if (!incomingCancelled.get()) {
                         out.write(buffer, 0, n)
                         digest.update(buffer, 0, n)
@@ -935,22 +949,38 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     updateIncomingQueue(queueId, "Receiving", percent)
                     callbacks.onProgress("Receiving " + name + " · " + percent + "%")
                 }
-            } ?: throw IOException("Could not open Downloads output.")
+                out.fd.sync()
+            }
             if (incomingCancelled.get()) {
                 cancelledIncomingItems.add(queueId)
-                context.contentResolver.delete(uri, null, null)
-                return false
+                runCatching { partial.delete() }
+                return@synchronized false
             }
+            if (partial.length() != size) throw IOException("The saved file length did not match its expected size.")
             val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
             if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
-                context.contentResolver.delete(uri, null, null)
+                runCatching { partial.delete() }
                 callbacks.onStatus("File verification failed: " + name + ". The received data did not match the sender's file.")
-                return false
+                return@synchronized false
             }
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/NEXORA/")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: throw IOException("Could not create the Downloads file.")
+            publishedUri = uri
+            context.contentResolver.openOutputStream(uri)?.use { destination ->
+                FileInputStream(partial).use { source -> source.copyTo(destination) }
+            } ?: throw IOException("Could not open Downloads output.")
             context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
-            return true
+            runCatching { partial.delete() }
+            true
         } catch (e: Exception) {
-            context.contentResolver.delete(uri, null, null)
+            publishedUri?.let { context.contentResolver.delete(it, null, null) }
+            if (incomingCancelled.get()) runCatching { partial.delete() }
             throw e
         } finally {
             incomingPaused.set(false)
