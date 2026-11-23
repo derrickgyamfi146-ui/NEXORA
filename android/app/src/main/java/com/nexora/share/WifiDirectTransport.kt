@@ -443,8 +443,19 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         var allFilesSaved = true
                         metadata.forEachIndexed { index, item ->
                             currentIncomingIndex = index
+                            val alreadyReceived = completedIncomingUri(item.sha256, item.size) != null
                             val resumeAt = currentResumeOffset(item.sha256, item.size)
                             sendResumeOffset(output, outputLock, resumeAt)
+                            if (alreadyReceived) {
+                                updateIncomingQueue(index, "Completed", 100)
+                                synchronized(outputLock) {
+                                    output.writeByte(FRAME_ACK)
+                                    output.writeBoolean(true)
+                                    output.flush()
+                                }
+                                callbacks.onStatus("Already received: " + item.name + ". Skipped duplicate.")
+                                return@forEachIndexed
+                            }
                             if (cancelledIncomingItems.contains(index)) {
                                 allFilesSaved = false
                                 skipIncomingBytes(input, item.size - resumeAt)
@@ -662,8 +673,19 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         var allGroupFilesSaved = true
                         metadata.forEachIndexed { index, item ->
                             currentIncomingIndex = index
+                            val alreadyReceived = completedIncomingUri(item.sha256, item.size) != null
                             val resumeAt = currentResumeOffset(item.sha256, item.size)
                             sendResumeOffset(peer.output, peer.outputLock, resumeAt)
+                            if (alreadyReceived) {
+                                updateIncomingQueue(index, "Completed", 100)
+                                synchronized(peer.outputLock) {
+                                    peer.output.writeByte(FRAME_ACK)
+                                    peer.output.writeBoolean(true)
+                                    peer.output.flush()
+                                }
+                                callbacks.onStatus("Already received from " + peer.name + ": " + item.name + ". Skipped duplicate.")
+                                return@forEachIndexed
+                            }
                             if (cancelledIncomingItems.contains(index)) {
                                 allGroupFilesSaved = false
                                 skipIncomingBytes(peer.input, item.size - resumeAt)
@@ -790,7 +812,29 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         return File(directory, sha256 + ".part")
     }
 
+    private fun completedIncomingUri(sha256: String, size: Long): Uri? {
+        val prefs = context.getSharedPreferences("nexora_completed_transfers", Context.MODE_PRIVATE)
+        if (prefs.getLong("size_" + sha256, -1L) != size) return null
+        val raw = prefs.getString("uri_" + sha256, null) ?: return null
+        val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
+        val exists = runCatching {
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false
+        }.getOrDefault(false)
+        if (!exists) {
+            prefs.edit().remove("size_" + sha256).remove("uri_" + sha256).apply()
+            return null
+        }
+        return uri
+    }
+
+    private fun rememberCompletedIncoming(sha256: String, size: Long, uri: Uri) {
+        context.getSharedPreferences("nexora_completed_transfers", Context.MODE_PRIVATE).edit()
+            .putLong("size_" + sha256, size)
+            .putString("uri_" + sha256, uri.toString()).apply()
+    }
+
     private fun currentResumeOffset(sha256: String, size: Long): Long {
+        if (completedIncomingUri(sha256, size) != null) return size
         val file = partialFile(sha256)
         if (!file.exists()) return 0L
         if (file.length() > size) {
@@ -982,11 +1026,16 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 FileInputStream(partial).use { source -> source.copyTo(destination) }
             } ?: throw IOException("Could not open Downloads output.")
             context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            rememberCompletedIncoming(expectedSha256, size, uri)
             runCatching { partial.delete() }
             true
         } catch (e: Exception) {
             publishedUri?.let { context.contentResolver.delete(it, null, null) }
             if (incomingCancelled.get()) runCatching { partial.delete() }
+            else {
+                updateIncomingQueue(queueId, "Interrupted", incomingProgress(queueId))
+                callbacks.onStatus("Transfer interrupted. Reconnect and select the same file to resume from the saved portion.")
+            }
             throw e
         } finally {
             incomingPaused.set(false)
