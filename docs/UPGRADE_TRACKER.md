@@ -34,8 +34,8 @@ Application ID: `com.nexora.share`
 | 21 | File manager actions and Transfer Centre overview | **Implemented on development branch: open/select files, long-press rename/delete with confirmation, session connection and queue counts, plus live transfer status; latest integrated build, original signature and artifact upload passed** |
 | 22 | Received-file search and sorting | **Implemented on development branch: search saved NEXORA downloads by filename and sort newest-first or oldest-first; latest integrated build, original signature and artifact upload passed** |
 | 23 | File category filter clarity and sorting | **Implemented on development branch: category filters are clearly scoped to the open folder, and switching away from Big Files resets largest-first sorting; latest integrated build passed** |
-| 24 | Live transfer speed display | **Implemented on development branch: sender and receiver progress messages now include measured transfer throughput; latest build and signing verification pending** |
-| 25 | Share received files | **Implemented on development branch: received items can be sent to other Android apps through the system share sheet with read permission; latest build and signing verification pending** |
+| 24 | Live transfer speed display | **Implemented on development branch: sender and receiver progress messages now include measured transfer throughput; integrated APK build, original signing-certificate verification and artifact upload passed** |
+| 25 | Share received files | **Implemented on development branch: received items can be sent to other Android apps through the system share sheet with read permission; integrated APK build, original signing-certificate verification and artifact upload passed** |
 
 ## Technical decisions and safeguards
 
@@ -66,6 +66,7 @@ Application ID: `com.nexora.share`
 | `60726f9` | Disconnect cleanup and wake pending sends | Build, signature and artifact upload passed |\n| `569e750` | Import legacy sent and received items into History | Build, signature and artifact upload passed |\n| `352b130` | Correct year rollover and avoid duplicate legacy History events | CI pending at the time of tracker update |
 | `40a376e` | Transfer Centre live session status | Build, original signing-certificate verification and artifact upload passed |
 | `cc7e006` | Received-file search/sorting and category-filter clarity | Build, original signing-certificate verification and artifact upload passed |
+| `00fbbec` | Live transfer speed and received-file share action integrated | Build, original signing-certificate verification and artifact upload passed |
 
 Integrated reliability work for 0.8.9/build86 includes protocol v6 resume offsets, persistent partial-file recovery, duplicate-batch skipping, remembered device IDs with block controls, per-recipient history and live notification progress. CI build and signing checks must pass on the final head before an APK is shared. Real-device testing is still required.
 
