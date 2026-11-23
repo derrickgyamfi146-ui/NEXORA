@@ -821,10 +821,19 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         if (prefs.getLong("size_" + sha256, -1L) != size) return null
         val raw = prefs.getString("uri_" + sha256, null) ?: return null
         val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
-        val exists = runCatching {
-            context.contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false
+        val matches = runCatching {
+            val digest = MessageDigest.getInstance("SHA-256")
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val buffer = ByteArray(256 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (count > 0) digest.update(buffer, 0, count)
+                }
+            } ?: return@runCatching false
+            digest.digest().joinToString("") { "%02x".format(it) }.equals(sha256, ignoreCase = true)
         }.getOrDefault(false)
-        if (!exists) {
+        if (!matches) {
             prefs.edit().remove("size_" + sha256).remove("uri_" + sha256).apply()
             return null
         }
