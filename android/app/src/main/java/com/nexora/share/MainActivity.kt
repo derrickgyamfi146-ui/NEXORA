@@ -3905,7 +3905,10 @@ class MainActivity : Activity() {
                 }, LinearLayout.LayoutParams(dp(112), dp(42)))
                 peerList.addView(connectedRow, bottom(6))
             } else {
-                peerList.addView(button("Connect to $name", 0xFF16A085.toInt()) { sharing?.connect(id, name) }, bottom(6))
+                peerList.addView(button("CONNECT WITH QR", 0xFF16A085.toInt()) {
+                    updateStatus("Scan $name's NEXORA QR code to connect.")
+                    scanQrCode()
+                }, bottom(6))
             }
         }
         if (connectedPeers.isNotEmpty()) {
