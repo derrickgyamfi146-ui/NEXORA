@@ -127,11 +127,13 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private fun rememberTrustedDevice(id: String, name: String) {
         if (runCatching { UUID.fromString(id) }.isFailure) return
         val prefs = context.getSharedPreferences("nexora_trusted_devices", Context.MODE_PRIVATE)
-        val ids = prefs.getStringSet("device_ids", emptySet())?.toMutableSet() ?: mutableSetOf()
-        ids.add(id)
-        prefs.edit().putStringSet("device_ids", ids)
-            .putString("name_" + id, name.take(24))
-            .putLong("seen_" + id, System.currentTimeMillis()).apply()
+        synchronized(prefs) {
+            val ids = prefs.getStringSet("device_ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+            ids.add(id)
+            prefs.edit().putStringSet("device_ids", ids)
+                .putString("name_" + id, name.take(24))
+                .putLong("seen_" + id, System.currentTimeMillis()).apply()
+        }
     }
 
     fun disconnectPeer(id: String) {
@@ -1305,6 +1307,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         localIsGroupOwner = false
         currentQrPayload = null
         qrExpiresAt = 0L
+        remoteDeviceId = null
 
         // Close every group-member socket as well as the single-peer socket.
         // Group-owner sessions do not use the single-peer 'socket' field, so
