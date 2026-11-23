@@ -2305,7 +2305,7 @@ class MainActivity : Activity() {
                     val itemUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
                     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10), dp(10), dp(8), dp(10)); background = rounded(if (darkMode) 0xFF20364E.toInt() else 0xFFF1F6FB.toInt(), 13) }
                     row.addView(TextView(this).apply { text = fileIcon + "  " + name + "\n" + size; textSize = 12f; setTextColor(ink); maxLines = 2 }, LinearLayout.LayoutParams(0, -2, 1f))
-                    row.addView(button(if (folder) "OPEN" else "ADD", if (folder) 0xFF16A58A.toInt() else 0xFF168FE5.toInt()) {
+                    row.addView(button(if (folder) "OPEN" else "SELECT", if (folder) 0xFF16A58A.toInt() else 0xFF168FE5.toInt()) {
                         if (folder) {
                             treeDocumentStack.add(currentTreeDocumentId ?: documentId)
                             currentTreeDocumentId = childId
@@ -2317,8 +2317,18 @@ class MainActivity : Activity() {
                             updateSelectionAction()
                             updateStatus("${selectedUris.size} file(s) selected.")
                             Toast.makeText(this, if (selectedUris.contains(itemUri)) "Added: $name" else "Removed: $name", Toast.LENGTH_SHORT).show()
+                            render()
                         }
                     })
+                    if (!folder) {
+                        row.addView(button("OPEN", 0xFF16A58A.toInt()) {
+                            openTreeDocument(itemUri, mime)
+                        }, LinearLayout.LayoutParams(dp(68), dp(38)).apply { leftMargin = dp(5) })
+                        row.setOnLongClickListener {
+                            showTreeDocumentActions(itemUri, name, mime)
+                            true
+                        }
+                    }
                     children.addView(row, bottom(5))
                 }
             } ?: children.addView(TextView(this).apply { text = "Could not read this folder."; textSize = 12f; setTextColor(muted) })
@@ -2330,6 +2340,80 @@ class MainActivity : Activity() {
             })
         } catch (e: Exception) { children.addView(TextView(this).apply { text = "Folder could not be opened: " + (e.localizedMessage ?: "unknown error"); textSize = 12f; setTextColor(muted) }) }
         content.addView(section, bottom(12))
+    }
+
+    private fun openTreeDocument(uri: Uri, mime: String) {
+        val resolvedMime = runCatching { contentResolver.getType(uri) }.getOrNull()
+            ?.takeIf { it.isNotBlank() } ?: mime.takeIf { it.isNotBlank() } ?: "*/*"
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, resolvedMime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(Intent.createChooser(intent, "Open with"))
+        } catch (_: Exception) {
+            Toast.makeText(this, "No app can open this file.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showTreeDocumentActions(uri: Uri, name: String, mime: String) {
+        val actions = arrayOf("Open", "Rename", "Delete")
+        android.app.AlertDialog.Builder(this)
+            .setTitle(name)
+            .setItems(actions) { _, which ->
+                when (which) {
+                    0 -> openTreeDocument(uri, mime)
+                    1 -> {
+                        val input = EditText(this).apply {
+                            setSingleLine(true)
+                            setText(name)
+                            setSelection(text.length)
+                        }
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("Rename file")
+                            .setView(input)
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Save") { _, _ ->
+                                val newName = input.text?.toString()?.trim().orEmpty()
+                                if (newName.isBlank() || newName == "." || newName == ".." || newName.contains("/") || newName.contains("\\\\")) {
+                                    Toast.makeText(this, "Enter a valid file name.", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val renamed = runCatching {
+                                        android.provider.DocumentsContract.renameDocument(contentResolver, uri, newName)
+                                    }.getOrNull()
+                                    if (renamed != null) {
+                                        selectedUris.remove(uri)
+                                        updateSelectionAction()
+                                        updateStatus("Renamed to $newName.")
+                                        render()
+                                    } else {
+                                        Toast.makeText(this, "This folder provider does not support renaming.", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                            .show()
+                    }
+                    2 -> android.app.AlertDialog.Builder(this)
+                        .setTitle("Delete $name?")
+                        .setMessage("This removes the file from the selected folder.")
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Delete") { _, _ ->
+                            val deleted = runCatching {
+                                android.provider.DocumentsContract.deleteDocument(contentResolver, uri)
+                            }.getOrDefault(false)
+                            if (deleted) {
+                                selectedUris.remove(uri)
+                                updateSelectionAction()
+                                updateStatus("Deleted $name.")
+                                render()
+                            } else {
+                                Toast.makeText(this, "This folder provider could not delete the file.", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        .show()
+                }
+            }
+            .show()
     }
 
     private fun transferKindLabel(name: String): String {
