@@ -1,6 +1,6 @@
 # NEXORA Master Upgrade Tracker
 
-Last updated: 2026-11-23 (Phase 1 File Manager, Transfer Centre, received-file management and connection-flow fixes)
+Last updated: 2026-11-23 (Phase 1 File Manager, Transfer Centre, received-file management and connection-flow reliability)
 
 Release target: NEXORA 0.8.9, versionCode 86 (integrated reliability upgrade)  
 Application ID: `com.nexora.share`
@@ -39,6 +39,7 @@ Application ID: `com.nexora.share`
 | 26 | Accurate empty-search message | **Implemented on development branch: an unmatched received-file search now explains that no items match instead of showing the generic empty-library message; latest integrated build verification pending** |
 | 27 | Per-device disconnect control | **Implemented on development branch: connected peers have an explicit disconnect action with confirmation and a warning about active transfers; latest integrated build verification pending** |
 | 28 | Discovered-peer QR action | **Implemented on development branch: the peer-list action now launches the QR scanner instead of calling a connection method that only displayed a message; latest integrated build verification pending** |
+| 29 | Disconnected-peer list cleanup | **Implemented on development branch: disconnected peers are removed from the visible discovery list to avoid stale CONNECT WITH QR entries; latest integrated build verification pending** |
 
 ## Technical decisions and safeguards
 
