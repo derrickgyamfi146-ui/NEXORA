@@ -3364,6 +3364,68 @@ class MainActivity : Activity() {
         })
         content.addView(device, bottom(13))
 
+        val trustedPrefs = getSharedPreferences("nexora_trusted_devices", MODE_PRIVATE)
+        val trusted = panel(card)
+        trusted.addView(label("TRUSTED DEVICES", 0xFF0B4FB3.toInt()))
+        trusted.addView(TextView(this).apply {
+            text = "Phones you've connected to are remembered here. Block a phone to stop it joining future sessions."
+            textSize = 11f
+            setTextColor(muted)
+            setPadding(0, dp(5), 0, dp(9))
+        })
+        val trustedIds = trustedPrefs.getStringSet("device_ids", emptySet())?.toList()
+            ?.sortedByDescending { trustedPrefs.getLong("seen_" + it, 0L) }.orEmpty()
+        if (trustedIds.isEmpty()) {
+            trusted.addView(TextView(this).apply {
+                text = "Connected phones will appear here after their first successful connection."
+                textSize = 12f
+                setTextColor(muted)
+                setPadding(0, dp(8), 0, dp(8))
+            })
+        } else {
+            trustedIds.forEach { id ->
+                val deviceName = trustedPrefs.getString("name_" + id, "NEXORA device") ?: "NEXORA device"
+                val blocked = trustedPrefs.getBoolean("blocked_" + id, false)
+                val seen = trustedPrefs.getLong("seen_" + id, 0L)
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(0, dp(9), 0, dp(9))
+                }
+                row.addView(TextView(this).apply {
+                    text = deviceName + if (blocked) " · BLOCKED" else " · TRUSTED"
+                    textSize = 13f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(if (blocked) 0xFFE05252.toInt() else ink)
+                })
+                row.addView(TextView(this).apply {
+                    text = if (seen > 0L) "Last connected: " + java.text.SimpleDateFormat("dd MMM yyyy · HH:mm", java.util.Locale.getDefault()).format(java.util.Date(seen)) else "Previously connected"
+                    textSize = 10f
+                    setTextColor(muted)
+                    setPadding(0, dp(2), 0, dp(6))
+                })
+                val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                actions.addView(button(if (blocked) "ALLOW" else "BLOCK", if (blocked) 0xFF0B4FB3.toInt() else 0xFFE52B3A.toInt()) {
+                    trustedPrefs.edit().putBoolean("blocked_" + id, !blocked).apply()
+                    if (!blocked) sharing?.disconnectPeer(id)
+                    render()
+                }, LinearLayout.LayoutParams(0, dp(36), 1f).apply { rightMargin = dp(4) })
+                actions.addView(button("FORGET", 0xFF64748B.toInt()) {
+                    val ids = trustedPrefs.getStringSet("device_ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+                    ids.remove(id)
+                    trustedPrefs.edit().putStringSet("device_ids", ids)
+                        .remove("name_" + id).remove("seen_" + id).remove("blocked_" + id).apply()
+                    sharing?.disconnectPeer(id)
+                    render()
+                }, LinearLayout.LayoutParams(0, dp(36), 1f).apply { leftMargin = dp(4) })
+                row.addView(actions)
+                trusted.addView(row)
+                trusted.addView(View(this).apply {
+                    setBackgroundColor(if (darkMode) 0xFF30445B.toInt() else 0xFFE5EAF0.toInt())
+                }, LinearLayout.LayoutParams(-1, dp(1)))
+            }
+        }
+        content.addView(trusted, bottom(13))
+
         val transfer = panel(card)
         transfer.addView(label("TRANSFER & PRIVACY", 0xFF0B4FB3.toInt()))
         listOf(
