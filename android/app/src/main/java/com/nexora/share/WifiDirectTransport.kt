@@ -466,11 +466,12 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                     output.writeBoolean(false)
                                     output.flush()
                                 }
+                                callbacks.onStatus("Transfer cancelled from " + peerName + ": " + item.name)
                                 callbacks.onStatus("Incoming transfer cancelled: " + item.name)
                             } else {
                                 updateIncomingQueue(index, "Receiving", 0)
                                 callbacks.onProgress("Receiving " + item.name + " · 0%")
-                                val saved = saveIncoming(input, item.name, item.mime, item.size, item.sha256, resumeAt, index)
+                                val saved = saveIncoming(input, item.name, item.mime, item.size, item.sha256, resumeAt, peerName, index)
                                 if (!saved) allFilesSaved = false
                                 val finalStatus = if (saved) "Completed" else if (cancelledIncomingItems.contains(index)) "Cancelled" else "Failed"
                                 updateIncomingQueue(index, finalStatus, if (saved) 100 else incomingProgress(index))
@@ -480,7 +481,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                     output.flush()
                                 }
                                 if (saved) callbacks.onReceived(item.name, peerName)
-                                else if (cancelledIncomingItems.contains(index)) callbacks.onStatus("Incoming transfer cancelled: " + item.name)
+                                else if (cancelledIncomingItems.contains(index)) callbacks.onStatus("Transfer cancelled from " + peer.name + ": " + item.name)
                                 else callbacks.onStatus("Incoming transfer failed verification or storage check: " + item.name)
                             }
                         }
@@ -699,7 +700,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             } else {
                                 updateIncomingQueue(index, "Receiving", 0)
                                 callbacks.onProgress("Receiving " + item.name + " · 0%")
-                                val saved = saveIncoming(peer.input, item.name, item.mime, item.size, item.sha256, resumeAt, index)
+                                val saved = saveIncoming(peer.input, item.name, item.mime, item.size, item.sha256, resumeAt, peer.name, index)
                                 if (!saved) allGroupFilesSaved = false
                                 val finalStatus = if (saved) "Completed" else if (cancelledIncomingItems.contains(index)) "Cancelled" else "Failed"
                                 updateIncomingQueue(index, finalStatus, if (saved) 100 else incomingProgress(index))
@@ -877,6 +878,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     if (outgoingCancelled.get()) return@forEach
                     activeGroupSendPeer = peer
                     var ownsTurn = false
+                    var currentFileName = ""
                     try {
                         requestGroupSendTurn(peer)
                         ownsTurn = true
@@ -903,6 +905,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         metadata.forEach { item ->
                             val uri = item.uri
                             val name = item.name
+                            currentFileName = name
                             val size = item.size
                             val offset = peer.resumeOffsets.poll(2, TimeUnit.MINUTES)
                                 ?: throw IOException("The receiver did not provide a resume position for " + name)
@@ -929,10 +932,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             val confirmed = peer.acknowledgementQueue.poll(10, TimeUnit.MINUTES)
                                 ?: throw IOException(peer.name + " did not acknowledge " + name)
                             if (confirmed) callbacks.onStatus("Sent to " + peer.name + ": " + name)
-                            else callbacks.onStatus(peer.name + " cancelled " + name)
+                            else callbacks.onStatus("Transfer cancelled to " + peer.name + ": " + name)
                         }
                         callbacks.onStatus("Sent selected files to " + peer.name + ".")
                     } catch (e: Exception) {
+                        if (currentFileName.isNotBlank()) callbacks.onStatus("Transfer failed to " + peer.name + ": " + currentFileName)
                         callbacks.onStatus("Could not send to " + peer.name + ": " + (e.localizedMessage ?: "network error"))
                     } finally {
                         if (ownsTurn) releaseGroupSendTurn(peer)
@@ -955,6 +959,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         size: Long,
         expectedSha256: String,
         resumeOffset: Long,
+        senderName: String,
         queueId: Int
     ): Boolean = synchronized(incomingFileLock) {
         val partial = partialFile(expectedSha256)
@@ -962,6 +967,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         if (actualOffset != resumeOffset) throw IOException("The saved resume point changed. Please retry this file.")
         if (!hasStorageSpace(size)) {
             skipIncomingBytes(input, size - resumeOffset)
+            callbacks.onStatus("Transfer failed from " + senderName + ": " + name)
             callbacks.onStatus("Not enough storage to finish receiving " + name + ". Your saved portion is kept for resuming.")
             return@synchronized false
         }
@@ -1010,6 +1016,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
             if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
                 runCatching { partial.delete() }
+                callbacks.onStatus("Transfer failed from " + senderName + ": " + name)
                 callbacks.onStatus("File verification failed: " + name + ". The received data did not match the sender's file.")
                 return@synchronized false
             }
@@ -1034,6 +1041,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             if (incomingCancelled.get()) runCatching { partial.delete() }
             else {
                 updateIncomingQueue(queueId, "Interrupted", incomingProgress(queueId))
+                callbacks.onStatus("Transfer interrupted from " + senderName + ": " + name)
                 callbacks.onStatus("Transfer interrupted. Reconnect and select the same file to resume from the saved portion.")
             }
             throw e
