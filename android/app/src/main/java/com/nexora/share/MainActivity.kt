@@ -95,6 +95,32 @@ class MainActivity : Activity() {
                     rememberSentFileName(message.removePrefix("Sent: ").trim())
                     successFeedback()
                 }
+                if (message.startsWith("Transfer failed to ") ||
+                    message.startsWith("Transfer cancelled to ")) {
+                    val cancelled = message.startsWith("Transfer cancelled to ")
+                    val detail = message.substringAfter(if (cancelled) "Transfer cancelled to " else "Transfer failed to ")
+                    val recipient = detail.substringBefore(": ").trim().ifBlank { "Nearby device" }
+                    val fileName = detail.substringAfter(": ", "").trim()
+                    if (fileName.isNotBlank()) appendHistoryEvent("SENT", fileName, recipient, if (cancelled) "CANCELLED" else "FAILED")
+                }
+                if (message.startsWith("Transfer failed from ") ||
+                    message.startsWith("Transfer interrupted from ") ||
+                    message.startsWith("Transfer cancelled from ")) {
+                    val outcome = when {
+                        message.startsWith("Transfer interrupted from ") -> "INTERRUPTED"
+                        message.startsWith("Transfer cancelled from ") -> "CANCELLED"
+                        else -> "FAILED"
+                    }
+                    val prefix = when (outcome) {
+                        "INTERRUPTED" -> "Transfer interrupted from "
+                        "CANCELLED" -> "Transfer cancelled from "
+                        else -> "Transfer failed from "
+                    }
+                    val detail = message.removePrefix(prefix)
+                    val sender = detail.substringBefore(": ").trim().ifBlank { "Nearby device" }
+                    val fileName = detail.substringAfter(": ", "").trim()
+                    if (fileName.isNotBlank()) appendHistoryEvent("RECEIVED", fileName, sender, outcome)
+                }
                 if (message.startsWith("Received and saved:")) successFeedback()
                 if (message.startsWith("Receiving ") || message.startsWith("Paused: Receiving")) {
                     latestIncomingProgress = message
