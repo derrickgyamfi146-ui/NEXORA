@@ -2450,6 +2450,25 @@ class MainActivity : Activity() {
             setPadding(dp(2), dp(12), dp(2), dp(12))
         })
 
+        // Give users a quick session overview before the detailed Sent and
+        // Received lists. Counts are sourced from the live session and history.
+        val sessionOverview = panel(card)
+        sessionOverview.addView(label("SESSION OVERVIEW", 0xFFFFD21F.toInt()))
+        val overviewLines = listOf(
+            "Connection: " + if (connectedPeers.isEmpty()) "Not connected" else connectedPeers.size.toString() + " device(s) connected",
+            "Incoming queue: " + incomingQueueItems.size + " item(s)",
+            "Sent history: " + sentEntries.size + " item(s)"
+        )
+        overviewLines.forEach { line ->
+            sessionOverview.addView(TextView(this).apply {
+                text = line
+                textSize = 12f
+                setTextColor(ink)
+                setPadding(dp(2), dp(5), dp(2), dp(5))
+            })
+        }
+        content.addView(sessionOverview, bottom(10))
+
         // Keep the existing NEXORA visual language, but place Sent and Received
         // side-by-side with a clear vertical divider as requested.
         val columns = LinearLayout(this).apply {
