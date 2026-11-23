@@ -404,7 +404,8 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                     output.flush()
                                 }
                                 if (saved) callbacks.onReceived(item.name)
-                                else callbacks.onStatus("Incoming transfer cancelled: " + item.name)
+                                else if (cancelledIncomingItems.contains(index)) callbacks.onStatus("Incoming transfer cancelled: " + item.name)
+                                else callbacks.onStatus("Incoming transfer failed verification or storage check: " + item.name)
                             }
                         }
                         currentIncomingIndex = -1
@@ -564,7 +565,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         peer.remoteOwnsTurn = true
                         val count = peer.input.readInt()
                         require(count in 1..MAX_FILES) { "Invalid file count." }
-                        data class IncomingMeta(val name: String, val mime: String, val size: Long)
+                        data class IncomingMeta(val name: String, val mime: String, val size: Long, val sha256: String)
                         val metadata = ArrayList<IncomingMeta>(count)
                         repeat(count) {
                             val name = safeName(peer.input.readUTF())
