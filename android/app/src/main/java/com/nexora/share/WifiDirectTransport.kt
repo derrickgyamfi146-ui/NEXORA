@@ -36,12 +36,12 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         fun onConnected(endpointId: String, peerName: String, localIsReceiver: Boolean)
         fun onDisconnected(endpointId: String)
         fun onProgress(message: String)
-        fun onReceived(name: String)
+        fun onReceived(name: String, peerName: String)
         fun onIncomingQueueChanged(items: List<IncomingQueueItem>)
     }
     companion object {
         private const val PORT = 43821
-        private const val MAGIC = "NEXORA-WFD-5"
+        private const val MAGIC = "NEXORA-WFD-6"
         private const val QR_SESSION_TTL_MS = 10 * 60 * 1000L
         private const val MAX_FILES = 200
         private const val FRAME_BATCH = 1
@@ -49,6 +49,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         private const val FRAME_REQUEST_SEND = 3
         private const val FRAME_GRANT_SEND = 4
         private const val FRAME_RELEASE_SEND = 5
+        private const val FRAME_RESUME_OFFSET = 6
     }
     private class GroupPeer(
         val id: String,
@@ -59,6 +60,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     ) {
         val outputLock = Any()
         val acknowledgementQueue = LinkedBlockingQueue<Boolean>()
+        val resumeOffsets = LinkedBlockingQueue<Long>()
         val sendPermit = java.util.concurrent.Semaphore(0)
         val permitLock = Any()
         @Volatile var localWaitingForTurn = false
@@ -92,9 +94,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     private val permitLock = Any()
     private val sendPermit = java.util.concurrent.Semaphore(0)
     private val acknowledgementQueue = LinkedBlockingQueue<Boolean>()
+    private val resumeOffsets = LinkedBlockingQueue<Long>()
     private val groupPeers = java.util.concurrent.ConcurrentHashMap<String, GroupPeer>()
     @Volatile private var activeGroupSendPeer: GroupPeer? = null
     private val groupIncomingLock = Any()
+    private val incomingFileLock = Any()
     @Volatile private var localWaitingForTurn = false
     @Volatile private var localOwnsTurn = false
     @Volatile private var remoteOwnsTurn = false
@@ -104,6 +108,39 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     @Volatile private var peerName = "NEXORA device"
     @Volatile private var currentQrPayload: String? = null
     @Volatile private var qrExpiresAt: Long = 0L
+    @Volatile private var remoteDeviceId: String? = null
+
+    private fun localDeviceId(): String {
+        val prefs = context.getSharedPreferences("nexora_trusted_devices", Context.MODE_PRIVATE)
+        synchronized(prefs) {
+            val existing = prefs.getString("local_device_id", null)
+            if (!existing.isNullOrBlank()) return existing
+            val created = UUID.randomUUID().toString()
+            prefs.edit().putString("local_device_id", created).commit()
+            return created
+        }
+    }
+
+    private fun isDeviceBlocked(id: String): Boolean =
+        context.getSharedPreferences("nexora_trusted_devices", Context.MODE_PRIVATE).getBoolean("blocked_" + id, false)
+
+    private fun rememberTrustedDevice(id: String, name: String) {
+        if (runCatching { UUID.fromString(id) }.isFailure) return
+        val prefs = context.getSharedPreferences("nexora_trusted_devices", Context.MODE_PRIVATE)
+        val ids = prefs.getStringSet("device_ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+        ids.add(id)
+        prefs.edit().putStringSet("device_ids", ids)
+            .putString("name_" + id, name.take(24))
+            .putLong("seen_" + id, System.currentTimeMillis()).apply()
+    }
+
+    fun disconnectPeer(id: String) {
+        if (id == "WIFI_DIRECT" || id == remoteDeviceId) {
+            runCatching { socket?.close() }
+            return
+        }
+        groupPeers[id]?.let { runCatching { it.socket.close() } }
+    }
 
     private val receiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: android.content.Intent?) {
@@ -260,7 +297,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             qrExpiresAt = expiresAt
             val json = JSONObject().put("type", MAGIC).put("ssid", ssid).put("password", password)
                 .put("host", "192.168.49.1").put("port", PORT).put("token", token)
-                .put("name", peerName).put("expiresAt", expiresAt).toString()
+                .put("name", peerName).put("deviceId", localDeviceId()).put("expiresAt", expiresAt).toString()
             val encoded = Base64.encodeToString(json.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
             currentQrPayload = "NEXORA-WFD:" + encoded
             callbacks.onQrReady(currentQrPayload!!)
@@ -292,8 +329,10 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             val port = data.getInt("port")
             val session = data.getString("token")
             val expiresAt = data.optLong("expiresAt", 0L)
+            val hostDeviceId = data.optString("deviceId")
             require(ssid.length in 1..32 && password.length in 8..63 && host == "192.168.49.1" &&
-                port == PORT && session.length in 20..64 && expiresAt > System.currentTimeMillis()) {
+                port == PORT && session.length in 20..64 && expiresAt > System.currentTimeMillis() &&
+                runCatching { UUID.fromString(hostDeviceId) }.isSuccess) {
                 "This QR code has expired or its connection details are invalid. Ask the receiver to show its fresh QR code."
             }
             if (!isWifiEnabled()) {
@@ -301,7 +340,9 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 callbacks.onStatus("Wi-Fi is off. Turn Wi-Fi on, then scan the receiver QR code again.")
                 return
             }
+            if (isDeviceBlocked(hostDeviceId)) throw IOException("This phone is blocked in your trusted-device settings.")
             token = session
+            remoteDeviceId = hostDeviceId
             localIsGroupOwner = false
             peerName = data.optString("name", "NEXORA device")
             active.set(true)
@@ -366,6 +407,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         s.soTimeout = 0
         acknowledgementQueue.clear()
         sendPermit.drainPermits()
+        if (!localReceiver) remoteDeviceId?.let { rememberTrustedDevice(it, peerName) }
         callbacks.onConnected("WIFI_DIRECT", peerName, localReceiver)
         callbacks.onStatus("Connected to " + peerName + ". You can send and receive over this connection.")
         io.execute { peerReadLoop(s, input, output) }
@@ -432,6 +474,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         callbacks.onStatus(if (allFilesSaved) "All files received successfully." else "Batch finished with one or more files not received.")
                     }
                     FRAME_ACK -> acknowledgementQueue.offer(input.readBoolean())
+                    FRAME_RESUME_OFFSET -> resumeOffsets.offer(input.readLong())
                     FRAME_REQUEST_SEND -> {
                         val grantNow = synchronized(permitLock) {
                             if (localOwnsTurn || (localWaitingForTurn && localIsGroupOwner)) {
@@ -535,6 +578,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 output.writeUTF(MAGIC)
                 output.writeUTF(token ?: "")
                 output.writeUTF(deviceName())
+                output.writeUTF(localDeviceId())
                 output.flush()
                 val input = DataInputStream(BufferedInputStream(s.getInputStream()))
                 if (!input.readBoolean()) throw IOException("The QR session was rejected or expired.")
@@ -555,19 +599,27 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
             val remoteMagic = input.readUTF()
             val remoteToken = input.readUTF()
             val remoteName = input.readUTF().trim().take(24).ifBlank { "NEXORA device" }
-            val valid = remoteMagic == MAGIC && remoteToken == token
+            val remoteId = input.readUTF()
+            val validId = runCatching { UUID.fromString(remoteId) }.isSuccess
+            val blocked = validId && isDeviceBlocked(remoteId)
+            val valid = remoteMagic == MAGIC && remoteToken == token && validId && !blocked
             output.writeBoolean(valid)
             output.flush()
-            if (!valid) { s.close(); return }
-            startGroupPeerSession(s, input, output, remoteName)
+            if (!valid) {
+                if (blocked) callbacks.onStatus("Blocked device attempted to join: " + remoteName)
+                runCatching { s.close() }
+                return
+            }
+            rememberTrustedDevice(remoteId, remoteName)
+            startGroupPeerSession(s, input, output, remoteName, remoteId)
         } catch (e: Exception) {
             runCatching { s.close() }
             if (active.get()) callbacks.onStatus("Receive connection failed: " + (e.localizedMessage ?: "network error"))
         }
     }
 
-    private fun startGroupPeerSession(s: Socket, input: DataInputStream, output: DataOutputStream, remoteName: String) {
-        val id = UUID.randomUUID().toString()
+    private fun startGroupPeerSession(s: Socket, input: DataInputStream, output: DataOutputStream, remoteName: String, remoteId: String) {
+        val id = remoteId
         val peer = GroupPeer(id, remoteName, s, input, output)
         s.soTimeout = 0
         groupPeers[id] = peer
@@ -637,6 +689,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         callbacks.onStatus(if (allGroupFilesSaved) "Incoming batch finished from " + peer.name + "." else "Incoming batch from " + peer.name + " finished with one or more files not received.")
                     }
                     FRAME_ACK -> peer.acknowledgementQueue.offer(peer.input.readBoolean())
+                    FRAME_RESUME_OFFSET -> peer.resumeOffsets.offer(peer.input.readLong())
                     FRAME_REQUEST_SEND -> {
                         val grant = synchronized(peer.permitLock) {
                             if (peer.localOwnsTurn || peer.localWaitingForTurn) {
@@ -716,6 +769,41 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         if (grantRemote) runCatching { writeGroupControl(peer, FRAME_GRANT_SEND) }
     }
 
+    private fun sendResumeOffset(output: DataOutputStream, lock: Any, offset: Long) {
+        synchronized(lock) {
+            output.writeByte(FRAME_RESUME_OFFSET)
+            output.writeLong(offset)
+            output.flush()
+        }
+    }
+
+    private fun partialFile(sha256: String): File {
+        val directory = File(context.filesDir, "resumable_transfers").apply { mkdirs() }
+        directory.listFiles()?.filter { it.isFile && System.currentTimeMillis() - it.lastModified() > 30L * 24 * 60 * 60 * 1000 }
+            ?.forEach { runCatching { it.delete() } }
+        return File(directory, sha256 + ".part")
+    }
+
+    private fun currentResumeOffset(sha256: String, size: Long): Long {
+        val file = partialFile(sha256)
+        if (!file.exists()) return 0L
+        if (file.length() > size) {
+            runCatching { file.delete() }
+            return 0L
+        }
+        return file.length().coerceIn(0L, size)
+    }
+
+    private fun skipSourceBytes(input: InputStream, amount: Long) {
+        var remaining = amount
+        val buffer = ByteArray(64 * 1024)
+        while (remaining > 0) {
+            val count = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            if (count < 0) throw EOFException("The selected file changed before the resume point.")
+            remaining -= count
+        }
+    }
+
     fun sendFilesToGroup(uris: List<Uri>, excludedPeerIds: Set<String> = emptySet()) {
         if (!localIsGroupOwner) {
             sendFiles(uris)
@@ -735,7 +823,6 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         callbacks.onProgress("Preparing group transfer…")
         io.execute {
             try {
-                val completedNames = LinkedHashSet<String>()
                 recipients.forEach { peer ->
                     if (outgoingCancelled.get()) return@forEach
                     activeGroupSendPeer = peer
@@ -751,6 +838,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             require(size >= 0) { "Could not determine the size of " + name }
                             GroupOutgoingMeta(uri, name, mime.take(120), size, calculateSha256(uri))
                         }
+                        peer.resumeOffsets.clear()
                         synchronized(peer.outputLock) {
                             peer.output.writeByte(FRAME_BATCH)
                             peer.output.writeInt(metadata.size)
@@ -766,11 +854,16 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             val uri = item.uri
                             val name = item.name
                             val size = item.size
+                            val offset = peer.resumeOffsets.poll(2, TimeUnit.MINUTES)
+                                ?: throw IOException("The receiver did not provide a resume position for " + name)
+                            require(offset in 0..size) { "The receiver returned an invalid resume position." }
+                            if (offset > 0) callbacks.onStatus("Resuming " + name + " for " + peer.name + " from " + (offset * 100 / size.coerceAtLeast(1)) + "%.")
                             synchronized(peer.outputLock) {
                                 context.contentResolver.openInputStream(uri)?.use { input ->
+                                    skipSourceBytes(input, offset)
                                     val buffer = ByteArray(256 * 1024)
-                                    var remaining = size
-                                    var done = 0L
+                                    var remaining = size - offset
+                                    var done = offset
                                     while (remaining > 0) {
                                         waitIfOutgoingPaused()
                                         val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
@@ -785,7 +878,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             }
                             val confirmed = peer.acknowledgementQueue.poll(10, TimeUnit.MINUTES)
                                 ?: throw IOException(peer.name + " did not acknowledge " + name)
-                            if (confirmed) completedNames.add(name)
+                            if (confirmed) callbacks.onStatus("Sent to " + peer.name + ": " + name)
                             else callbacks.onStatus(peer.name + " cancelled " + name)
                         }
                         callbacks.onStatus("Sent selected files to " + peer.name + ".")
@@ -796,7 +889,6 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         activeGroupSendPeer = null
                     }
                 }
-                completedNames.forEach { callbacks.onStatus("Sent: " + it) }
                 callbacks.onStatus("Group transfer finished.")
             } finally {
                 outgoingPaused.set(false)
