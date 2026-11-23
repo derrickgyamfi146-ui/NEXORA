@@ -937,7 +937,10 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         }
                         callbacks.onStatus("Sent selected files to " + peer.name + ".")
                     } catch (e: Exception) {
-                        if (currentFileName.isNotBlank()) callbacks.onStatus("Transfer failed to " + peer.name + ": " + currentFileName)
+                        if (currentFileName.isNotBlank()) callbacks.onStatus(
+                            (if (outgoingCancelled.get()) "Transfer cancelled to " else "Transfer failed to ") +
+                                peer.name + ": " + currentFileName
+                        )
                         callbacks.onStatus("Could not send to " + peer.name + ": " + (e.localizedMessage ?: "network error"))
                     } finally {
                         if (ownsTurn) releaseGroupSendTurn(peer)
@@ -1229,7 +1232,10 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 }
                 callbacks.onStatus("Transfer complete.")
             } catch (e: Exception) {
-                if (currentFileName.isNotBlank()) callbacks.onStatus("Transfer failed to " + peerName + ": " + currentFileName)
+                if (currentFileName.isNotBlank()) callbacks.onStatus(
+                    (if (outgoingCancelled.get()) "Transfer cancelled to " else "Transfer failed to ") +
+                        peerName + ": " + currentFileName
+                )
                 val busy = e.localizedMessage?.contains("busy", ignoreCase = true) == true
                 if (!busy) {
                     // Closing the socket lets the single peer reader own cleanup
