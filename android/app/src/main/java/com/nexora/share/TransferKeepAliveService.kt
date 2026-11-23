@@ -118,14 +118,12 @@ class TransferKeepAliveService : Service() {
     fun sendFiles(uris: List<Uri>) {
         if (uris.isEmpty()) { status("Choose at least one file."); return }
         if (!isConnected) { status("Scan the receiver's QR code before sending files."); return }
-        acquireTransferWakeLock()
         transport.sendFiles(uris)
     }
 
     fun sendFilesToGroup(uris: List<Uri>, excludedPeerIds: Set<String> = emptySet()) {
         if (uris.isEmpty()) { status("Choose at least one item."); return }
         if (!isConnected) { status("Connect at least one phone before broadcasting."); return }
-        acquireTransferWakeLock()
         transport.sendFilesToGroup(uris, excludedPeerIds)
     }
 
