@@ -30,15 +30,16 @@ NEXORA is an Android-to-Android file-sharing app that uses **Wi-Fi Direct** to m
 
 The APK is built by the GitHub Actions workflow in `.github/workflows/nexora-apk.yml`.
 
-- Current audit build: **0.8.6** (versionCode **83**).
+- Current audit build: **0.8.7** (versionCode **84**).
 - Application ID: `com.nexora.share`.
 - Keep the existing installation and its data when installing an update. Android only permits an in-place update when the APK has the same application ID and signing certificate.
 
 ## Current limitations and testing still needed
 
 - Every supported phone model still needs real-device testing, including two-phone connection, group joining, screen-off transfers, large files, pause/resume, cancellation and recovery after a disconnect.
-- The transfer protocol does not yet provide verified end-to-end file checksums or resume-from-the-middle after an interrupted transfer.
-- The receiver does not yet provide a robust pre-transfer storage-capacity check for very large incoming files.
+- NEXORA now calculates a SHA-256 checksum before sending and verifies the received bytes before making the file visible in Downloads. This detects accidental corruption or a source file changing between checksum and send.
+- The receiver checks available storage before each incoming file and keeps a 16 MB safety reserve. It does not reserve space for an entire multi-file batch in advance.
+- Resume-from-the-middle after an interrupted transfer is not yet implemented; an interrupted file must be sent again.
 - Wi-Fi Direct QR sessions are intended for nearby trusted devices; session expiry, rotating QR credentials and a persistent trusted-device list are not yet implemented.
 - PC and iPhone interoperability are not currently supported.
 - A successful GitHub Actions build confirms compilation and signing checks; it does not prove that real-device transfers work on every phone.
