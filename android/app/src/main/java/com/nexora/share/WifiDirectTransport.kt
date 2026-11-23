@@ -1118,6 +1118,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         require(size >= 0) { "Could not determine the size of " + name }
                         OutgoingMeta(uri, name, mime.take(120), size, calculateSha256(uri))
                     }
+                    resumeOffsets.clear()
                     synchronized(outputLock) {
                         output.writeByte(FRAME_BATCH)
                         output.writeInt(metadata.size)
@@ -1133,11 +1134,16 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         val uri = item.uri
                         val name = item.name
                         val size = item.size
+                        val offset = resumeOffsets.poll(2, TimeUnit.MINUTES)
+                            ?: throw IOException("The receiver did not provide a resume position for " + name)
+                        require(offset in 0..size) { "The receiver returned an invalid resume position." }
+                        if (offset > 0) callbacks.onStatus("Resuming " + name + " from " + (offset * 100 / size.coerceAtLeast(1)) + "%.")
                         synchronized(outputLock) {
                             context.contentResolver.openInputStream(uri)?.use { input ->
+                            skipSourceBytes(input, offset)
                             val buffer = ByteArray(256 * 1024)
-                            var remaining = size
-                            var done = 0L
+                            var remaining = size - offset
+                            var done = offset
                             while (remaining > 0) {
                                 waitIfOutgoingPaused()
                                 val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
@@ -1152,7 +1158,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     }
                     val confirmed = acknowledgementQueue.poll(10, TimeUnit.MINUTES)
                         ?: throw IOException("The receiving phone did not respond to " + name)
-                    if (confirmed) callbacks.onStatus("Sent: " + name)
+                    if (confirmed) callbacks.onStatus("Sent to " + peerName + ": " + name)
                     else callbacks.onStatus("Receiver cancelled: " + name)
                 }
                 callbacks.onStatus("Transfer complete.")
