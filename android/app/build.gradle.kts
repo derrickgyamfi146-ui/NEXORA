@@ -14,8 +14,8 @@ android {
         applicationId = "com.nexora.share"
         minSdk = 24
         targetSdk = 35
-        versionCode = 83
-        versionName = "0.8.6"
+        versionCode = 84
+        versionName = "0.8.7"
     }
 
     signingConfigs {
