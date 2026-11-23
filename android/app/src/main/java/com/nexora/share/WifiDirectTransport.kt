@@ -381,9 +381,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             }
                         }
                         publishIncomingQueue()
+                        var allFilesSaved = true
                         metadata.forEachIndexed { index, item ->
                             currentIncomingIndex = index
                             if (cancelledIncomingItems.contains(index)) {
+                                allFilesSaved = false
                                 skipIncomingBytes(input, item.size)
                                 updateIncomingQueue(index, "Cancelled", 0)
                                 synchronized(outputLock) {
@@ -396,6 +398,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                 updateIncomingQueue(index, "Receiving", 0)
                                 callbacks.onProgress("Receiving " + item.name + " · 0%")
                                 val saved = saveIncoming(input, item.name, item.mime, item.size, item.sha256, index)
+                                if (!saved) allFilesSaved = false
                                 val finalStatus = if (saved) "Completed" else if (cancelledIncomingItems.contains(index)) "Cancelled" else "Failed"
                                 updateIncomingQueue(index, finalStatus, if (saved) 100 else incomingProgress(index))
                                 synchronized(outputLock) {
@@ -409,7 +412,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             }
                         }
                         currentIncomingIndex = -1
-                        callbacks.onStatus("All files received successfully.")
+                        callbacks.onStatus(if (allFilesSaved) "All files received successfully." else "Batch finished with one or more files not received.")
                     }
                     FRAME_ACK -> acknowledgementQueue.offer(input.readBoolean())
                     FRAME_REQUEST_SEND -> {
@@ -584,9 +587,11 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             }
                         }
                         publishIncomingQueue()
+                        var allGroupFilesSaved = true
                         metadata.forEachIndexed { index, item ->
                             currentIncomingIndex = index
                             if (cancelledIncomingItems.contains(index)) {
+                                allGroupFilesSaved = false
                                 skipIncomingBytes(peer.input, item.size)
                                 updateIncomingQueue(index, "Cancelled", 0)
                                 synchronized(peer.outputLock) {
@@ -598,6 +603,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                 updateIncomingQueue(index, "Receiving", 0)
                                 callbacks.onProgress("Receiving " + item.name + " · 0%")
                                 val saved = saveIncoming(peer.input, item.name, item.mime, item.size, item.sha256, index)
+                                if (!saved) allGroupFilesSaved = false
                                 val finalStatus = if (saved) "Completed" else if (cancelledIncomingItems.contains(index)) "Cancelled" else "Failed"
                                 updateIncomingQueue(index, finalStatus, if (saved) 100 else incomingProgress(index))
                                 synchronized(peer.outputLock) {
@@ -606,11 +612,12 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                     peer.output.flush()
                                 }
                                 if (saved) callbacks.onReceived(item.name)
-                                else callbacks.onStatus("Incoming transfer cancelled: " + item.name)
+                                else if (cancelledIncomingItems.contains(index)) callbacks.onStatus("Incoming transfer cancelled: " + item.name)
+                                else callbacks.onStatus("Incoming transfer failed verification or storage check: " + item.name)
                             }
                         }
                         currentIncomingIndex = -1
-                        callbacks.onStatus("Incoming batch finished from " + peer.name + ".")
+                        callbacks.onStatus(if (allGroupFilesSaved) "Incoming batch finished from " + peer.name + "." else "Incoming batch from " + peer.name + " finished with one or more files not received.")
                     }
                     FRAME_ACK -> peer.acknowledgementQueue.offer(peer.input.readBoolean())
                     FRAME_REQUEST_SEND -> {
