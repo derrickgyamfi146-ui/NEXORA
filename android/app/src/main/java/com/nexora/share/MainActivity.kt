@@ -1539,7 +1539,7 @@ class MainActivity : Activity() {
         }
         mediaRows.clear(); mediaRows.addAll(cached)
         val matching = cached.filter { it.second.contains(mediaSearch, ignoreCase = true) }
-        val filtered = if (mediaSort == "Name A-Z") matching.sortedWith(compareByDescending<Triple<Uri, String, Long>> { it.third }.thenBy { it.second.lowercase() }) else matching
+        val filtered = if (mediaSort == "Name A-Z") matching.sortedBy { it.second.substringBeforeLast(" · ").lowercase() } else matching
         if (filtered.isEmpty()) {
             val partialVideoAccess = kind == "Videos" && Build.VERSION.SDK_INT >= 34 &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED &&
