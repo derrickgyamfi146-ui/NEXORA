@@ -100,8 +100,7 @@ class MainActivity : Activity() {
                     message == "Group transfer finished." ||
                     message.startsWith("Transfer queue finished:") ||
                     message.startsWith("Send failed:") ||
-                    message.startsWith("Outgoing transfer cancelled.") ||
-                    message.startsWith("Could not send to ")
+                    message.startsWith("Outgoing transfer cancelled.")
                 if (transferFinished) {
                     // App APKs are copied into cache before sharing. Remove those
                     // temporary copies after every terminal send outcome so they
