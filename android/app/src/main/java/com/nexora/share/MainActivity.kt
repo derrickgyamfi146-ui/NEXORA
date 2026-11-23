@@ -85,7 +85,13 @@ class MainActivity : Activity() {
     private val serviceListener = object : TransferKeepAliveService.Listener {
         override fun onStatus(message: String) {
             runOnUiThread {
-                if (message.startsWith("Sent: ")) {
+                if (message.startsWith("Sent to ")) {
+                    val detail = message.removePrefix("Sent to ")
+                    val recipient = detail.substringBefore(": ").trim().ifBlank { "Nearby device" }
+                    val fileName = detail.substringAfter(": ", "").trim()
+                    if (fileName.isNotBlank()) rememberSentFileName(fileName, recipient)
+                    successFeedback()
+                } else if (message.startsWith("Sent: ")) {
                     rememberSentFileName(message.removePrefix("Sent: ").trim())
                     successFeedback()
                 }
@@ -110,7 +116,10 @@ class MainActivity : Activity() {
                     }
                 }
                 if (message.startsWith("Received and saved:")) {
-                    rememberReceivedFileName(message.removePrefix("Received and saved:").trim())
+                    val detail = message.removePrefix("Received and saved:").trim()
+                    val fileName = detail.substringBefore(" · from ").trim()
+                    val sender = detail.substringAfter(" · from ", "Nearby device").trim()
+                    rememberReceivedFileName(fileName, sender)
                     latestIncomingProgress = "No active incoming transfers."
                     incomingStatusView?.text = latestIncomingProgress
                     refreshReceivedFiles()
@@ -2752,7 +2761,7 @@ class MainActivity : Activity() {
         edit.apply()
     }
 
-    private fun rememberSentFileName(name: String) {
+    private fun rememberSentFileName(name: String, recipient: String = "Nearby device") {
         if (name.isBlank()) return
         val prefs = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
         val old = prefs.getString("sent_items", "") ?: ""
@@ -2760,18 +2769,19 @@ class MainActivity : Activity() {
         val uri = prefs.getString("sent_uri_" + name.hashCode(), null)
         val entry = stamp + " · " + name + (uri?.let { " · " + it } ?: "")
         prefs.edit().putString("sent_items", (listOf(entry) + old.split("\n").filter { it.isNotBlank() }).take(100).joinToString("\n")).apply()
-        appendHistoryEvent("SENT", name)
+        appendHistoryEvent("SENT", name, recipient)
     }
 
-    private fun rememberReceivedFileName(name: String) {
-        if (name.isNotBlank()) appendHistoryEvent("RECEIVED", name)
+    private fun rememberReceivedFileName(name: String, sender: String = "Nearby device") {
+        if (name.isNotBlank()) appendHistoryEvent("RECEIVED", name, sender)
     }
 
-    private fun appendHistoryEvent(direction: String, name: String) {
+    private fun appendHistoryEvent(direction: String, name: String, peer: String = "Nearby device", outcome: String = "COMPLETED") {
         val prefs = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
         val old = prefs.getString("history_events", "") ?: ""
         val safeName = name.replace("|", "_").replace("\n", " ").take(240)
-        val event = System.currentTimeMillis().toString() + "|" + direction + "|" + safeName
+        val safePeer = peer.replace("|", "_").replace("\n", " ").take(80)
+        val event = System.currentTimeMillis().toString() + "|" + direction + "|" + outcome + "|" + safePeer + "|" + safeName
         prefs.edit().putString("history_events", (listOf(event) + old.split("\n").filter { it.isNotBlank() }).take(200).joinToString("\n")).apply()
     }
 
@@ -3007,14 +3017,19 @@ class MainActivity : Activity() {
     }
 
     private fun showHistory(card: Int, ink: Int, muted: Int) {
+        data class HistoryItem(val timestamp: Long, val direction: String, val outcome: String, val peer: String, val name: String)
         migrateLegacyTransferHistory()
         val events = getSharedPreferences("nexora_transfer_history", MODE_PRIVATE)
             .getString("history_events", "")?.split("\n")?.mapNotNull { line ->
-                val parts = line.split("|", limit = 3)
-                if (parts.size == 3) Triple(parts[0].toLongOrNull() ?: 0L, parts[1], parts[2]) else null
-            }?.sortedByDescending { it.first } ?: emptyList()
-        val sentCount = events.count { it.second == "SENT" }
-        val receivedCount = events.count { it.second == "RECEIVED" }
+                val parts = line.split("|", limit = 5)
+                when {
+                    parts.size == 5 -> HistoryItem(parts[0].toLongOrNull() ?: 0L, parts[1], parts[2], parts[3], parts[4])
+                    parts.size == 3 -> HistoryItem(parts[0].toLongOrNull() ?: 0L, parts[1], "COMPLETED", "Nearby device", parts[2])
+                    else -> null
+                }
+            }?.sortedByDescending { it.timestamp } ?: emptyList()
+        val sentCount = events.count { it.direction == "SENT" }
+        val receivedCount = events.count { it.direction == "RECEIVED" }
 
         content.addView(TextView(this).apply {
             text = "Transfer history"
@@ -3024,7 +3039,7 @@ class MainActivity : Activity() {
             setPadding(dp(2), dp(12), dp(2), dp(3))
         })
         content.addView(TextView(this).apply {
-            text = "A timeline of files shared from and to this phone."
+            text = "See which phone each file was shared with."
             textSize = 12f
             setTextColor(muted)
             setPadding(dp(3), 0, 0, dp(14))
@@ -3065,8 +3080,8 @@ class MainActivity : Activity() {
         } else {
             events.take(200).forEach { event ->
                 val stamp = java.text.SimpleDateFormat("dd MMM yyyy · HH:mm", java.util.Locale.getDefault())
-                    .format(java.util.Date(event.first))
-                val sent = event.second == "SENT"
+                    .format(java.util.Date(event.timestamp))
+                val sent = event.direction == "SENT"
                 val accent = if (sent) 0xFF0B4FB3.toInt() else 0xFFE52B3A.toInt()
                 val entry = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -3084,17 +3099,24 @@ class MainActivity : Activity() {
                 }, LinearLayout.LayoutParams(dp(38), dp(38)).apply { rightMargin = dp(10) })
                 val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
                 details.addView(TextView(this@MainActivity).apply {
-                    text = event.third
+                    text = event.name
                     textSize = 12f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(ink)
                     maxLines = 2
                 })
                 details.addView(TextView(this@MainActivity).apply {
-                    text = (if (sent) "SENT" else "RECEIVED") + "  ·  " + stamp
+                    val relation = if (sent) "to " else "from "
+                    text = (if (sent) "SENT" else "RECEIVED") + " · " + relation + event.peer
                     textSize = 10f
                     setTextColor(muted)
                     setPadding(0, dp(3), 0, 0)
+                })
+                details.addView(TextView(this@MainActivity).apply {
+                    text = stamp + " · " + event.outcome
+                    textSize = 9f
+                    setTextColor(muted)
+                    setPadding(0, dp(2), 0, 0)
                 })
                 entry.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
                 list.addView(entry, bottom(6))
@@ -3102,7 +3124,6 @@ class MainActivity : Activity() {
         }
         content.addView(box)
     }
-
 
     private fun showXenderMenu() {
         val dialog = android.app.Dialog(this)
