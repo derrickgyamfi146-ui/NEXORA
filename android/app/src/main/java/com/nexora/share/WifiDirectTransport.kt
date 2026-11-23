@@ -1012,11 +1012,28 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         active.set(false)
         localIsGroupOwner = false
         currentQrPayload = null
+
+        // Close every group-member socket as well as the single-peer socket.
+        // Group-owner sessions do not use the single-peer 'socket' field, so
+        // closing only that field left group reader threads blocked in read().
+        val peers = groupPeers.values.toList()
+        peers.forEach { peer ->
+            peer.acknowledgementQueue.offer(false)
+            peer.sendPermit.release()
+            runCatching { peer.socket.close() }
+        }
+        groupPeers.clear()
+        activeGroupSendPeer = null
+
         val activePeer = socket
         runCatching { activePeer?.close() }
-        if (activePeer == null) callbacks.onDisconnected("WIFI_DIRECT")
-        runCatching { server?.close() }; server = null
+        if (activePeer == null && peers.isEmpty()) callbacks.onDisconnected("WIFI_DIRECT")
+        runCatching { server?.close() }
+        server = null
         runCatching { manager.removeGroup(channel, null) }
-        if (receiverRegistered) { runCatching { context.unregisterReceiver(receiver) }; receiverRegistered = false }
+        if (receiverRegistered) {
+            runCatching { context.unregisterReceiver(receiver) }
+            receiverRegistered = false
+        }
     }
 }
