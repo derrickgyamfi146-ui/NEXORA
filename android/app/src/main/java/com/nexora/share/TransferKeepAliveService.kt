@@ -46,6 +46,7 @@ class TransferKeepAliveService : Service() {
                     message.startsWith("Wi-Fi Direct group details were unavailable") ||
                     message.startsWith("Android did not provide Wi-Fi Direct credentials") ||
                     message.startsWith("Wi-Fi Direct receiver could not start")) receiving = false
+                if (isTransferTerminalStatus(message)) releaseTransferWakeLock()
                 status(message)
             }
             override fun onQrReady(payload: String) { listener?.onQrReady(payload) }
@@ -59,6 +60,8 @@ class TransferKeepAliveService : Service() {
                 listener?.onDisconnected(endpointId)
             }
             override fun onProgress(message: String) {
+                if (message.startsWith("Paused:")) releaseTransferWakeLock()
+                else acquireTransferWakeLock()
                 lastStatusMessage = message
                 listener?.onTransferProgress(message)
             }
@@ -115,12 +118,14 @@ class TransferKeepAliveService : Service() {
     fun sendFiles(uris: List<Uri>) {
         if (uris.isEmpty()) { status("Choose at least one file."); return }
         if (!isConnected) { status("Scan the receiver's QR code before sending files."); return }
+        acquireTransferWakeLock()
         transport.sendFiles(uris)
     }
 
     fun sendFilesToGroup(uris: List<Uri>, excludedPeerIds: Set<String> = emptySet()) {
         if (uris.isEmpty()) { status("Choose at least one item."); return }
         if (!isConnected) { status("Connect at least one phone before broadcasting."); return }
+        acquireTransferWakeLock()
         transport.sendFilesToGroup(uris, excludedPeerIds)
     }
 
@@ -152,6 +157,16 @@ class TransferKeepAliveService : Service() {
         listener?.onStatus(message)
     }
 
+    private fun isTransferTerminalStatus(message: String): Boolean {
+        return message == "Transfer complete." ||
+            message == "Group transfer finished." ||
+            message == "All files received successfully." ||
+            message.startsWith("Transfer queue finished:") ||
+            message.startsWith("Send failed:") ||
+            message.startsWith("Outgoing transfer cancelled.") ||
+            message.startsWith("Connection ended:")
+    }
+
     private fun acquireTransferWakeLock() {
         val lock = transferWakeLock ?: (getSystemService(POWER_SERVICE) as android.os.PowerManager)
             .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "$packageName:NEXORA-transfer").also {
@@ -166,7 +181,6 @@ class TransferKeepAliveService : Service() {
     }
 
     private fun promoteToForeground() {
-        acquireTransferWakeLock()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL_ID, "NEXORA transfers", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
