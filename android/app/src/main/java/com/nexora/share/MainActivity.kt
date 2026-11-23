@@ -585,6 +585,7 @@ class MainActivity : Activity() {
         receiveModeLabel = null
         mediaContinueButton = null
         transferStatusView = null
+        transferOverviewStatusView = null
         transferProgressBar = null
         incomingStatusView = null
         outgoingControlsView = null
@@ -2454,6 +2455,14 @@ class MainActivity : Activity() {
         // Received lists. Counts are sourced from the live session and history.
         val sessionOverview = panel(card)
         sessionOverview.addView(label("SESSION OVERVIEW", 0xFFFFD21F.toInt()))
+        transferOverviewStatusView = TextView(this).apply {
+            text = "Status: " + latestStatus
+            textSize = 12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ink)
+            setPadding(dp(2), dp(7), dp(2), dp(7))
+        }
+        sessionOverview.addView(transferOverviewStatusView)
         val overviewLines = listOf(
             "Connection: " + if (connectedPeers.isEmpty()) "Not connected" else connectedPeers.size.toString() + " device(s) connected",
             "Incoming queue: " + incomingQueueItems.size + " item(s)",
@@ -3749,6 +3758,7 @@ class MainActivity : Activity() {
 
     private var receiveModeLabel: TextView? = null
     private var transferStatusView: TextView? = null
+    private var transferOverviewStatusView: TextView? = null
     private var transferProgressBar: android.widget.ProgressBar? = null
     private var transferStage = 0
     private val transferStepViews = ArrayList<TextView>()
@@ -3786,6 +3796,7 @@ class MainActivity : Activity() {
         latestStatus = message
         if (::status.isInitialized) status.text = message
         transferStatusView?.text = message
+        transferOverviewStatusView?.text = "Status: " + message
         receiveModeLabel?.text = if (sharing?.isAdvertising == true) "●  RECEIVING MODE ACTIVE" else "○  RECEIVE MODE READY"
         val lower = message.lowercase()
         transferIsActive = when {
