@@ -3880,14 +3880,30 @@ class MainActivity : Activity() {
         }
         discovered.forEach { (id, name) ->
             if (connectedPeers.contains(id)) {
-                peerList.addView(TextView(this).apply {
+                val connectedRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                connectedRow.addView(TextView(this).apply {
                     text = "✓  CONNECTED  ·  " + name
                     textSize = 12f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     setTextColor(0xFF16A58A.toInt())
                     setPadding(dp(8), dp(10), dp(8), dp(10))
                     background = rounded(if (darkMode) 0xFF173C3B.toInt() else 0xFFE7F7F1.toInt(), 12)
-                }, bottom(6))
+                }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(6) })
+                connectedRow.addView(button("DISCONNECT", 0xFFE52B3A.toInt()) {
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("Disconnect from $name?")
+                        .setMessage("Any active transfer to or from this phone will stop. Saved partial files can still be resumed after reconnecting.")
+                        .setNegativeButton("Stay connected", null)
+                        .setPositiveButton("Disconnect") { _, _ ->
+                            sharing?.disconnectPeer(id)
+                            updateStatus("Disconnecting from $name…")
+                        }
+                        .show()
+                }, LinearLayout.LayoutParams(dp(112), dp(42)))
+                peerList.addView(connectedRow, bottom(6))
             } else {
                 peerList.addView(button("Connect to $name", 0xFF16A085.toInt()) { sharing?.connect(id, name) }, bottom(6))
             }
