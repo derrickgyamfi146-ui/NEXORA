@@ -481,7 +481,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                     output.flush()
                                 }
                                 if (saved) callbacks.onReceived(item.name, peerName)
-                                else if (cancelledIncomingItems.contains(index)) callbacks.onStatus("Transfer cancelled from " + peer.name + ": " + item.name)
+                                else if (cancelledIncomingItems.contains(index)) callbacks.onStatus("Transfer cancelled from " + peerName + ": " + item.name)
                                 else callbacks.onStatus("Incoming transfer failed verification or storage check: " + item.name)
                             }
                         }
@@ -697,6 +697,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                                     peer.output.writeBoolean(false)
                                     peer.output.flush()
                                 }
+                                callbacks.onStatus("Transfer cancelled from " + peer.name + ": " + item.name)
                             } else {
                                 updateIncomingQueue(index, "Receiving", 0)
                                 callbacks.onProgress("Receiving " + item.name + " · 0%")
