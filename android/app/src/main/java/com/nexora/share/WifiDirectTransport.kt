@@ -9,6 +9,8 @@ import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
+import android.os.Environment
+import android.os.StatFs
 import android.provider.MediaStore
 import android.util.Base64
 import org.json.JSONObject
@@ -18,6 +20,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.UUID
+import java.security.MessageDigest
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -38,7 +41,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
     }
     companion object {
         private const val PORT = 43821
-        private const val MAGIC = "NEXORA-WFD-3"
+        private const val MAGIC = "NEXORA-WFD-4"
         private const val MAX_FILES = 200
         private const val FRAME_BATCH = 1
         private const val FRAME_ACK = 2
@@ -359,14 +362,16 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                         remoteOwnsTurn = true
                         val count = input.readInt()
                         require(count in 1..MAX_FILES) { "Invalid file count." }
-                        data class IncomingMeta(val name: String, val mime: String, val size: Long)
+                        data class IncomingMeta(val name: String, val mime: String, val size: Long, val sha256: String)
                         val metadata = ArrayList<IncomingMeta>(count)
                         repeat(count) {
                             val name = safeName(input.readUTF())
                             val mime = input.readUTF().take(120).ifBlank { "application/octet-stream" }
                             val size = input.readLong()
+                            val sha256 = input.readUTF()
                             require(size in 0..(20L * 1024 * 1024 * 1024)) { "Invalid file size." }
-                            metadata.add(IncomingMeta(name, mime, size))
+                            require(sha256.matches(Regex("[a-f0-9]{64}"))) { "Invalid file verification data." }
+                            metadata.add(IncomingMeta(name, mime, size, sha256))
                         }
                         synchronized(incomingQueueLock) {
                             incomingQueue.clear()
@@ -390,8 +395,9 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             } else {
                                 updateIncomingQueue(index, "Receiving", 0)
                                 callbacks.onProgress("Receiving " + item.name + " · 0%")
-                                val saved = saveIncoming(input, item.name, item.mime, item.size, index)
-                                updateIncomingQueue(index, if (saved) "Completed" else "Cancelled", if (saved) 100 else incomingProgress(index))
+                                val saved = saveIncoming(input, item.name, item.mime, item.size, item.sha256, index)
+                                val finalStatus = if (saved) "Completed" else if (cancelledIncomingItems.contains(index)) "Cancelled" else "Failed"
+                                updateIncomingQueue(index, finalStatus, if (saved) 100 else incomingProgress(index))
                                 synchronized(outputLock) {
                                     output.writeByte(FRAME_ACK)
                                     output.writeBoolean(saved)
@@ -564,8 +570,10 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             val name = safeName(peer.input.readUTF())
                             val mime = peer.input.readUTF().take(120).ifBlank { "application/octet-stream" }
                             val size = peer.input.readLong()
+                            val sha256 = peer.input.readUTF()
                             require(size in 0..(20L * 1024 * 1024 * 1024)) { "Invalid file size." }
-                            metadata.add(IncomingMeta(name, mime, size))
+                            require(sha256.matches(Regex("[a-f0-9]{64}"))) { "Invalid file verification data." }
+                            metadata.add(IncomingMeta(name, mime, size, sha256))
                         }
                         synchronized(incomingQueueLock) {
                             incomingQueue.clear()
@@ -588,8 +596,9 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             } else {
                                 updateIncomingQueue(index, "Receiving", 0)
                                 callbacks.onProgress("Receiving " + item.name + " · 0%")
-                                val saved = saveIncoming(peer.input, item.name, item.mime, item.size, index)
-                                updateIncomingQueue(index, if (saved) "Completed" else "Cancelled", if (saved) 100 else incomingProgress(index))
+                                val saved = saveIncoming(peer.input, item.name, item.mime, item.size, item.sha256, index)
+                                val finalStatus = if (saved) "Completed" else if (cancelledIncomingItems.contains(index)) "Cancelled" else "Failed"
+                                updateIncomingQueue(index, finalStatus, if (saved) 100 else incomingProgress(index))
                                 synchronized(peer.outputLock) {
                                     peer.output.writeByte(FRAME_ACK)
                                     peer.output.writeBoolean(saved)
@@ -709,27 +718,29 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     try {
                         requestGroupSendTurn(peer)
                         ownsTurn = true
+                        data class GroupOutgoingMeta(val uri: Uri, val name: String, val mime: String, val size: Long, val sha256: String)
                         val metadata = uris.take(MAX_FILES).map { uri ->
                             val name = safeName(queryName(uri))
                             val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
                             val size = querySize(uri)
                             require(size >= 0) { "Could not determine the size of " + name }
-                            Triple(uri, name, Pair(mime.take(120), size))
+                            GroupOutgoingMeta(uri, name, mime.take(120), size, calculateSha256(uri))
                         }
                         synchronized(peer.outputLock) {
                             peer.output.writeByte(FRAME_BATCH)
                             peer.output.writeInt(metadata.size)
                             metadata.forEach { item ->
-                                peer.output.writeUTF(item.second)
-                                peer.output.writeUTF(item.third.first)
-                                peer.output.writeLong(item.third.second)
+                                peer.output.writeUTF(item.name)
+                                peer.output.writeUTF(item.mime)
+                                peer.output.writeLong(item.size)
+                                peer.output.writeUTF(item.sha256)
                             }
                             peer.output.flush()
                         }
                         metadata.forEach { item ->
-                            val uri = item.first
-                            val name = item.second
-                            val size = item.third.second
+                            val uri = item.uri
+                            val name = item.name
+                            val size = item.size
                             synchronized(peer.outputLock) {
                                 context.contentResolver.openInputStream(uri)?.use { input ->
                                     val buffer = ByteArray(256 * 1024)
@@ -770,7 +781,12 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         }
     }
 
-    private fun saveIncoming(input: DataInputStream, name: String, mime: String, size: Long, queueId: Int): Boolean {
+    private fun saveIncoming(input: DataInputStream, name: String, mime: String, size: Long, expectedSha256: String, queueId: Int): Boolean {
+        if (!hasStorageSpace(size)) {
+            skipIncomingBytes(input, size)
+            callbacks.onStatus("Not enough storage to receive " + name + ". Free up space and try again.")
+            return false
+        }
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
@@ -783,6 +799,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
         incomingPaused.set(false)
         incomingCancelled.set(cancelledIncomingItems.contains(queueId))
         try {
+            val digest = MessageDigest.getInstance("SHA-256")
             context.contentResolver.openOutputStream(uri)?.use { out ->
                 val buffer = ByteArray(256 * 1024)
                 var remaining = size
@@ -791,7 +808,10 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                     while (incomingPaused.get() && active.get() && !incomingCancelled.get()) Thread.sleep(100)
                     val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
                     if (n < 0) throw EOFException("Connection ended before the file completed.")
-                    if (!incomingCancelled.get()) out.write(buffer, 0, n)
+                    if (!incomingCancelled.get()) {
+                        out.write(buffer, 0, n)
+                        digest.update(buffer, 0, n)
+                    }
                     remaining -= n
                     done += n
                     val percent = (done * 100 / size.coerceAtLeast(1)).toInt()
@@ -800,7 +820,14 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 }
             } ?: throw IOException("Could not open Downloads output.")
             if (incomingCancelled.get()) {
+                cancelledIncomingItems.add(queueId)
                 context.contentResolver.delete(uri, null, null)
+                return false
+            }
+            val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
+            if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                context.contentResolver.delete(uri, null, null)
+                callbacks.onStatus("File verification failed: " + name + ". The received data did not match the sender's file.")
                 return false
             }
             context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
@@ -936,13 +963,13 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 ownsTurn = true
                 val output = peerOutput ?: throw IOException("The NEXORA connection ended.")
                 val outgoing = uris.take(MAX_FILES)
-                data class OutgoingMeta(val uri: Uri, val name: String, val mime: String, val size: Long)
+                data class OutgoingMeta(val uri: Uri, val name: String, val mime: String, val size: Long, val sha256: String)
                     val metadata = outgoing.map { uri ->
                         val name = safeName(queryName(uri))
                         val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
                         val size = querySize(uri)
                         require(size >= 0) { "Could not determine the size of " + name }
-                        OutgoingMeta(uri, name, mime.take(120), size)
+                        OutgoingMeta(uri, name, mime.take(120), size, calculateSha256(uri))
                     }
                     synchronized(outputLock) {
                         output.writeByte(FRAME_BATCH)
@@ -951,6 +978,7 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                             output.writeUTF(item.name)
                             output.writeUTF(item.mime)
                             output.writeLong(item.size)
+                            output.writeUTF(item.sha256)
                         }
                         output.flush()
                     }
@@ -996,6 +1024,27 @@ class WifiDirectTransport(private val context: Context, private val callbacks: C
                 sending.set(false)
             }
         }
+    }
+
+    private fun hasStorageSpace(requiredBytes: Long): Boolean {
+        return runCatching {
+            val availableBytes = StatFs(Environment.getExternalStorageDirectory().absolutePath).availableBytes
+            val safetyReserve = 16L * 1024 * 1024
+            requiredBytes <= (availableBytes - safetyReserve).coerceAtLeast(0L)
+        }.getOrDefault(false)
+    }
+
+    private fun calculateSha256(uri: Uri): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            val buffer = ByteArray(256 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count > 0) digest.update(buffer, 0, count)
+            }
+        } ?: throw IOException("Could not read a file to verify it before sending.")
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun querySize(uri: Uri): Long {
